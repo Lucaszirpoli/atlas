@@ -1,7 +1,7 @@
 import { api } from "./client";
 
 export type ProposedAction = {
-  tool: "registrar_refeicao" | "atualizar_peso" | "ajustar_meta_calorica";
+  tool: "registrar_refeicao" | "atualizar_peso" | "ajustar_meta_calorica" | "criar_rotina_treino";
   input: any;
 };
 
@@ -14,9 +14,10 @@ export type ChatMessage = {
 };
 
 export async function sendChatMessage(
-  message: string
+  message: string,
+  contextModule?: string
 ): Promise<{ reply: string; proposed_action: ProposedAction | null }> {
-  const { data } = await api.post("/ai/chat", { message });
+  const { data } = await api.post("/ai/chat", { message, context_module: contextModule });
   return data;
 }
 

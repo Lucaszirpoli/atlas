@@ -25,7 +25,7 @@ def chat(
     current_user: User = Depends(require_pro_plan),
     db: Session = Depends(get_db),
 ) -> dict:
-    return run_chat_turn(db, current_user.id, payload.message)
+    return run_chat_turn(db, current_user.id, payload.message, payload.context_module)
 
 
 @router.get("/chat/history", response_model=list[ChatMessageRead])

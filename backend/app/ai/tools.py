@@ -11,12 +11,19 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.exercise import Exercise, MuscleGroup
 from app.models.meal import MealLog, MealLogItem
 from app.models.water_log import WaterLog
 from app.models.weight_log import WeightLog
+from app.models.workout_session import WorkoutSession
 from app.services import food_service
 
-WRITE_TOOL_NAMES = {"registrar_refeicao", "atualizar_peso", "ajustar_meta_calorica"}
+WRITE_TOOL_NAMES = {
+    "registrar_refeicao",
+    "atualizar_peso",
+    "ajustar_meta_calorica",
+    "criar_rotina_treino",
+}
 
 TOOL_DEFINITIONS = [
     {
@@ -34,14 +41,35 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "consultar_historico",
-        "description": "Consulta o histórico recente do usuário em nutrição, água ou peso.",
+        "description": "Consulta o histórico recente do usuário em nutrição, água, peso ou treino.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "tipo": {"type": "string", "enum": ["refeicoes", "agua", "peso"]},
+                "tipo": {"type": "string", "enum": ["refeicoes", "agua", "peso", "treinos"]},
                 "dias": {"type": "integer", "description": "Quantos dias olhar para trás", "default": 7},
             },
             "required": ["tipo"],
+        },
+    },
+    {
+        "name": "buscar_exercicios",
+        "description": (
+            "Busca exercícios na biblioteca do app por nome e/ou grupo muscular. Use "
+            "para achar os exercise_id certos antes de propor criar_rotina_treino."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "nome": {"type": "string", "description": "Nome ou parte do nome do exercício"},
+                "grupo_muscular": {
+                    "type": "string",
+                    "enum": [
+                        "chest", "back", "shoulders", "biceps", "triceps", "quads",
+                        "hamstrings", "glutes", "calves", "abs", "forearms", "traps",
+                        "full_body", "cardio",
+                    ],
+                },
+            },
         },
     },
     {
@@ -97,6 +125,36 @@ TOOL_DEFINITIONS = [
             "required": ["kcal", "protein_g", "carbs_g", "fat_g"],
         },
     },
+    {
+        "name": "criar_rotina_treino",
+        "description": (
+            "Propõe a criação de uma rotina de treino completa e estruturada. NUNCA "
+            "salva direto — o usuário confirma na interface. Sempre busque os "
+            "exercise_id certos com buscar_exercicios antes."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "nome": {"type": "string", "description": "Ex: Treino A - Upper"},
+                "exercicios": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "exercise_id": {"type": "integer"},
+                            "nome": {"type": "string"},
+                            "target_sets": {"type": "integer"},
+                            "target_reps_min": {"type": "integer"},
+                            "target_reps_max": {"type": "integer"},
+                            "rest_seconds": {"type": "integer", "default": 90},
+                        },
+                        "required": ["exercise_id", "nome", "target_sets", "target_reps_min"],
+                    },
+                },
+            },
+            "required": ["nome", "exercicios"],
+        },
+    },
 ]
 
 
@@ -112,10 +170,31 @@ def _serialize_food(food) -> dict:
     }
 
 
+def _serialize_exercise(exercise: Exercise) -> dict:
+    return {
+        "exercise_id": exercise.id,
+        "nome": exercise.name,
+        "grupo_muscular_primario": exercise.primary_muscle_group.value,
+        "equipamento": exercise.equipment.value,
+        "dificuldade": exercise.difficulty.value,
+    }
+
+
 def execute_read_tool(db: Session, user_id: int, tool_name: str, tool_input: dict) -> dict:
     if tool_name == "buscar_alimento":
         foods = food_service.search_with_open_food_facts_fallback(db, tool_input["nome"], limit=10)
         return {"resultados": [_serialize_food(f) for f in foods]}
+
+    if tool_name == "buscar_exercicios":
+        stmt = select(Exercise)
+        if tool_input.get("nome"):
+            stmt = stmt.where(Exercise.name.ilike(f"%{tool_input['nome']}%"))
+        if tool_input.get("grupo_muscular"):
+            stmt = stmt.where(
+                Exercise.primary_muscle_group == MuscleGroup(tool_input["grupo_muscular"])
+            )
+        exercises = list(db.execute(stmt.limit(15)).scalars())
+        return {"resultados": [_serialize_exercise(e) for e in exercises]}
 
     if tool_name == "consultar_historico":
         dias = tool_input.get("dias", 7)
@@ -154,6 +233,29 @@ def execute_read_tool(db: Session, user_id: int, tool_name: str, tool_input: dic
                 ).scalars()
             )
             return {"total_ml": sum(l.amount_ml for l in logs), "registros": len(logs)}
+
+        if tool_input["tipo"] == "treinos":
+            sessions = list(
+                db.execute(
+                    select(WorkoutSession)
+                    .where(
+                        WorkoutSession.user_id == user_id,
+                        WorkoutSession.started_at >= since,
+                        WorkoutSession.completed_at.is_not(None),
+                    )
+                    .order_by(WorkoutSession.started_at)
+                ).scalars()
+            )
+            return {
+                "sessoes": [
+                    {
+                        "data": s.started_at.isoformat(),
+                        "rotina_id": s.routine_id,
+                        "volume_total_kg": sum(set_.weight_kg * set_.reps for set_ in s.sets),
+                    }
+                    for s in sessions
+                ]
+            }
 
         if tool_input["tipo"] == "peso":
             logs = list(

@@ -7,6 +7,7 @@ from app.models.chat_message import ChatRole
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
+    context_module: str | None = None
 
 
 class ChatResponse(BaseModel):

@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.client import get_client
-from app.ai.system_prompt import NUTRITION_SYSTEM_PROMPT
+from app.ai.system_prompt import ASSISTANT_SYSTEM_PROMPT
 from app.ai.tools import TOOL_DEFINITIONS, WRITE_TOOL_NAMES, execute_read_tool
 from app.core.config import settings
 from app.models.chat_message import ChatMessage, ChatRole
@@ -30,9 +30,15 @@ def _load_history_as_messages(db: Session, user_id: int) -> list[dict]:
     return [{"role": row.role.value, "content": row.content} for row in rows]
 
 
-def run_chat_turn(db: Session, user_id: int, user_message: str) -> dict:
+def run_chat_turn(
+    db: Session, user_id: int, user_message: str, context_module: str | None = None
+) -> dict:
     messages = _load_history_as_messages(db, user_id)
     messages.append({"role": "user", "content": user_message})
+
+    system_prompt = ASSISTANT_SYSTEM_PROMPT
+    if context_module:
+        system_prompt += f"\n\n## Contexto atual\nA pessoa abriu o chat a partir da tela de {context_module}."
 
     client = get_client()
     proposed_action: dict | None = None
@@ -42,7 +48,7 @@ def run_chat_turn(db: Session, user_id: int, user_message: str) -> dict:
         response = client.messages.create(
             model=settings.anthropic_model,
             max_tokens=1024,
-            system=NUTRITION_SYSTEM_PROMPT,
+            system=system_prompt,
             tools=TOOL_DEFINITIONS,
             messages=messages,
         )

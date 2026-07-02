@@ -4,6 +4,7 @@ import { Alert, Text, View } from "react-native";
 import { applyManualGoal } from "../api/goals";
 import { listMealCategories, logMeal } from "../api/meals";
 import type { ProposedAction } from "../api/ai";
+import { createRoutine } from "../api/routines";
 import { logWeight } from "../api/weight";
 import { useTheme } from "../theme/ThemeProvider";
 import { Button } from "./Button";
@@ -46,6 +47,17 @@ export function ChatActionCard({
           protein_g: action.input.protein_g,
           carbs_g: action.input.carbs_g,
           fat_g: action.input.fat_g,
+        });
+      } else if (action.tool === "criar_rotina_treino") {
+        await createRoutine({
+          name: action.input.nome,
+          exercises: (action.input.exercicios as any[]).map((e) => ({
+            exercise_id: e.exercise_id,
+            target_sets: e.target_sets,
+            target_reps_min: e.target_reps_min,
+            target_reps_max: e.target_reps_max ?? null,
+            rest_seconds: e.rest_seconds ?? 90,
+          })),
         });
       }
       onResolved("confirmed");
@@ -92,6 +104,12 @@ function describeAction(action: ProposedAction): string {
   }
   if (action.tool === "ajustar_meta_calorica") {
     return `Nova meta: ${action.input.kcal}kcal · P${action.input.protein_g}g · C${action.input.carbs_g}g · G${action.input.fat_g}g`;
+  }
+  if (action.tool === "criar_rotina_treino") {
+    const exercicios = (action.input.exercicios as any[])
+      .map((e) => `${e.nome} (${e.target_sets}x${e.target_reps_min}${e.target_reps_max ? `-${e.target_reps_max}` : ""})`)
+      .join(", ");
+    return `Criar rotina "${action.input.nome}": ${exercicios}`;
   }
   return "Confirmar ação";
 }
