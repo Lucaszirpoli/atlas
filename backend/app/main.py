@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from app.routers import (
+    ai,
     auth,
     exercises,
     foods,
@@ -10,6 +11,7 @@ from app.routers import (
     routines,
     users,
     water,
+    weight,
     workout_sessions,
 )
 
@@ -21,10 +23,12 @@ app.include_router(foods.router)
 app.include_router(meals.router)
 app.include_router(goals.router)
 app.include_router(water.router)
+app.include_router(weight.router)
 app.include_router(measurements.router)
 app.include_router(exercises.router)
 app.include_router(routines.router)
 app.include_router(workout_sessions.router)
+app.include_router(ai.router)
 
 
 @app.get("/health")

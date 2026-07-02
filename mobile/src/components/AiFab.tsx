@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
 import React from "react";
 import { Alert, Pressable, StyleSheet } from "react-native";
 
@@ -6,10 +7,10 @@ import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../theme/ThemeProvider";
 
 // FAB de IA acessível em qualquer tela do app (espec. seção 3.6).
-// A funcionalidade em si é exclusiva do plano Pro e chega na Fase 3/4.
 export function AiFab() {
   const { colors } = useTheme();
   const { user } = useAuth();
+  const navigation = useNavigation<any>();
 
   function handlePress() {
     if (user?.plan !== "pro") {
@@ -19,7 +20,7 @@ export function AiFab() {
       );
       return;
     }
-    Alert.alert("Em breve", "O chat com a IA chega nas Fases 3 e 4 do roadmap.");
+    navigation.navigate("Chat");
   }
 
   return (

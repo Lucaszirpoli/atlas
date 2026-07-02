@@ -13,6 +13,7 @@ import {
 import { searchFoods, type Food } from "../../api/foods";
 import { logMeal } from "../../api/meals";
 import { Button } from "../../components/Button";
+import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
 
 export function AddFoodScreen() {
@@ -20,6 +21,7 @@ export function AddFoodScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const { categoryId, barcodeResult } = route.params ?? {};
+  const { user } = useAuth();
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Food[]>([]);
@@ -156,6 +158,20 @@ export function AddFoodScreen() {
         title="Escanear código de barras"
         variant="ghost"
         onPress={() => navigation.navigate("BarcodeScanner", { categoryId })}
+      />
+      <Button
+        title={user?.plan === "pro" ? "Registrar por foto (IA)" : "Registrar por foto — exclusivo Pro"}
+        variant="ghost"
+        onPress={() => {
+          if (user?.plan !== "pro") {
+            Alert.alert(
+              "Exclusivo do Pro",
+              "Assine o Pro para registrar refeições automaticamente por foto."
+            );
+            return;
+          }
+          navigation.navigate("MealPhoto", { categoryId });
+        }}
       />
 
       {isSearching ? <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.md }} /> : null}

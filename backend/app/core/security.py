@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.db import get_db
-from app.models.user import User
+from app.models.user import Plan, User
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
@@ -64,3 +64,12 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuário não encontrado"
         )
     return user
+
+
+def require_pro_plan(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.plan != Plan.PRO:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Esse recurso é exclusivo do plano Pro.",
+        )
+    return current_user

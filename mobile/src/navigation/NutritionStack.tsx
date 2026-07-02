@@ -5,6 +5,7 @@ import { AddFoodScreen } from "../screens/nutrition/AddFoodScreen";
 import { BarcodeScannerScreen } from "../screens/nutrition/BarcodeScannerScreen";
 import { DiaryScreen } from "../screens/nutrition/DiaryScreen";
 import { GoalSettingsScreen } from "../screens/nutrition/GoalSettingsScreen";
+import { MealPhotoScreen } from "../screens/nutrition/MealPhotoScreen";
 import { MeasurementsScreen } from "../screens/nutrition/MeasurementsScreen";
 import { useTheme } from "../theme/ThemeProvider";
 
@@ -28,6 +29,11 @@ export function NutritionStack() {
         options={{ title: "Escanear código de barras" }}
       />
       <Stack.Screen name="GoalSettings" component={GoalSettingsScreen} options={{ title: "Meta calórica" }} />
+      <Stack.Screen
+        name="MealPhoto"
+        component={MealPhotoScreen}
+        options={{ title: "Registrar por foto" }}
+      />
       <Stack.Screen name="Measurements" component={MeasurementsScreen} options={{ title: "Medidas e fotos" }} />
     </Stack.Navigator>
   );

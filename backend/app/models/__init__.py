@@ -1,5 +1,6 @@
 from app.models.body_measurement import BodyMeasurement, ProgressPhoto
 from app.models.calorie_goal import CalorieGoal
+from app.models.chat_message import ChatMessage
 from app.models.consent import ConsentRecord
 from app.models.exercise import Exercise
 from app.models.food import Food
@@ -17,6 +18,7 @@ __all__ = [
     "UserProfile",
     "WeightLog",
     "ConsentRecord",
+    "ChatMessage",
     "Food",
     "MealCategory",
     "MealLog",

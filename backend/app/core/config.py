@@ -14,5 +14,8 @@ class Settings(BaseSettings):
     google_oauth_client_id: str = ""
     apple_oauth_client_id: str = ""
 
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-sonnet-5"
+
 
 settings = Settings()
