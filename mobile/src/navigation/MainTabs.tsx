@@ -8,6 +8,7 @@ import { HomeScreen } from "../screens/main/HomeScreen";
 import { PlaceholderScreen } from "../screens/main/PlaceholderScreen";
 import { ProfileScreen } from "../screens/main/ProfileScreen";
 import { useTheme } from "../theme/ThemeProvider";
+import { NutritionStack } from "./NutritionStack";
 
 const Tab = createBottomTabNavigator();
 
@@ -36,14 +37,11 @@ export function MainTabs() {
         })}
       >
         <Tab.Screen name="Inicio" component={HomeScreen} options={{ title: "Início" }} />
-        <Tab.Screen name="Nutricao" options={{ title: "Nutrição" }}>
-          {() => (
-            <PlaceholderScreen
-              title="Nutrição"
-              subtitle="Registro de refeições e metas chegam na Fase 1."
-            />
-          )}
-        </Tab.Screen>
+        <Tab.Screen
+          name="Nutricao"
+          component={NutritionStack}
+          options={{ title: "Nutrição", headerShown: false }}
+        />
         <Tab.Screen name="Treino" options={{ title: "Treino" }}>
           {() => (
             <PlaceholderScreen

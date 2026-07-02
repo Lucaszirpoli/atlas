@@ -1,0 +1,41 @@
+external_id,name,kcal_per_100g,protein_g_per_100g,carbs_g_per_100g,fat_g_per_100g,fiber_g_per_100g,sodium_mg_per_100g,sugar_g_per_100g,default_portion_g,default_portion_label
+TACO-063,Arroz branco cozido,128,2.5,28.1,0.2,1.6,1,0.1,100,1 colher de servir
+TACO-072,Feijão carioca cozido,76,4.8,13.6,0.5,8.5,2,0.3,100,1 concha
+TACO-235,Feijão preto cozido,77,4.5,14,0.5,8.4,2,0.3,100,1 concha
+TACO-100,Pão francês,300,8,58.6,3.1,2.3,648,2.2,50,1 unidade
+TACO-104,Tapioca (goma hidratada),101,0.1,25,0,0.9,3,0,60,1 unidade média
+TACO-137,Ovo de galinha cozido,146,13.3,0.6,9.5,0,140,0.4,50,1 unidade
+TACO-138,Ovo de galinha frito,258,20.2,0.3,20.9,0,207,0.3,50,1 unidade
+TACO-042,Frango peito sem pele grelhado,159,32,0,3.6,0,63,0,100,1 filé médio
+TACO-050,Frango coxa sem pele assada,181,26.2,0,7.9,0,90,0,100,1 unidade
+TACO-030,Carne bovina patinho grelhado,219,35.9,0,7.3,0,52,0,100,1 bife médio
+TACO-013,Carne bovina acém cozido,212,26.7,0,10.9,0,58,0,100,1 pedaço
+TACO-274,Tilápia grelhada,128,26.2,0,2.2,0,52,0,100,1 filé
+TACO-020,Batata inglesa cozida,52,1.2,11.9,0,1.3,2,0.8,100,1 unidade média
+TACO-090,Mandioca cozida,125,0.6,30.1,0.3,1.6,2,1.6,100,1 pedaço
+TACO-021,Batata doce cozida,77,0.6,18.4,0.1,2.2,10,5.4,100,1 unidade média
+TACO-201,Alface crespa crua,11,1.3,1.7,0.2,1.7,5,0,50,4 folhas
+TACO-190,Tomate cru,15,1.1,3.1,0.2,1.2,4,2.6,100,1 unidade média
+TACO-180,Brócolis cozido,25,2.1,4.4,0.5,3.4,8,1.2,100,1 xícara
+TACO-160,Cenoura crua,34,1.3,7.7,0.2,3.2,35,4.7,100,1 unidade média
+TACO-001,Açaí polpa congelada (sem xarope),58,0.8,6.2,3.9,2.6,4,0,100,1 tigela pequena
+TACO-260,Banana prata,98,1.3,26,0.1,2,0,17.6,100,1 unidade média
+TACO-261,Banana nanica,92,1.4,23.8,0.1,1.9,0,15.7,100,1 unidade média
+TACO-250,Maçã com casca,56,0.3,15.2,0,2,1,12,130,1 unidade média
+TACO-251,Mamão papaya,40,0.5,10.4,0.1,1,3,7.8,150,1 fatia média
+TACO-252,Laranja pera,37,1,8.9,0.1,1,0,7.4,150,1 unidade média
+TACO-500,Whey protein concentrado (média mercado BR),380,80,8,6,1,150,4,30,1 scoop
+TACO-501,Leite integral,61,3.2,4.5,3.3,0,40,4.5,200,1 copo
+TACO-502,Leite desnatado,35,3.4,4.9,0.2,0,42,4.9,200,1 copo
+TACO-503,Iogurte natural integral,61,3.9,4.9,3,0,50,4.9,170,1 pote
+TACO-401,Queijo minas frescal,264,17.4,3.2,20.2,0,346,3.2,30,1 fatia
+TACO-402,Queijo muçarela,330,22.6,3.6,25.2,0,646,1.2,30,1 fatia
+TACO-140,Aveia em flocos,394,13.9,66.6,8.5,9.1,5,0,30,2 colheres de sopa
+TACO-141,Granola tradicional,421,10,66,12,7,20,20,40,4 colheres de sopa
+TACO-600,Azeite de oliva extra virgem,884,0,0,100,0,2,0,10,1 colher de sopa
+TACO-601,Óleo de soja,884,0,0,100,0,0,0,10,1 colher de sopa
+TACO-700,Feijoada (porção pronta tradicional),180,10.5,12,10.2,4.5,480,1.5,200,1 concha média
+TACO-701,Pão de queijo,353,8.5,31.7,21.5,0.7,530,2,30,1 unidade média
+TACO-702,Farofa pronta,411,3.5,64,15.5,3,900,1,30,1 colher de sopa
+TACO-800,Café coado sem açúcar,2,0.1,0.4,0,0,2,0,150,1 xícara
+TACO-801,Água de coco,22,0.1,5.3,0,0,25,5.3,200,1 copo
