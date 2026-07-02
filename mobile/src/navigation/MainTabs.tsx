@@ -9,6 +9,7 @@ import { PlaceholderScreen } from "../screens/main/PlaceholderScreen";
 import { ProfileScreen } from "../screens/main/ProfileScreen";
 import { useTheme } from "../theme/ThemeProvider";
 import { NutritionStack } from "./NutritionStack";
+import { TrainingStack } from "./TrainingStack";
 
 const Tab = createBottomTabNavigator();
 
@@ -42,14 +43,11 @@ export function MainTabs() {
           component={NutritionStack}
           options={{ title: "Nutrição", headerShown: false }}
         />
-        <Tab.Screen name="Treino" options={{ title: "Treino" }}>
-          {() => (
-            <PlaceholderScreen
-              title="Treino"
-              subtitle="Biblioteca de exercícios e rotinas chegam na Fase 2."
-            />
-          )}
-        </Tab.Screen>
+        <Tab.Screen
+          name="Treino"
+          component={TrainingStack}
+          options={{ title: "Treino", headerShown: false }}
+        />
         <Tab.Screen name="Social" options={{ title: "Social" }}>
           {() => (
             <PlaceholderScreen
