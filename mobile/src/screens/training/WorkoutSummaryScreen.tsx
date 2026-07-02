@@ -42,6 +42,28 @@ export function WorkoutSummaryScreen() {
         <SummaryRow label="Séries" value={String(summary.session.sets.length)} />
       </View>
 
+      {summary.prs.length > 0 ? (
+        <View
+          style={{
+            backgroundColor: colors.secondary + "1A",
+            borderRadius: radius.card,
+            borderWidth: 1,
+            borderColor: colors.secondary,
+            padding: spacing.md,
+            marginBottom: spacing.lg,
+          }}
+        >
+          <Text style={[type.h2, { color: colors.secondary, marginBottom: spacing.xs }]}>
+            🏆 Novo recorde pessoal!
+          </Text>
+          {summary.prs.map((pr) => (
+            <Text key={pr.exercise_id} style={[type.bodySmall, { color: colors.textPrimary }]}>
+              {pr.exercise_name}: {pr.weight_kg}kg
+            </Text>
+          ))}
+        </View>
+      ) : null}
+
       {summary.volume_change_percent !== null ? (
         <Text style={[type.body, { color: colors.textPrimary, marginBottom: spacing.lg }]}>
           Você levantou {Math.abs(summary.volume_change_percent)}%{" "}

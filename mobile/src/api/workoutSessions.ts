@@ -47,12 +47,19 @@ export type WorkoutSetLog = {
 
 export type WorkoutSessionDetail = WorkoutSession & { sets: WorkoutSetLog[] };
 
+export type PersonalRecord = {
+  exercise_id: number;
+  exercise_name: string;
+  weight_kg: number;
+};
+
 export type WorkoutSessionSummary = {
   session: WorkoutSessionDetail;
   total_volume_kg: number;
   duration_seconds: number;
   previous_session_volume_kg: number | null;
   volume_change_percent: number | null;
+  prs: PersonalRecord[];
 };
 
 export async function startWorkoutSession(

@@ -19,6 +19,7 @@ from app.routers import (
     users,
     water,
     weight,
+    workout_insights,
     workout_sessions,
 )
 
@@ -43,6 +44,7 @@ app.include_router(privacy.router)
 app.include_router(feed.router)
 app.include_router(challenges.router)
 app.include_router(sleep.router)
+app.include_router(workout_insights.router)
 
 
 @app.get("/health")

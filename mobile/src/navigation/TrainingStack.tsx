@@ -5,6 +5,7 @@ import { ExercisePickerScreen } from "../screens/training/ExercisePickerScreen";
 import { RoutineBuilderScreen } from "../screens/training/RoutineBuilderScreen";
 import { RoutineListScreen } from "../screens/training/RoutineListScreen";
 import { WorkoutExecutionScreen } from "../screens/training/WorkoutExecutionScreen";
+import { WorkoutInsightsScreen } from "../screens/training/WorkoutInsightsScreen";
 import { WorkoutSummaryScreen } from "../screens/training/WorkoutSummaryScreen";
 import { useTheme } from "../theme/ThemeProvider";
 
@@ -40,6 +41,11 @@ export function TrainingStack() {
         name="WorkoutSummary"
         component={WorkoutSummaryScreen}
         options={{ title: "Resumo", headerBackVisible: false }}
+      />
+      <Stack.Screen
+        name="WorkoutInsights"
+        component={WorkoutInsightsScreen}
+        options={{ title: "Reavaliação" }}
       />
     </Stack.Navigator>
   );

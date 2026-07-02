@@ -17,7 +17,7 @@ from app.models.sleep_log import SleepLog
 from app.models.water_log import WaterLog
 from app.models.weight_log import WeightLog
 from app.models.workout_session import WorkoutSession
-from app.services import food_service
+from app.services import food_service, workout_insights_service
 
 WRITE_TOOL_NAMES = {
     "registrar_refeicao",
@@ -127,6 +127,16 @@ TOOL_DEFINITIONS = [
         },
     },
     {
+        "name": "verificar_platos_e_deload",
+        "description": (
+            "Verifica se algum exercício do usuário está em platô (sem progressão de "
+            "carga nas últimas sessões) e se já é hora de sugerir uma semana de deload "
+            "(treino intenso contínuo por 4+ semanas). Use antes de reavaliar o treino "
+            "de alguém."
+        ),
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
         "name": "criar_rotina_treino",
         "description": (
             "Propõe a criação de uma rotina de treino completa e estruturada. NUNCA "
@@ -185,6 +195,12 @@ def execute_read_tool(db: Session, user_id: int, tool_name: str, tool_input: dic
     if tool_name == "buscar_alimento":
         foods = food_service.search_with_open_food_facts_fallback(db, tool_input["nome"], limit=10)
         return {"resultados": [_serialize_food(f) for f in foods]}
+
+    if tool_name == "verificar_platos_e_deload":
+        return {
+            "platos": workout_insights_service.detect_plateaus(db, user_id),
+            "deload": workout_insights_service.detect_deload_suggestion(db, user_id),
+        }
 
     if tool_name == "buscar_exercicios":
         stmt = select(Exercise)

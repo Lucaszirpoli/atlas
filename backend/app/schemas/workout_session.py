@@ -73,9 +73,16 @@ class WorkoutSessionDetail(BaseModel):
     sets: list[WorkoutSetLogRead]
 
 
+class PersonalRecord(BaseModel):
+    exercise_id: int
+    exercise_name: str
+    weight_kg: float
+
+
 class WorkoutSessionSummary(BaseModel):
     session: WorkoutSessionDetail
     total_volume_kg: float
     duration_seconds: int
     previous_session_volume_kg: float | None
     volume_change_percent: float | None
+    prs: list[PersonalRecord]

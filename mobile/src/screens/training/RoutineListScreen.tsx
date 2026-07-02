@@ -81,9 +81,25 @@ export function RoutineListScreen() {
     <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.lg }}>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.md }}>
         <Text style={[type.h1, { color: colors.textPrimary }]}>Rotinas</Text>
-        <Text style={[type.caption, { color: colors.textSecondary }]}>
-          {routines.length}/{limit}
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+          <TouchableOpacity
+            onPress={() => {
+              if (user?.plan !== "pro") {
+                Alert.alert(
+                  "Exclusivo do Pro",
+                  "Detecção de platô e sugestão de deload fazem parte do Pro."
+                );
+                return;
+              }
+              navigation.navigate("WorkoutInsights");
+            }}
+          >
+            <Text style={[type.caption, { color: colors.primary }]}>Reavaliação</Text>
+          </TouchableOpacity>
+          <Text style={[type.caption, { color: colors.textSecondary }]}>
+            {routines.length}/{limit}
+          </Text>
+        </View>
       </View>
 
       <FlatList

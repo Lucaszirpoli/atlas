@@ -1,6 +1,7 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.models.exercise import Exercise
 from app.models.routine import Routine
 from app.models.workout_session import WorkoutSession, WorkoutSetLog
 
@@ -70,6 +71,37 @@ def get_previous_completed_session(
     ).scalar_one_or_none()
 
 
+def detect_prs(db: Session, session: WorkoutSession) -> list[dict]:
+    """PR = maior peso já levantado num exercício, batido nesta sessão
+    (espec. 3.3/3.8: 'recordes pessoais destacados automaticamente')."""
+    exercise_ids = {s.exercise_id for s in session.sets}
+    prs = []
+    for exercise_id in exercise_ids:
+        session_max = max(s.weight_kg for s in session.sets if s.exercise_id == exercise_id)
+
+        prior_max = db.execute(
+            select(func.max(WorkoutSetLog.weight_kg))
+            .join(WorkoutSession, WorkoutSession.id == WorkoutSetLog.session_id)
+            .where(
+                WorkoutSession.user_id == session.user_id,
+                WorkoutSetLog.exercise_id == exercise_id,
+                WorkoutSession.id != session.id,
+                WorkoutSession.completed_at.is_not(None),
+            )
+        ).scalar_one_or_none()
+
+        if prior_max is None or session_max > prior_max:
+            exercise = db.get(Exercise, exercise_id)
+            prs.append(
+                {
+                    "exercise_id": exercise_id,
+                    "exercise_name": exercise.name if exercise else "",
+                    "weight_kg": session_max,
+                }
+            )
+    return prs
+
+
 def build_summary(db: Session, session: WorkoutSession) -> dict:
     total_volume = compute_session_volume(session)
     duration = (
@@ -92,4 +124,5 @@ def build_summary(db: Session, session: WorkoutSession) -> dict:
         "duration_seconds": duration,
         "previous_session_volume_kg": previous_volume,
         "volume_change_percent": round(change_percent, 1) if change_percent is not None else None,
+        "prs": detect_prs(db, session),
     }
