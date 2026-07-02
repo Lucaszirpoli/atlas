@@ -1,5 +1,7 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.config import settings
 from app.routers import (
     ai,
     auth,
@@ -24,6 +26,19 @@ from app.routers import (
 )
 
 app = FastAPI(title="appfit API", version="0.1.0")
+
+# CORS: o app React Native na web (Expo Web) roda numa origem diferente da API
+# e o navegador faz preflight OPTIONS. Sem isso, nenhuma chamada de browser
+# passa. As origens permitidas são configuráveis por ambiente.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_allow_origins,
+    # Autenticação é via Bearer token no header Authorization, não cookies —
+    # então não precisamos de credentials, e isso mantém o wildcard "*" válido.
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(auth.router)
 app.include_router(users.router)

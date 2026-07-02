@@ -17,5 +17,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-5"
 
+    # Em dev, "*" libera qualquer origem (Expo Web em qualquer porta). Em
+    # produção, restringir para os domínios reais do app.
+    cors_allow_origins: list[str] = ["*"]
+
 
 settings = Settings()
