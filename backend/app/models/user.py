@@ -40,7 +40,10 @@ class User(Base):
     )
 
     profile: Mapped["UserProfile | None"] = relationship(
-        back_populates="user", uselist=False, cascade="all, delete-orphan"
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+        foreign_keys="UserProfile.user_id",
     )
     weight_logs: Mapped[list["WeightLog"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
