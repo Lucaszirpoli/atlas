@@ -17,7 +17,7 @@ from app.schemas.workout_session import (
     WorkoutSetLogCreate,
     WorkoutSetLogRead,
 )
-from app.services import workout_service
+from app.services import feed_service, workout_service
 
 router = APIRouter(prefix="/workout-sessions", tags=["workout-sessions"])
 
@@ -89,6 +89,7 @@ def complete_session(
     session = _load_session(db, session_id, current_user.id)
     if session.completed_at is None:
         session.completed_at = datetime.now(timezone.utc)
+        feed_service.maybe_create_workout_post(db, session)
         db.commit()
         session = _load_session(db, session_id, current_user.id)
 

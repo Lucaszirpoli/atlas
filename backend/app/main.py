@@ -3,11 +3,17 @@ from fastapi import FastAPI
 from app.routers import (
     ai,
     auth,
+    blocks,
+    challenges,
     exercises,
+    feed,
     foods,
+    friends,
     goals,
     meals,
     measurements,
+    privacy,
+    reports,
     routines,
     users,
     water,
@@ -29,6 +35,12 @@ app.include_router(exercises.router)
 app.include_router(routines.router)
 app.include_router(workout_sessions.router)
 app.include_router(ai.router)
+app.include_router(friends.router)
+app.include_router(blocks.router)
+app.include_router(reports.router)
+app.include_router(privacy.router)
+app.include_router(feed.router)
+app.include_router(challenges.router)
 
 
 @app.get("/health")

@@ -2,6 +2,7 @@ import * as ImagePicker from "expo-image-picker";
 import React, { useEffect, useState } from "react";
 import { Alert, Image, ScrollView, Text, TextInput, View } from "react-native";
 
+import { shareProgressPhoto } from "../../api/feed";
 import {
   createMeasurement,
   createProgressPhoto,
@@ -141,16 +142,21 @@ export function MeasurementsScreen() {
       <Button title="Adicionar foto" variant="ghost" onPress={handleAddPhoto} />
       <ScrollView horizontal style={{ marginTop: spacing.sm }}>
         {photos.map((photo) => (
-          <Image
-            key={photo.id}
-            source={{ uri: photo.photo_url }}
-            style={{
-              width: 100,
-              height: 130,
-              borderRadius: radius.card,
-              marginRight: spacing.sm,
-            }}
-          />
+          <View key={photo.id} style={{ marginRight: spacing.sm, alignItems: "center" }}>
+            <Image
+              source={{ uri: photo.photo_url }}
+              style={{ width: 100, height: 130, borderRadius: radius.card }}
+            />
+            <Text
+              style={[type.caption, { color: colors.primary, marginTop: spacing.xs }]}
+              onPress={async () => {
+                await shareProgressPhoto(photo.id);
+                Alert.alert("Compartilhado", "A foto foi para o seu feed social.");
+              }}
+            >
+              Compartilhar
+            </Text>
+          </View>
         ))}
       </ScrollView>
     </ScrollView>

@@ -9,6 +9,7 @@ import { PlaceholderScreen } from "../screens/main/PlaceholderScreen";
 import { ProfileScreen } from "../screens/main/ProfileScreen";
 import { useTheme } from "../theme/ThemeProvider";
 import { NutritionStack } from "./NutritionStack";
+import { SocialStack } from "./SocialStack";
 import { TrainingStack } from "./TrainingStack";
 
 const Tab = createBottomTabNavigator();
@@ -48,14 +49,11 @@ export function MainTabs() {
           component={TrainingStack}
           options={{ title: "Treino", headerShown: false }}
         />
-        <Tab.Screen name="Social" options={{ title: "Social" }}>
-          {() => (
-            <PlaceholderScreen
-              title="Social"
-              subtitle="Amigos, feed e desafios chegam na Fase 5."
-            />
-          )}
-        </Tab.Screen>
+        <Tab.Screen
+          name="Social"
+          component={SocialStack}
+          options={{ title: "Social", headerShown: false }}
+        />
         <Tab.Screen name="Perfil" component={ProfileScreen} options={{ title: "Perfil" }} />
       </Tab.Navigator>
       <AiFab />
