@@ -6,6 +6,7 @@ import { ActivityIndicator, View } from "react-native";
 import { useAuth } from "../context/AuthContext";
 import { ChatScreen } from "../screens/ai/ChatScreen";
 import { OnboardingScreen } from "../screens/onboarding/OnboardingScreen";
+import { SleepScreen } from "../screens/sleep/SleepScreen";
 import { useTheme } from "../theme/ThemeProvider";
 import { AuthStack } from "./AuthStack";
 import { MainTabs } from "./MainTabs";
@@ -17,6 +18,11 @@ function AppStack() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Main" component={MainTabs} />
       <Stack.Screen name="Chat" component={ChatScreen} options={{ presentation: "modal" }} />
+      <Stack.Screen
+        name="Sleep"
+        component={SleepScreen}
+        options={{ headerShown: true, title: "Sono" }}
+      />
     </Stack.Navigator>
   );
 }

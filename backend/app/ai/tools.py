@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.models.exercise import Exercise, MuscleGroup
 from app.models.meal import MealLog, MealLogItem
+from app.models.sleep_log import SleepLog
 from app.models.water_log import WaterLog
 from app.models.weight_log import WeightLog
 from app.models.workout_session import WorkoutSession
@@ -45,7 +46,7 @@ TOOL_DEFINITIONS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "tipo": {"type": "string", "enum": ["refeicoes", "agua", "peso", "treinos"]},
+                "tipo": {"type": "string", "enum": ["refeicoes", "agua", "peso", "treinos", "sono"]},
                 "dias": {"type": "integer", "description": "Quantos dias olhar para trás", "default": 7},
             },
             "required": ["tipo"],
@@ -254,6 +255,26 @@ def execute_read_tool(db: Session, user_id: int, tool_name: str, tool_input: dic
                         "volume_total_kg": sum(set_.weight_kg * set_.reps for set_ in s.sets),
                     }
                     for s in sessions
+                ]
+            }
+
+        if tool_input["tipo"] == "sono":
+            logs = list(
+                db.execute(
+                    select(SleepLog)
+                    .where(SleepLog.user_id == user_id, SleepLog.sleep_at >= since)
+                    .order_by(SleepLog.sleep_at)
+                ).scalars()
+            )
+            return {
+                "registros": [
+                    {
+                        "data": l.sleep_at.isoformat(),
+                        "duracao_minutos": int((l.wake_at - l.sleep_at).total_seconds() // 60),
+                        "qualidade": l.quality,
+                        "como_acordou": l.wake_feeling.value,
+                    }
+                    for l in logs
                 ]
             }
 

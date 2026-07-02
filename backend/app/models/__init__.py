@@ -13,6 +13,7 @@ from app.models.meal import MealCategory, MealLog, MealLogItem
 from app.models.privacy_settings import UserPrivacySettings
 from app.models.routine import Routine, RoutineExercise
 from app.models.saved_meal import FavoriteFood, SavedMeal, SavedMealItem
+from app.models.sleep_log import SleepLog
 from app.models.user import User
 from app.models.user_profile import UserProfile
 from app.models.water_log import WaterLog
@@ -50,4 +51,5 @@ __all__ = [
     "FeedComment",
     "Challenge",
     "ChallengeParticipant",
+    "SleepLog",
 ]
