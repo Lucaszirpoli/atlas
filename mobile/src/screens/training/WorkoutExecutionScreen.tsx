@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
-import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, Image, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 import { getRoutine, type Routine } from "../../api/routines";
 import {
@@ -173,6 +173,19 @@ export function WorkoutExecutionScreen() {
         <Text style={[type.h1, { color: colors.textPrimary, marginTop: 2 }]}>
           {routineExercise.exercise.name}
         </Text>
+        {routineExercise.exercise.video_url ? (
+          <Image
+            source={{ uri: routineExercise.exercise.video_url }}
+            resizeMode="cover"
+            style={{
+              width: "100%",
+              height: 190,
+              borderRadius: radius.card,
+              marginTop: spacing.sm,
+              backgroundColor: colors.surfaceAlt,
+            }}
+          />
+        ) : null}
         <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.xs, marginBottom: spacing.lg }}>
           <Meta icon="repeat" text={`${routineExercise.target_sets}x ${routineExercise.target_reps_min}${routineExercise.target_reps_max ? `-${routineExercise.target_reps_max}` : ""} reps`} />
           <Meta icon="timer-outline" text={`${routineExercise.rest_seconds}s descanso`} />

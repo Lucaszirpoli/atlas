@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
-import { FlatList, Pressable, Text, TextInput, View } from "react-native";
+import { FlatList, Image, Pressable, Text, TextInput, View } from "react-native";
 
 import { listExercises, type Exercise, type MuscleGroup } from "../../api/exercises";
 import { OptionButton } from "../../components/OptionButton";
@@ -100,19 +100,26 @@ export function ExercisePickerScreen() {
               opacity: pressed ? 0.8 : 1,
             })}
           >
-            <View
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 14,
-                backgroundColor: colors.secondarySoft,
-                alignItems: "center",
-                justifyContent: "center",
-                marginRight: spacing.md,
-              }}
-            >
-              <Ionicons name="barbell" size={19} color={colors.secondary} />
-            </View>
+            {item.video_url ? (
+              <Image
+                source={{ uri: item.video_url }}
+                style={{ width: 46, height: 46, borderRadius: 14, marginRight: spacing.md, backgroundColor: colors.surfaceAlt }}
+              />
+            ) : (
+              <View
+                style={{
+                  width: 46,
+                  height: 46,
+                  borderRadius: 14,
+                  backgroundColor: colors.secondarySoft,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginRight: spacing.md,
+                }}
+              >
+                <Ionicons name="barbell" size={19} color={colors.secondary} />
+              </View>
+            )}
             <View style={{ flex: 1 }}>
               <Text style={[type.body, { color: colors.textPrimary, fontWeight: "600" }]}>{item.name}</Text>
               <Text style={[type.caption, { color: colors.textSecondary, marginTop: 1 }]}>

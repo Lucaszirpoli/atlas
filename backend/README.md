@@ -18,13 +18,20 @@ cp .env.example .env           # preencher ANTHROPIC_API_KEY para as rotas /ai/*
 # 4. Rodar as migrations
 alembic upgrade head
 
-# 5. Popular a base de alimentos (TACO) e a biblioteca de exercícios
-python -m app.scripts.seed_taco
-python -m app.scripts.seed_exercises
+# 5. Popular as bases (rodar as 4 — cada uma é idempotente)
+python -m app.scripts.seed_taco            # ~264 itens curados com porção caseira
+python -m app.scripts.seed_taco_official   # TACO oficial completa (~582 itens, UNICAMP)
+python -m app.scripts.seed_exercises       # ~190 exercícios curados em PT
+python -m app.scripts.seed_exercises_open  # 873 exercícios com imagem (free-exercise-db)
 
 # 6. Subir a API
 uvicorn app.main:app --reload
 ```
+
+Base final: ~900 alimentos e ~1080 exercícios (873 com imagem de
+demonstração). Fontes dos dados abertos em `app/data/`:
+`taco_official.json` (github.com/isaquetdiniz/taco-api) e
+`exercises_open.json` (github.com/yuhonas/free-exercise-db).
 
 API disponível em `http://localhost:8000`, docs em `http://localhost:8000/docs`.
 
