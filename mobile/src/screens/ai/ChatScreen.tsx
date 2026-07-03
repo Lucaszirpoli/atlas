@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -12,14 +13,20 @@ import {
   View,
 } from "react-native";
 
-import { getChatHistory, sendChatMessage, type ChatMessage, type ProposedAction } from "../../api/ai";
+import { getChatHistory, sendChatMessage, type ChatMessage } from "../../api/ai";
 import { ChatActionCard } from "../../components/ChatActionCard";
 import { useTheme } from "../../theme/ThemeProvider";
 
 type DisplayMessage = ChatMessage & { resolvedAction?: "confirmed" | "cancelled" };
 
+const SUGGESTIONS = [
+  "Comi 2 ovos e uma banana no café",
+  "Monta um treino de 4 dias pra mim",
+  "Como foi minha semana de treinos?",
+];
+
 export function ChatScreen() {
-  const { colors, type, spacing, radius } = useTheme();
+  const { colors, type, spacing, radius, shadow } = useTheme();
   const navigation = useNavigation<any>();
   const listRef = useRef<FlatList>(null);
 
@@ -34,20 +41,16 @@ export function ChatScreen() {
       .finally(() => setIsLoadingHistory(false));
   }, []);
 
-  async function handleSend() {
-    const text = input.trim();
+  async function handleSend(textOverride?: string) {
+    const text = (textOverride ?? input).trim();
     if (!text || isSending) return;
     setInput("");
     setIsSending(true);
 
-    const optimisticUser: DisplayMessage = {
-      id: Date.now(),
-      role: "user",
-      content: text,
-      proposed_action: null,
-      created_at: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, optimisticUser]);
+    setMessages((prev) => [
+      ...prev,
+      { id: Date.now(), role: "user", content: text, proposed_action: null, created_at: new Date().toISOString() },
+    ]);
 
     try {
       const response = await sendChatMessage(text);
@@ -77,24 +80,75 @@ export function ChatScreen() {
       style={{ flex: 1, backgroundColor: colors.bg }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
+      {/* Header */}
       <View
         style={{
           flexDirection: "row",
           alignItems: "center",
-          justifyContent: "space-between",
           padding: spacing.md,
+          paddingHorizontal: spacing.lg,
+          backgroundColor: colors.surface,
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
         }}
       >
-        <Text style={[type.h2, { color: colors.textPrimary }]}>Assistente appfit</Text>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={[type.body, { color: colors.primary }]}>Fechar</Text>
+        <View
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 14,
+            backgroundColor: colors.secondary,
+            alignItems: "center",
+            justifyContent: "center",
+            marginRight: spacing.sm,
+          }}
+        >
+          <Ionicons name="sparkles" size={20} color={colors.textOnPrimary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[type.h2, { color: colors.textPrimary, fontSize: 17 }]}>Assistente appfit</Text>
+          <Text style={[type.caption, { color: colors.textSecondary }]}>
+            Nutrição, treino e sono — num chat só
+          </Text>
+        </View>
+        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={10}>
+          <Ionicons name="close" size={24} color={colors.textSecondary} />
         </TouchableOpacity>
       </View>
 
       {isLoadingHistory ? (
         <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.lg }} />
+      ) : messages.length === 0 ? (
+        /* Estado vazio com sugestões */
+        <View style={{ flex: 1, justifyContent: "center", padding: spacing.lg }}>
+          <Text style={[type.h1, { color: colors.textPrimary, textAlign: "center", marginBottom: spacing.xs }]}>
+            Oi! 👋
+          </Text>
+          <Text style={[type.body, { color: colors.textSecondary, textAlign: "center", marginBottom: spacing.xl }]}>
+            Posso registrar refeições, montar treinos{"\n"}e analisar sua evolução. Experimente:
+          </Text>
+          {SUGGESTIONS.map((s) => (
+            <TouchableOpacity
+              key={s}
+              onPress={() => handleSend(s)}
+              activeOpacity={0.7}
+              style={[
+                {
+                  backgroundColor: colors.surface,
+                  borderRadius: radius.card,
+                  padding: spacing.md,
+                  marginBottom: spacing.sm,
+                  flexDirection: "row",
+                  alignItems: "center",
+                },
+                shadow.sm,
+              ]}
+            >
+              <Ionicons name="chatbubble-ellipses-outline" size={17} color={colors.secondary} style={{ marginRight: spacing.sm }} />
+              <Text style={[type.bodySmall, { color: colors.textPrimary, flex: 1 }]}>{s}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       ) : (
         <FlatList
           ref={listRef}
@@ -112,38 +166,52 @@ export function ChatScreen() {
             >
               <View
                 style={{
-                  backgroundColor: item.role === "user" ? colors.primaryLight + "33" : colors.surface,
+                  backgroundColor: item.role === "user" ? colors.primary : colors.surface,
                   borderWidth: item.role === "assistant" ? 1 : 0,
                   borderColor: colors.border,
-                  borderRadius: 16,
-                  padding: spacing.sm,
+                  borderRadius: 18,
+                  borderBottomRightRadius: item.role === "user" ? 6 : 18,
+                  borderBottomLeftRadius: item.role === "assistant" ? 6 : 18,
+                  paddingVertical: spacing.sm + 2,
+                  paddingHorizontal: spacing.md,
                 }}
               >
-                <Text style={[type.body, { color: colors.textPrimary }]}>{item.content}</Text>
+                <Text style={[type.body, { color: item.role === "user" ? colors.textOnPrimary : colors.textPrimary }]}>
+                  {item.content}
+                </Text>
               </View>
               {item.proposed_action && !item.resolvedAction ? (
-                <ChatActionCard
-                  action={item.proposed_action}
-                  onResolved={(outcome) => resolveAction(item.id, outcome)}
-                />
+                <ChatActionCard action={item.proposed_action} onResolved={(outcome) => resolveAction(item.id, outcome)} />
               ) : null}
               {item.resolvedAction === "confirmed" ? (
-                <Text style={[type.caption, { color: colors.success, marginTop: spacing.xs }]}>
-                  Confirmado ✓
-                </Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: spacing.xs }}>
+                  <Ionicons name="checkmark-circle" size={14} color={colors.success} />
+                  <Text style={[type.caption, { color: colors.success }]}>Confirmado</Text>
+                </View>
               ) : null}
             </View>
           )}
         />
       )}
 
+      {isSending ? (
+        <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.lg, paddingBottom: spacing.xs, gap: 6 }}>
+          <ActivityIndicator size="small" color={colors.secondary} />
+          <Text style={[type.caption, { color: colors.textSecondary }]}>pensando...</Text>
+        </View>
+      ) : null}
+
+      {/* Input */}
       <View
         style={{
           flexDirection: "row",
           alignItems: "center",
           padding: spacing.md,
+          paddingHorizontal: spacing.lg,
+          backgroundColor: colors.surface,
           borderTopWidth: 1,
           borderTopColor: colors.border,
+          gap: spacing.sm,
         }}
       >
         <TextInput
@@ -151,34 +219,34 @@ export function ChatScreen() {
           onChangeText={setInput}
           placeholder="Pergunte ou registre uma refeição..."
           placeholderTextColor={colors.textSecondary}
+          onSubmitEditing={() => handleSend()}
           style={[
             type.body,
             {
               flex: 1,
               color: colors.textPrimary,
-              borderWidth: 1,
-              borderColor: colors.border,
-              borderRadius: radius.button,
+              backgroundColor: colors.surfaceAlt,
+              borderRadius: radius.pill,
               paddingHorizontal: spacing.md,
-              height: 44,
-              marginRight: spacing.sm,
+              height: 48,
             },
           ]}
         />
         <TouchableOpacity
-          onPress={handleSend}
+          onPress={() => handleSend()}
           disabled={isSending}
+          activeOpacity={0.8}
           style={{
-            width: 44,
-            height: 44,
-            borderRadius: 22,
-            backgroundColor: colors.primary,
+            width: 48,
+            height: 48,
+            borderRadius: 24,
+            backgroundColor: colors.secondary,
             alignItems: "center",
             justifyContent: "center",
             opacity: isSending ? 0.6 : 1,
           }}
         >
-          <Text style={{ color: "#FFFFFF" }}>➤</Text>
+          <Ionicons name="arrow-up" size={22} color={colors.textOnPrimary} />
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>

@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
 import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
@@ -5,6 +6,7 @@ import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "reac
 import type { Exercise } from "../../api/exercises";
 import { createRoutine, getRoutine, updateRoutine } from "../../api/routines";
 import { Button } from "../../components/Button";
+import { Card } from "../../components/Card";
 import { useTheme } from "../../theme/ThemeProvider";
 
 type BuilderExercise = {
@@ -95,96 +97,96 @@ export function RoutineBuilderScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={{ padding: spacing.lg, backgroundColor: colors.bg, flexGrow: 1 }}>
-      <TextInput
-        value={name}
-        onChangeText={setName}
-        placeholder="Nome da rotina (ex: Treino A - Peito e Tríceps)"
-        placeholderTextColor={colors.textSecondary}
-        style={[
-          type.h2,
-          {
-            color: colors.textPrimary,
-            borderBottomWidth: 2,
-            borderBottomColor: colors.primary,
-            paddingVertical: spacing.sm,
-            marginBottom: spacing.lg,
-          },
-        ]}
-      />
+    <ScrollView
+      style={{ backgroundColor: colors.bg }}
+      contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
+      showsVerticalScrollIndicator={false}
+    >
+      <Card style={{ marginBottom: spacing.lg }}>
+        <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.xs }]}>
+          Nome da rotina
+        </Text>
+        <TextInput
+          value={name}
+          onChangeText={setName}
+          placeholder="Ex: Treino A - Peito e Tríceps"
+          placeholderTextColor={colors.textSecondary}
+          style={[
+            type.h2,
+            {
+              color: colors.textPrimary,
+              backgroundColor: colors.surfaceAlt,
+              borderRadius: radius.button,
+              paddingHorizontal: spacing.md,
+              height: 54,
+            },
+          ]}
+        />
+      </Card>
 
       {exercises.map((item, index) => (
-        <View
-          key={`${item.exercise.id}-${index}`}
-          style={{
-            backgroundColor: colors.surface,
-            borderRadius: radius.card,
-            borderWidth: 1,
-            borderColor: colors.border,
-            padding: spacing.md,
-            marginBottom: spacing.md,
-          }}
-        >
-          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-            <Text style={[type.h2, { color: colors.textPrimary, flex: 1 }]}>{item.exercise.name}</Text>
-            <TouchableOpacity onPress={() => removeExercise(index)}>
-              <Text style={[type.bodySmall, { color: colors.danger }]}>Remover</Text>
+        <Card key={`${item.exercise.id}-${index}`} accent={colors.moduleTraining} style={{ marginBottom: spacing.md }}>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.md }}>
+            <View
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: 10,
+                backgroundColor: colors.secondarySoft,
+                alignItems: "center",
+                justifyContent: "center",
+                marginRight: spacing.sm,
+              }}
+            >
+              <Text style={[type.caption, { color: colors.secondary, fontWeight: "800" }]}>{index + 1}</Text>
+            </View>
+            <Text style={[type.h2, { color: colors.textPrimary, flex: 1, fontSize: 17 }]} numberOfLines={2}>
+              {item.exercise.name}
+            </Text>
+            <TouchableOpacity onPress={() => removeExercise(index)} hitSlop={10}>
+              <Ionicons name="trash-outline" size={20} color={colors.danger} />
             </TouchableOpacity>
           </View>
 
-          <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.sm }}>
-            <NumberField
-              label="Séries"
-              value={item.target_sets}
-              onChange={(v) => updateExercise(index, { target_sets: v })}
-            />
-            <NumberField
-              label="Reps mín."
-              value={item.target_reps_min}
-              onChange={(v) => updateExercise(index, { target_reps_min: v })}
-            />
-            <NumberField
-              label="Reps máx."
-              value={item.target_reps_max ?? item.target_reps_min}
-              onChange={(v) => updateExercise(index, { target_reps_max: v })}
-            />
-            <NumberField
-              label="Descanso (s)"
-              value={item.rest_seconds}
-              onChange={(v) => updateExercise(index, { rest_seconds: v })}
-            />
+          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: spacing.sm }}>
+            <NumberField label="Séries" value={item.target_sets} onChange={(v) => updateExercise(index, { target_sets: v })} />
+            <NumberField label="Reps mín" value={item.target_reps_min} onChange={(v) => updateExercise(index, { target_reps_min: v })} />
+            <NumberField label="Reps máx" value={item.target_reps_max ?? item.target_reps_min} onChange={(v) => updateExercise(index, { target_reps_max: v })} />
+            <NumberField label="Desc. (s)" value={item.rest_seconds} onChange={(v) => updateExercise(index, { rest_seconds: v })} />
           </View>
-        </View>
+        </Card>
       ))}
 
-      <Button
-        title="+ Adicionar exercício"
-        variant="ghost"
+      <TouchableOpacity
         onPress={() => navigation.navigate("ExercisePicker")}
-      />
+        activeOpacity={0.7}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+          borderWidth: 2,
+          borderStyle: "dashed",
+          borderColor: colors.primary + "66",
+          borderRadius: radius.card,
+          paddingVertical: spacing.md,
+          marginBottom: spacing.lg,
+        }}
+      >
+        <Ionicons name="add-circle" size={22} color={colors.primary} />
+        <Text style={[type.body, { color: colors.primary, fontWeight: "700" }]}>Adicionar exercício</Text>
+      </TouchableOpacity>
 
-      <View style={{ marginTop: spacing.lg }}>
-        <Button title="Salvar rotina" onPress={handleSave} loading={isSubmitting} />
-      </View>
+      <Button title="Salvar rotina" onPress={handleSave} loading={isSubmitting} />
     </ScrollView>
   );
 }
 
-function NumberField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  onChange: (v: number) => void;
-}) {
-  const { colors, type, spacing } = useTheme();
+function NumberField({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  const { colors, type, spacing, radius } = useTheme();
   return (
-    <View style={{ alignItems: "center" }}>
-      <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.xs }]}>
-        {label}
-      </Text>
+    <View style={{ alignItems: "center", flex: 1 }}>
+      <Text style={[type.caption, { color: colors.textSecondary, marginBottom: 4 }]}>{label}</Text>
       <TextInput
         value={String(value)}
         onChangeText={(v) => onChange(Number(v.replace(/[^0-9]/g, "")) || 0)}
@@ -193,12 +195,12 @@ function NumberField({
           type.body,
           {
             color: colors.textPrimary,
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: 6,
-            width: 56,
+            backgroundColor: colors.surfaceAlt,
+            borderRadius: radius.button,
+            width: "100%",
+            height: 46,
             textAlign: "center",
-            paddingVertical: spacing.xs,
+            fontWeight: "700",
           },
         ]}
       />

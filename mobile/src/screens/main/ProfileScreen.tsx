@@ -1,29 +1,135 @@
+import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
 import React from "react";
-import { ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
-import { Button } from "../../components/Button";
+import { Avatar } from "../../components/Avatar";
+import { Card } from "../../components/Card";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
 
 export function ProfileScreen() {
   const { colors, type, spacing } = useTheme();
+  const navigation = useNavigation<any>();
   const { user, signOut } = useAuth();
 
   return (
     <ScrollView
-      contentContainerStyle={{ padding: spacing.lg, backgroundColor: colors.bg, flexGrow: 1 }}
+      style={{ backgroundColor: colors.bg }}
+      contentContainerStyle={{ padding: spacing.lg, paddingTop: spacing.xl + spacing.md, paddingBottom: spacing.xxl }}
+      showsVerticalScrollIndicator={false}
     >
-      <Text style={[type.h1, { color: colors.textPrimary, marginBottom: spacing.md }]}>
-        Perfil
-      </Text>
-
-      <View style={{ marginBottom: spacing.lg }}>
-        <Text style={[type.body, { color: colors.textPrimary }]}>{user?.display_name}</Text>
-        <Text style={[type.bodySmall, { color: colors.textSecondary }]}>@{user?.handle}</Text>
-        <Text style={[type.bodySmall, { color: colors.textSecondary }]}>{user?.email}</Text>
+      {/* Cabeçalho do perfil */}
+      <View style={{ alignItems: "center", marginBottom: spacing.lg }}>
+        <Avatar name={user?.display_name ?? "?"} handle={user?.handle ?? "?"} size={86} />
+        <Text style={[type.h1, { color: colors.textPrimary, marginTop: spacing.md }]}>
+          {user?.display_name}
+        </Text>
+        <Text style={[type.body, { color: colors.textSecondary }]}>@{user?.handle}</Text>
       </View>
 
-      <Button title="Sair" variant="ghost" onPress={signOut} />
+      {/* Plano */}
+      <Card
+        accent={user?.plan === "pro" ? colors.secondary : colors.primary}
+        style={{ marginBottom: spacing.lg }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <View
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 15,
+              backgroundColor: user?.plan === "pro" ? colors.secondarySoft : colors.primarySoft,
+              alignItems: "center",
+              justifyContent: "center",
+              marginRight: spacing.md,
+            }}
+          >
+            <Ionicons
+              name={user?.plan === "pro" ? "star" : "leaf"}
+              size={21}
+              color={user?.plan === "pro" ? colors.secondary : colors.primary}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[type.h2, { color: colors.textPrimary }]}>
+              Plano {user?.plan === "pro" ? "Pro" : "Free"}
+            </Text>
+            <Text style={[type.caption, { color: colors.textSecondary }]}>
+              {user?.plan === "pro"
+                ? "IA ilimitada, 7 rotinas, reavaliação automática"
+                : "Até 3 rotinas · IA e foto de refeição são do Pro"}
+            </Text>
+          </View>
+          {user?.plan !== "pro" ? (
+            <TouchableOpacity
+              style={{
+                backgroundColor: colors.secondary,
+                borderRadius: 999,
+                paddingVertical: 8,
+                paddingHorizontal: 16,
+              }}
+            >
+              <Text style={[type.caption, { color: colors.textOnPrimary, fontWeight: "800" }]}>Assinar</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </Card>
+
+      {/* Menu */}
+      <Card padded={false} style={{ marginBottom: spacing.lg }}>
+        <MenuRow icon="moon" label="Sono" onPress={() => navigation.navigate("Sleep")} first />
+        <MenuRow icon="mail" label="E-mail" trailing={user?.email} />
+      </Card>
+
+      <TouchableOpacity
+        onPress={signOut}
+        activeOpacity={0.7}
+        style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: spacing.md }}
+      >
+        <Ionicons name="log-out-outline" size={18} color={colors.danger} />
+        <Text style={[type.body, { color: colors.danger, fontWeight: "600" }]}>Sair da conta</Text>
+      </TouchableOpacity>
     </ScrollView>
+  );
+}
+
+function MenuRow({
+  icon,
+  label,
+  trailing,
+  onPress,
+  first,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  trailing?: string;
+  onPress?: () => void;
+  first?: boolean;
+}) {
+  const { colors, type, spacing } = useTheme();
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={!onPress}
+      activeOpacity={0.7}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        padding: spacing.md,
+        borderTopWidth: first ? 0 : 1,
+        borderTopColor: colors.border,
+      }}
+    >
+      <Ionicons name={icon} size={19} color={colors.textSecondary} style={{ marginRight: spacing.sm }} />
+      <Text style={[type.body, { color: colors.textPrimary, flex: 1 }]}>{label}</Text>
+      {trailing ? (
+        <Text style={[type.caption, { color: colors.textSecondary }]} numberOfLines={1}>
+          {trailing}
+        </Text>
+      ) : (
+        <Ionicons name="chevron-forward" size={17} color={colors.textSecondary} />
+      )}
+    </TouchableOpacity>
   );
 }

@@ -5,7 +5,6 @@ import { View } from "react-native";
 
 import { AiFab } from "../components/AiFab";
 import { HomeScreen } from "../screens/main/HomeScreen";
-import { PlaceholderScreen } from "../screens/main/PlaceholderScreen";
 import { ProfileScreen } from "../screens/main/ProfileScreen";
 import { useTheme } from "../theme/ThemeProvider";
 import { NutritionStack } from "./NutritionStack";

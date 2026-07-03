@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
 import { Alert, ScrollView, Text, TextInput, View } from "react-native";
 
@@ -10,6 +11,7 @@ import {
   type CalorieGoalSuggestion,
 } from "../../api/goals";
 import { Button } from "../../components/Button";
+import { Card } from "../../components/Card";
 import { useTheme } from "../../theme/ThemeProvider";
 
 export function GoalSettingsScreen() {
@@ -45,8 +47,7 @@ export function GoalSettingsScreen() {
   async function handleApplyAuto() {
     setIsSubmitting(true);
     try {
-      const goal = await applyAutoGoal();
-      setCurrentGoal(goal);
+      setCurrentGoal(await applyAutoGoal());
       Alert.alert("Meta atualizada", "Sua meta calórica foi recalculada.");
     } catch (err: any) {
       Alert.alert("Não foi possível calcular", err?.response?.data?.detail ?? "Tente novamente.");
@@ -66,13 +67,7 @@ export function GoalSettingsScreen() {
     }
     setIsSubmitting(true);
     try {
-      const goal = await applyManualGoal({
-        kcal,
-        protein_g: protein,
-        carbs_g: carbs,
-        fat_g: fat,
-      });
-      setCurrentGoal(goal);
+      setCurrentGoal(await applyManualGoal({ kcal, protein_g: protein, carbs_g: carbs, fat_g: fat }));
       Alert.alert("Meta salva", "Sua meta manual foi definida.");
     } finally {
       setIsSubmitting(false);
@@ -84,61 +79,85 @@ export function GoalSettingsScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={{ padding: spacing.lg, backgroundColor: colors.bg, flexGrow: 1 }}>
-      <Text style={[type.h1, { color: colors.textPrimary, marginBottom: spacing.md }]}>
-        Meta de calorias
-      </Text>
-
+    <ScrollView
+      style={{ backgroundColor: colors.bg }}
+      contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
+      showsVerticalScrollIndicator={false}
+    >
       {currentGoal ? (
-        <View
-          style={{
-            backgroundColor: colors.surface,
-            borderRadius: radius.card,
-            borderWidth: 1,
-            borderColor: colors.border,
-            padding: spacing.md,
-            marginBottom: spacing.lg,
-          }}
-        >
-          <Text style={[type.caption, { color: colors.textSecondary }]}>
-            Meta atual ({currentGoal.mode === "auto" ? "automática" : "manual"})
+        <Card accent={colors.primary} style={{ marginBottom: spacing.md }}>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
+            <Ionicons name="flag" size={18} color={colors.primary} />
+            <Text style={[type.caption, { color: colors.textSecondary, marginLeft: 6 }]}>
+              META ATUAL · {currentGoal.mode === "auto" ? "AUTOMÁTICA" : "MANUAL"}
+            </Text>
+          </View>
+          <Text style={[type.display, { color: colors.textPrimary, fontSize: 40, lineHeight: 46 }]}>
+            {Math.round(currentGoal.kcal)}
+            <Text style={[type.h2, { color: colors.textSecondary }]}> kcal/dia</Text>
           </Text>
-          <Text style={[type.h2, { color: colors.textPrimary, marginTop: spacing.xs }]}>
-            {Math.round(currentGoal.kcal)} kcal
-          </Text>
-          <Text style={[type.bodySmall, { color: colors.textSecondary }]}>
-            P {Math.round(currentGoal.protein_g)}g · C {Math.round(currentGoal.carbs_g)}g · G{" "}
-            {Math.round(currentGoal.fat_g)}g
-          </Text>
-        </View>
+          <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm }}>
+            <MacroChip label="P" value={currentGoal.protein_g} color={colors.moduleTraining} />
+            <MacroChip label="C" value={currentGoal.carbs_g} color={colors.info} />
+            <MacroChip label="G" value={currentGoal.fat_g} color={colors.warning} />
+          </View>
+        </Card>
       ) : null}
 
       {suggestion ? (
-        <View style={{ marginBottom: spacing.lg }}>
-          <Text style={[type.h2, { color: colors.textPrimary, marginBottom: spacing.xs }]}>
-            Cálculo automático (Mifflin-St Jeor)
-          </Text>
-          <Text style={[type.bodySmall, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
-            Baseado no seu peso, altura, idade e objetivo: {Math.round(suggestion.kcal)} kcal · P{" "}
-            {Math.round(suggestion.protein_g)}g · C {Math.round(suggestion.carbs_g)}g · G{" "}
+        <Card style={{ marginBottom: spacing.lg }}>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.xs }}>
+            <Ionicons name="calculator" size={18} color={colors.primary} />
+            <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8 }]}>Cálculo automático</Text>
+          </View>
+          <Text style={[type.bodySmall, { color: colors.textSecondary, marginBottom: spacing.md }]}>
+            Pela fórmula Mifflin-St Jeor, com seu peso, altura, idade e objetivo:{" "}
+            <Text style={{ color: colors.textPrimary, fontWeight: "700" }}>
+              {Math.round(suggestion.kcal)} kcal
+            </Text>{" "}
+            · P {Math.round(suggestion.protein_g)}g · C {Math.round(suggestion.carbs_g)}g · G{" "}
             {Math.round(suggestion.fat_g)}g
-            {suggestion.changed_significantly && currentGoal
-              ? ` (mudou em relação à sua meta atual)`
-              : ""}
+            {suggestion.changed_significantly && currentGoal ? " (mudou em relação à meta atual)" : ""}
           </Text>
           <Button title="Usar cálculo automático" onPress={handleApplyAuto} loading={isSubmitting} />
-        </View>
+        </Card>
       ) : null}
 
-      <Text style={[type.h2, { color: colors.textPrimary, marginBottom: spacing.sm }]}>
+      <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.sm, letterSpacing: 1, textTransform: "uppercase" }]}>
         Ou defina manualmente
       </Text>
-      <ManualInput label="Calorias (kcal)" value={manualKcal} onChangeText={setManualKcal} />
-      <ManualInput label="Proteína (g)" value={manualProtein} onChangeText={setManualProtein} />
-      <ManualInput label="Carboidrato (g)" value={manualCarbs} onChangeText={setManualCarbs} />
-      <ManualInput label="Gordura (g)" value={manualFat} onChangeText={setManualFat} />
-      <Button title="Salvar meta manual" variant="ghost" onPress={handleApplyManual} loading={isSubmitting} />
+      <Card>
+        <View style={{ flexDirection: "row", gap: spacing.sm }}>
+          <ManualInput label="kcal" value={manualKcal} onChangeText={setManualKcal} flex={1.2} />
+          <ManualInput label="Prot (g)" value={manualProtein} onChangeText={setManualProtein} />
+          <ManualInput label="Carb (g)" value={manualCarbs} onChangeText={setManualCarbs} />
+          <ManualInput label="Gord (g)" value={manualFat} onChangeText={setManualFat} />
+        </View>
+        <View style={{ marginTop: spacing.md }}>
+          <Button title="Salvar meta manual" variant="ghost" onPress={handleApplyManual} loading={isSubmitting} />
+        </View>
+      </Card>
     </ScrollView>
+  );
+}
+
+function MacroChip({ label, value, color }: { label: string; value: number; color: string }) {
+  const { type, radius } = useTheme();
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: color + "1A",
+        borderRadius: radius.pill,
+        paddingVertical: 4,
+        paddingHorizontal: 12,
+        gap: 4,
+      }}
+    >
+      <Text style={[type.caption, { color, fontWeight: "800" }]}>{label}</Text>
+      <Text style={[type.caption, { color, fontWeight: "600" }]}>{Math.round(value)}g</Text>
+    </View>
   );
 }
 
@@ -146,17 +165,17 @@ function ManualInput({
   label,
   value,
   onChangeText,
+  flex = 1,
 }: {
   label: string;
   value: string;
   onChangeText: (v: string) => void;
+  flex?: number;
 }) {
   const { colors, type, spacing, radius } = useTheme();
   return (
-    <View style={{ marginBottom: spacing.sm }}>
-      <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.xs }]}>
-        {label}
-      </Text>
+    <View style={{ flex }}>
+      <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.xs }]}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={(v) => onChangeText(v.replace(/[^0-9.]/g, ""))}
@@ -165,12 +184,12 @@ function ManualInput({
           type.body,
           {
             color: colors.textPrimary,
-            borderWidth: 1,
-            borderColor: colors.border,
             borderRadius: radius.button,
-            paddingHorizontal: spacing.md,
-            height: 44,
-            backgroundColor: colors.surface,
+            paddingHorizontal: spacing.sm,
+            height: 48,
+            backgroundColor: colors.surfaceAlt,
+            textAlign: "center",
+            fontWeight: "600",
           },
         ]}
       />

@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
 import {
@@ -7,12 +8,14 @@ import {
   Pressable,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from "react-native";
 
 import { searchFoods, type Food } from "../../api/foods";
 import { logMeal } from "../../api/meals";
 import { Button } from "../../components/Button";
+import { Card } from "../../components/Card";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
 
@@ -45,8 +48,7 @@ export function AddFoodScreen() {
     setIsSearching(true);
     const timeout = setTimeout(async () => {
       try {
-        const foods = await searchFoods(query.trim());
-        setResults(foods);
+        setResults(await searchFoods(query.trim()));
       } finally {
         setIsSearching(false);
       }
@@ -80,53 +82,53 @@ export function AddFoodScreen() {
     const factor = Number(quantityG || 0) / 100;
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.lg }}>
-        <Text style={[type.h1, { color: colors.textPrimary, marginBottom: spacing.xs }]}>
-          {selectedFood.name}
-        </Text>
-        {selectedFood.brand ? (
-          <Text style={[type.bodySmall, { color: colors.textSecondary, marginBottom: spacing.md }]}>
-            {selectedFood.brand}
-          </Text>
-        ) : null}
+        <Card style={{ marginBottom: spacing.md }}>
+          <Text style={[type.h1, { color: colors.textPrimary }]}>{selectedFood.name}</Text>
+          {selectedFood.brand ? (
+            <Text style={[type.bodySmall, { color: colors.textSecondary, marginTop: 2 }]}>
+              {selectedFood.brand}
+            </Text>
+          ) : null}
 
-        <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.xs }]}>
-          Quantidade (g)
-        </Text>
-        <TextInput
-          value={quantityG}
-          onChangeText={(v) => setQuantityG(v.replace(/[^0-9.]/g, ""))}
-          keyboardType="decimal-pad"
-          style={[
-            type.display,
-            {
-              color: colors.textPrimary,
-              borderBottomWidth: 2,
-              borderBottomColor: colors.primary,
-              marginBottom: spacing.lg,
-              paddingVertical: spacing.xs,
-            },
-          ]}
-        />
+          <View style={{ flexDirection: "row", alignItems: "flex-end", marginTop: spacing.lg }}>
+            <TextInput
+              value={quantityG}
+              onChangeText={(v) => setQuantityG(v.replace(/[^0-9.]/g, ""))}
+              keyboardType="decimal-pad"
+              style={[
+                type.display,
+                {
+                  color: colors.primary,
+                  borderBottomWidth: 3,
+                  borderBottomColor: colors.primary,
+                  minWidth: 110,
+                  paddingVertical: 2,
+                },
+              ]}
+            />
+            <Text style={[type.h2, { color: colors.textSecondary, marginLeft: spacing.sm, marginBottom: 8 }]}>
+              gramas
+            </Text>
+          </View>
+          {selectedFood.default_portion_label ? (
+            <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.xs }]}>
+              Sugestão: {selectedFood.default_portion_label} ({selectedFood.default_portion_g}g)
+            </Text>
+          ) : null}
+        </Card>
 
-        <View
-          style={{
-            backgroundColor: colors.surface,
-            borderRadius: radius.card,
-            borderWidth: 1,
-            borderColor: colors.border,
-            padding: spacing.md,
-            marginBottom: spacing.lg,
-          }}
-        >
-          <NutrientRow label="Calorias" value={`${Math.round(selectedFood.kcal_per_100g * factor)} kcal`} />
-          <NutrientRow label="Proteína" value={`${(selectedFood.protein_g_per_100g * factor).toFixed(1)} g`} />
-          <NutrientRow label="Carboidrato" value={`${(selectedFood.carbs_g_per_100g * factor).toFixed(1)} g`} />
-          <NutrientRow label="Gordura" value={`${(selectedFood.fat_g_per_100g * factor).toFixed(1)} g`} />
-        </View>
+        <Card style={{ marginBottom: spacing.lg }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <NutrientPill label="kcal" value={Math.round(selectedFood.kcal_per_100g * factor)} color={colors.primary} />
+            <NutrientPill label="prot" value={+(selectedFood.protein_g_per_100g * factor).toFixed(1)} color={colors.moduleTraining} />
+            <NutrientPill label="carb" value={+(selectedFood.carbs_g_per_100g * factor).toFixed(1)} color={colors.info} />
+            <NutrientPill label="gord" value={+(selectedFood.fat_g_per_100g * factor).toFixed(1)} color={colors.warning} />
+          </View>
+        </Card>
 
-        <Button title="Adicionar à refeição" onPress={handleConfirm} loading={isSubmitting} />
+        <Button title="Adicionar à refeição" icon="✓" onPress={handleConfirm} loading={isSubmitting} />
         <View style={{ marginTop: spacing.sm }}>
-          <Button title="Cancelar" variant="ghost" onPress={() => setSelectedFood(null)} />
+          <Button title="Voltar à busca" variant="ghost" onPress={() => setSelectedFood(null)} />
         </View>
       </View>
     );
@@ -134,88 +136,151 @@ export function AddFoodScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.lg }}>
-      <TextInput
-        value={query}
-        onChangeText={setQuery}
-        placeholder="Buscar alimento..."
-        placeholderTextColor={colors.textSecondary}
-        style={[
-          type.body,
-          {
-            color: colors.textPrimary,
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: radius.button,
-            paddingHorizontal: spacing.md,
-            height: 48,
-            marginBottom: spacing.sm,
-            backgroundColor: colors.surface,
-          },
-        ]}
-      />
-
-      <Button
-        title="Escanear código de barras"
-        variant="ghost"
-        onPress={() => navigation.navigate("BarcodeScanner", { categoryId })}
-      />
-      <Button
-        title={user?.plan === "pro" ? "Registrar por foto (IA)" : "Registrar por foto — exclusivo Pro"}
-        variant="ghost"
-        onPress={() => {
-          if (user?.plan !== "pro") {
-            Alert.alert(
-              "Exclusivo do Pro",
-              "Assine o Pro para registrar refeições automaticamente por foto."
-            );
-            return;
-          }
-          navigation.navigate("MealPhoto", { categoryId });
+      {/* Busca */}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          backgroundColor: colors.surface,
+          borderRadius: radius.pill,
+          paddingHorizontal: spacing.md,
+          height: 52,
+          borderWidth: 1,
+          borderColor: colors.border,
+          marginBottom: spacing.md,
         }}
-      />
+      >
+        <Ionicons name="search" size={19} color={colors.textSecondary} />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Buscar alimento ou marca..."
+          placeholderTextColor={colors.textSecondary}
+          style={[type.body, { flex: 1, color: colors.textPrimary, marginLeft: spacing.sm, height: "100%" }]}
+        />
+        {isSearching ? <ActivityIndicator size="small" color={colors.primary} /> : null}
+      </View>
 
-      {isSearching ? <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.md }} /> : null}
+      {/* Ações rápidas */}
+      {query.trim().length < 2 ? (
+        <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md }}>
+          <QuickAction
+            icon="barcode"
+            label="Código de barras"
+            color={colors.primary}
+            onPress={() => navigation.navigate("BarcodeScanner", { categoryId })}
+          />
+          <QuickAction
+            icon="camera"
+            label={user?.plan === "pro" ? "Foto (IA)" : "Foto (Pro)"}
+            color={colors.secondary}
+            locked={user?.plan !== "pro"}
+            onPress={() => {
+              if (user?.plan !== "pro") {
+                Alert.alert("Exclusivo do Pro", "Assine o Pro para registrar refeições por foto.");
+                return;
+              }
+              navigation.navigate("MealPhoto", { categoryId });
+            }}
+          />
+        </View>
+      ) : null}
 
       <FlatList
         data={results}
         keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={{ paddingTop: spacing.md }}
+        showsVerticalScrollIndicator={false}
         renderItem={({ item }) => (
           <Pressable
             onPress={() => {
               setSelectedFood(item);
               setQuantityG(String(item.default_portion_g));
             }}
-            style={{
-              paddingVertical: spacing.sm,
-              borderBottomWidth: 1,
-              borderBottomColor: colors.border,
-            }}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: colors.surface,
+              borderRadius: radius.button,
+              padding: spacing.md,
+              marginBottom: spacing.sm,
+              opacity: pressed ? 0.8 : 1,
+            })}
           >
-            <Text style={[type.body, { color: colors.textPrimary }]}>{item.name}</Text>
-            <Text style={[type.caption, { color: colors.textSecondary }]}>
-              {item.brand ? `${item.brand} · ` : ""}
-              {Math.round(item.kcal_per_100g)} kcal/100g
-            </Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[type.body, { color: colors.textPrimary, fontWeight: "600" }]}>{item.name}</Text>
+              <Text style={[type.caption, { color: colors.textSecondary, marginTop: 1 }]}>
+                {item.brand ? `${item.brand} · ` : ""}
+                {Math.round(item.kcal_per_100g)} kcal/100g
+              </Text>
+            </View>
+            <Ionicons name="add-circle" size={26} color={colors.primary} />
           </Pressable>
         )}
+        ListEmptyComponent={
+          query.trim().length >= 2 && !isSearching ? (
+            <Text style={[type.bodySmall, { color: colors.textSecondary, textAlign: "center", marginTop: spacing.lg }]}>
+              Nada encontrado — tente outro nome.
+            </Text>
+          ) : null
+        }
       />
     </View>
   );
 }
 
-function NutrientRow({ label, value }: { label: string; value: string }) {
-  const { colors, type, spacing } = useTheme();
+function QuickAction({
+  icon,
+  label,
+  color,
+  locked,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  color: string;
+  locked?: boolean;
+  onPress: () => void;
+}) {
+  const { colors, type, radius, spacing } = useTheme();
   return (
-    <View
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
       style={{
-        flexDirection: "row",
-        justifyContent: "space-between",
-        paddingVertical: spacing.xs,
+        flex: 1,
+        alignItems: "center",
+        backgroundColor: colors.surface,
+        borderRadius: radius.card,
+        paddingVertical: spacing.md,
+        borderWidth: 1,
+        borderColor: colors.border,
+        opacity: locked ? 0.65 : 1,
       }}
     >
-      <Text style={[type.bodySmall, { color: colors.textSecondary }]}>{label}</Text>
-      <Text style={[type.bodySmall, { color: colors.textPrimary }]}>{value}</Text>
+      <View
+        style={{
+          width: 42,
+          height: 42,
+          borderRadius: 14,
+          backgroundColor: color + "1E",
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: 6,
+        }}
+      >
+        <Ionicons name={locked ? "lock-closed" : icon} size={20} color={color} />
+      </View>
+      <Text style={[type.caption, { color: colors.textPrimary, fontWeight: "600" }]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function NutrientPill({ label, value, color }: { label: string; value: number; color: string }) {
+  const { colors, type } = useTheme();
+  return (
+    <View style={{ alignItems: "center", flex: 1 }}>
+      <Text style={[type.h2, { color, fontSize: 20 }]}>{value}</Text>
+      <Text style={[type.caption, { color: colors.textSecondary }]}>{label}</Text>
     </View>
   );
 }

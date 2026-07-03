@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import React, { useCallback, useState } from "react";
 import { RefreshControl, ScrollView, Text, TouchableOpacity, View } from "react-native";
@@ -6,6 +7,7 @@ import { getCurrentGoal, type CalorieGoal } from "../../api/goals";
 import { listMealCategories, listMealsForDay, type MealCategory, type MealLog } from "../../api/meals";
 import { getTodayWaterSummary, logWater, type WaterSummary } from "../../api/water";
 import { Button } from "../../components/Button";
+import { Card } from "../../components/Card";
 import { ProgressRing } from "../../components/ProgressRing";
 import { useTheme } from "../../theme/ThemeProvider";
 
@@ -13,7 +15,20 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-const QUICK_WATER_AMOUNTS = [200, 300, 500];
+const QUICK_WATER = [200, 300, 500];
+
+const CATEGORY_ICONS: [RegExp, keyof typeof Ionicons.glyphMap][] = [
+  [/café|cafe/i, "cafe"],
+  [/almoço|almoco/i, "restaurant"],
+  [/jantar/i, "moon"],
+  [/ceia/i, "moon-outline"],
+  [/lanche/i, "nutrition"],
+];
+
+function categoryIcon(name: string): keyof typeof Ionicons.glyphMap {
+  const match = CATEGORY_ICONS.find(([re]) => re.test(name));
+  return match ? match[1] : "restaurant-outline";
+}
 
 export function DiaryScreen() {
   const { colors, type, spacing, radius } = useTheme();
@@ -55,150 +70,220 @@ export function DiaryScreen() {
 
   async function handleQuickWater(amountMl: number) {
     await logWater(amountMl);
-    const summary = await getTodayWaterSummary();
-    setWater(summary);
+    setWater(await getTodayWaterSummary());
   }
 
-  const kcalConsumed = meals.reduce(
-    (sum, meal) => sum + meal.items.reduce((s, i) => s + i.kcal, 0),
-    0
-  );
+  const allItems = meals.flatMap((m) => m.items);
+  const consumed = {
+    kcal: allItems.reduce((s, i) => s + i.kcal, 0),
+    protein: allItems.reduce((s, i) => s + i.protein_g, 0),
+    carbs: allItems.reduce((s, i) => s + i.carbs_g, 0),
+    fat: allItems.reduce((s, i) => s + i.fat_g, 0),
+  };
   const kcalGoal = goal?.kcal ?? 0;
-  const kcalProgress = kcalGoal > 0 ? kcalConsumed / kcalGoal : 0;
-  const overGoal = kcalGoal > 0 && kcalConsumed > kcalGoal;
+  const kcalProgress = kcalGoal > 0 ? consumed.kcal / kcalGoal : 0;
+  const overGoal = kcalGoal > 0 && consumed.kcal > kcalGoal;
+  const waterProgress = water && water.goal_ml > 0 ? water.total_ml_today / water.goal_ml : 0;
 
   return (
     <ScrollView
-      contentContainerStyle={{ padding: spacing.lg, backgroundColor: colors.bg, flexGrow: 1 }}
+      style={{ backgroundColor: colors.bg }}
+      contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
       refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />}
+      showsVerticalScrollIndicator={false}
     >
-      <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: spacing.md, marginBottom: spacing.sm }}>
-        <TouchableOpacity onPress={() => navigation.navigate("Measurements")}>
-          <Text style={[type.caption, { color: colors.primary }]}>Medidas e fotos</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => navigation.navigate("GoalSettings")}>
-          <Text style={[type.caption, { color: colors.primary }]}>Meta</Text>
-        </TouchableOpacity>
+      {/* Atalhos */}
+      <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, marginBottom: spacing.md }}>
+        <HeaderChip icon="body" label="Medidas" onPress={() => navigation.navigate("Measurements")} />
+        <HeaderChip icon="flag" label="Meta" onPress={() => navigation.navigate("GoalSettings")} />
       </View>
 
-      <View style={{ alignItems: "center", marginBottom: spacing.lg }}>
-        {goal ? (
+      {/* Resumo calórico + macros */}
+      <Card style={{ marginBottom: spacing.md }}>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
           <ProgressRing
+            size={120}
+            strokeWidth={12}
             progress={kcalProgress}
-            value={`${Math.round(kcalConsumed)}`}
-            label={`de ${Math.round(kcalGoal)} kcal`}
+            value={kcalGoal > 0 ? `${Math.round(consumed.kcal)}` : "—"}
+            label={kcalGoal > 0 ? `/ ${Math.round(kcalGoal)} kcal` : "sem meta"}
             color={overGoal ? colors.warning : colors.primary}
           />
-        ) : (
-          <View style={{ alignItems: "center" }}>
-            <Text style={[type.body, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
-              Você ainda não definiu uma meta de calorias.
-            </Text>
-            <Button title="Definir meta" onPress={() => navigation.navigate("GoalSettings")} />
+          <View style={{ flex: 1, marginLeft: spacing.lg }}>
+            <MacroBar label="Proteína" value={consumed.protein} goal={goal?.protein_g ?? 0} color={colors.moduleTraining} />
+            <MacroBar label="Carboidrato" value={consumed.carbs} goal={goal?.carbs_g ?? 0} color={colors.info} />
+            <MacroBar label="Gordura" value={consumed.fat} goal={goal?.fat_g ?? 0} color={colors.warning} />
           </View>
-        )}
+        </View>
         {overGoal ? (
           <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm }]}>
-            Você passou um pouco da meta hoje — isso não é um problema, é só uma informação.
+            Você passou um pouco da meta hoje — tudo bem, é só informação.
           </Text>
         ) : null}
-      </View>
+        {!goal ? (
+          <View style={{ marginTop: spacing.md }}>
+            <Button title="Definir meta de calorias" onPress={() => navigation.navigate("GoalSettings")} />
+          </View>
+        ) : null}
+      </Card>
 
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          backgroundColor: colors.surface,
-          borderRadius: radius.card,
-          borderWidth: 1,
-          borderColor: colors.border,
-          padding: spacing.md,
-          marginBottom: spacing.lg,
-        }}
-      >
-        <View>
-          <Text style={[type.h2, { color: colors.textPrimary }]}>Água</Text>
-          <Text style={[type.bodySmall, { color: colors.textSecondary }]}>
-            {water?.total_ml_today ?? 0} / {water?.goal_ml ?? 0} ml
-          </Text>
-        </View>
-        <View style={{ flexDirection: "row", gap: spacing.xs }}>
-          {QUICK_WATER_AMOUNTS.map((amount) => (
-            <TouchableOpacity
-              key={amount}
-              onPress={() => handleQuickWater(amount)}
-              style={{
-                borderWidth: 1,
-                borderColor: colors.info,
-                borderRadius: radius.button,
-                paddingVertical: spacing.xs,
-                paddingHorizontal: spacing.sm,
-              }}
-            >
-              <Text style={[type.caption, { color: colors.info }]}>+{amount}ml</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      {categories.map((category) => {
-        const categoryMeals = meals.filter((m) => m.meal_category_id === category.id);
-        const categoryKcal = categoryMeals.reduce(
-          (sum, m) => sum + m.items.reduce((s, i) => s + i.kcal, 0),
-          0
-        );
-        return (
-          <View key={category.id} style={{ marginBottom: spacing.lg }}>
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: spacing.sm,
-              }}
-            >
-              <Text style={[type.h2, { color: colors.textPrimary }]}>{category.name}</Text>
-              <Text style={[type.caption, { color: colors.textSecondary }]}>
-                {Math.round(categoryKcal)} kcal
+      {/* Água */}
+      <Card accent={colors.info} style={{ marginBottom: spacing.lg }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Ionicons name="water" size={22} color={colors.info} />
+            <View style={{ marginLeft: spacing.sm }}>
+              <Text style={[type.h2, { color: colors.textPrimary }]}>
+                {((water?.total_ml_today ?? 0) / 1000).toFixed(1)}L
+                <Text style={[type.bodySmall, { color: colors.textSecondary }]}>
+                  {"  "}/ {((water?.goal_ml ?? 0) / 1000).toFixed(1)}L
+                </Text>
               </Text>
             </View>
-
-            {categoryMeals.flatMap((m) => m.items).map((item) => (
-              <View
-                key={item.id}
+          </View>
+          <View style={{ flexDirection: "row", gap: spacing.xs }}>
+            {QUICK_WATER.map((amount) => (
+              <TouchableOpacity
+                key={amount}
+                onPress={() => handleQuickWater(amount)}
                 style={{
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  paddingVertical: spacing.xs,
+                  borderRadius: radius.pill,
+                  paddingVertical: 6,
+                  paddingHorizontal: 12,
+                  backgroundColor: colors.info + "1A",
                 }}
               >
-                <Text style={[type.bodySmall, { color: colors.textPrimary }]}>
-                  {item.food.name} ({Math.round(item.quantity_g)}g)
-                </Text>
-                <Text style={[type.bodySmall, { color: colors.textSecondary }]}>
-                  {Math.round(item.kcal)} kcal
+                <Text style={[type.caption, { color: colors.info, fontWeight: "700" }]}>+{amount}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+        {/* barra de progresso da água */}
+        <View style={{ height: 8, backgroundColor: colors.surfaceAlt, borderRadius: 4, marginTop: spacing.md }}>
+          <View
+            style={{
+              height: 8,
+              width: `${Math.min(waterProgress, 1) * 100}%`,
+              backgroundColor: colors.info,
+              borderRadius: 4,
+            }}
+          />
+        </View>
+      </Card>
+
+      {/* Refeições */}
+      <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.sm, letterSpacing: 1, textTransform: "uppercase" }]}>
+        Refeições de hoje
+      </Text>
+      {categories.map((category) => {
+        const categoryItems = meals.filter((m) => m.meal_category_id === category.id).flatMap((m) => m.items);
+        const categoryKcal = categoryItems.reduce((s, i) => s + i.kcal, 0);
+        return (
+          <Card key={category.id} padded={false} style={{ marginBottom: spacing.md }}>
+            <View style={{ padding: spacing.md }}>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <View
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 13,
+                    backgroundColor: colors.primarySoft,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginRight: spacing.sm,
+                  }}
+                >
+                  <Ionicons name={categoryIcon(category.name)} size={19} color={colors.primary} />
+                </View>
+                <Text style={[type.h2, { color: colors.textPrimary, flex: 1 }]}>{category.name}</Text>
+                <Text style={[type.bodySmall, { color: categoryKcal > 0 ? colors.primary : colors.textSecondary, fontWeight: "700" }]}>
+                  {Math.round(categoryKcal)} kcal
                 </Text>
               </View>
-            ))}
+
+              {categoryItems.length > 0 ? (
+                <View style={{ marginTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm }}>
+                  {categoryItems.map((item) => (
+                    <View key={item.id} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
+                      <Text style={[type.bodySmall, { color: colors.textPrimary, flex: 1 }]} numberOfLines={1}>
+                        {item.food.name}
+                        <Text style={{ color: colors.textSecondary }}> · {Math.round(item.quantity_g)}g</Text>
+                      </Text>
+                      <Text style={[type.bodySmall, { color: colors.textSecondary }]}>{Math.round(item.kcal)} kcal</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+            </View>
 
             <TouchableOpacity
               onPress={() => navigation.navigate("AddFood", { categoryId: category.id })}
+              activeOpacity={0.7}
               style={{
-                marginTop: spacing.xs,
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderStyle: "dashed",
-                borderRadius: radius.button,
-                paddingVertical: spacing.sm,
+                flexDirection: "row",
                 alignItems: "center",
+                justifyContent: "center",
+                paddingVertical: spacing.sm + 2,
+                backgroundColor: colors.surfaceAlt,
+                gap: 6,
               }}
             >
-              <Text style={[type.bodySmall, { color: colors.primary }]}>+ Adicionar alimento</Text>
+              <Ionicons name="add-circle" size={18} color={colors.primary} />
+              <Text style={[type.bodySmall, { color: colors.primary, fontWeight: "700" }]}>Adicionar alimento</Text>
             </TouchableOpacity>
-          </View>
+          </Card>
         );
       })}
     </ScrollView>
+  );
+}
+
+function HeaderChip({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+}) {
+  const { colors, type, radius, spacing } = useTheme();
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 6,
+        backgroundColor: colors.surface,
+        borderRadius: radius.pill,
+        paddingVertical: 8,
+        paddingHorizontal: spacing.md,
+        borderWidth: 1,
+        borderColor: colors.border,
+      }}
+    >
+      <Ionicons name={icon} size={15} color={colors.primary} />
+      <Text style={[type.caption, { color: colors.textPrimary, fontWeight: "600" }]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function MacroBar({ label, value, goal, color }: { label: string; value: number; goal: number; color: string }) {
+  const { colors, type } = useTheme();
+  const progress = goal > 0 ? Math.min(value / goal, 1) : 0;
+  return (
+    <View style={{ marginBottom: 10 }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 3 }}>
+        <Text style={[type.caption, { color: colors.textSecondary }]}>{label}</Text>
+        <Text style={[type.caption, { color: colors.textPrimary, fontWeight: "600" }]}>
+          {Math.round(value)}{goal > 0 ? `/${Math.round(goal)}g` : "g"}
+        </Text>
+      </View>
+      <View style={{ height: 6, backgroundColor: colors.surfaceAlt, borderRadius: 3 }}>
+        <View style={{ height: 6, width: `${progress * 100}%`, backgroundColor: color, borderRadius: 3 }} />
+      </View>
+    </View>
   );
 }

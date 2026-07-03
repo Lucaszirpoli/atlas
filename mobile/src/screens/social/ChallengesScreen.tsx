@@ -1,16 +1,18 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import React, { useCallback, useState } from "react";
-import { Alert, FlatList, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 import { createChallenge, listMyChallenges, type Challenge } from "../../api/challenges";
 import { Button } from "../../components/Button";
+import { Card } from "../../components/Card";
 import { OptionButton } from "../../components/OptionButton";
 import { useTheme } from "../../theme/ThemeProvider";
 
-const METRIC_LABELS: Record<Challenge["metric"], string> = {
-  workout_count: "Nº de treinos",
-  total_volume: "Volume total",
-  streak_days: "Streak de dias",
+const METRIC_META: Record<Challenge["metric"], { label: string; icon: keyof typeof Ionicons.glyphMap }> = {
+  workout_count: { label: "Nº de treinos", icon: "checkbox" },
+  total_volume: { label: "Volume total", icon: "barbell" },
+  streak_days: { label: "Streak de dias", icon: "flame" },
 };
 
 function isoInDays(days: number): string {
@@ -49,7 +51,7 @@ export function ChallengesScreen() {
         end_date: isoInDays(30),
         invite_handles: invite
           .split(",")
-          .map((h) => h.trim().toLowerCase())
+          .map((h) => h.trim().toLowerCase().replace(/^@/, ""))
           .filter(Boolean),
       });
       setName("");
@@ -63,81 +65,104 @@ export function ChallengesScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.lg }}>
-      <Text style={[type.h1, { color: colors.textPrimary, marginBottom: spacing.md }]}>Desafios</Text>
-
-      <FlatList
-        data={challenges}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            onPress={() => navigation.navigate("ChallengeDetail", { challengeId: item.id })}
-            style={{
-              backgroundColor: colors.surface,
-              borderRadius: radius.card,
-              borderWidth: 1,
-              borderColor: colors.border,
-              padding: spacing.md,
-              marginBottom: spacing.sm,
-            }}
-          >
-            <Text style={[type.body, { color: colors.textPrimary }]}>{item.name}</Text>
-            <Text style={[type.caption, { color: colors.textSecondary }]}>
-              {METRIC_LABELS[item.metric]} · até {item.end_date}
-            </Text>
-          </TouchableOpacity>
-        )}
-        ListEmptyComponent={
-          <Text style={[type.bodySmall, { color: colors.textSecondary, marginBottom: spacing.md }]}>
-            Nenhum desafio ainda.
+    <ScrollView
+      style={{ backgroundColor: colors.bg }}
+      contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
+      showsVerticalScrollIndicator={false}
+    >
+      {challenges.length > 0 ? (
+        <>
+          <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.sm, letterSpacing: 1, textTransform: "uppercase" }]}>
+            Meus desafios
           </Text>
-        }
-      />
+          {challenges.map((item) => (
+            <TouchableOpacity
+              key={item.id}
+              activeOpacity={0.8}
+              onPress={() => navigation.navigate("ChallengeDetail", { challengeId: item.id })}
+            >
+              <Card accent={colors.moduleSocial} style={{ marginBottom: spacing.sm }}>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <View
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 14,
+                      backgroundColor: colors.moduleSocial + "1E",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginRight: spacing.sm,
+                    }}
+                  >
+                    <Ionicons name={METRIC_META[item.metric].icon} size={20} color={colors.moduleSocial} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>{item.name}</Text>
+                    <Text style={[type.caption, { color: colors.textSecondary }]}>
+                      {METRIC_META[item.metric].label} · até{" "}
+                      {new Date(item.end_date + "T00:00:00").toLocaleDateString("pt-BR")}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+                </View>
+              </Card>
+            </TouchableOpacity>
+          ))}
+        </>
+      ) : null}
 
-      <Text style={[type.h2, { color: colors.textPrimary, marginTop: spacing.lg, marginBottom: spacing.sm }]}>
-        Criar novo desafio (30 dias)
+      <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.md, marginBottom: spacing.sm, letterSpacing: 1, textTransform: "uppercase" }]}>
+        Criar desafio (30 dias)
       </Text>
-      <TextInput
-        value={name}
-        onChangeText={setName}
-        placeholder="Nome do desafio"
-        placeholderTextColor={colors.textSecondary}
-        style={[
-          type.body,
-          {
-            color: colors.textPrimary,
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: radius.button,
-            height: 44,
-            paddingHorizontal: spacing.md,
-            marginBottom: spacing.sm,
-          },
-        ]}
-      />
-      {(Object.keys(METRIC_LABELS) as Challenge["metric"][]).map((m) => (
-        <OptionButton key={m} label={METRIC_LABELS[m]} selected={metric === m} onPress={() => setMetric(m)} />
-      ))}
-      <TextInput
-        value={invite}
-        onChangeText={setInvite}
-        placeholder="Convidar @handles separados por vírgula"
-        placeholderTextColor={colors.textSecondary}
-        autoCapitalize="none"
-        style={[
-          type.body,
-          {
-            color: colors.textPrimary,
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: radius.button,
-            height: 44,
-            paddingHorizontal: spacing.md,
-            marginVertical: spacing.sm,
-          },
-        ]}
-      />
-      <Button title="Criar desafio" onPress={handleCreate} loading={isSubmitting} />
-    </View>
+      <Card>
+        <TextInput
+          value={name}
+          onChangeText={setName}
+          placeholder="Nome do desafio, ex: Quem treina mais em julho"
+          placeholderTextColor={colors.textSecondary}
+          style={[
+            type.body,
+            {
+              color: colors.textPrimary,
+              backgroundColor: colors.surfaceAlt,
+              borderRadius: radius.button,
+              height: 50,
+              paddingHorizontal: spacing.md,
+              marginBottom: spacing.sm,
+            },
+          ]}
+        />
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
+          {(Object.keys(METRIC_META) as Challenge["metric"][]).map((m) => (
+            <OptionButton
+              key={m}
+              compact
+              label={METRIC_META[m].label}
+              selected={metric === m}
+              onPress={() => setMetric(m)}
+            />
+          ))}
+        </View>
+        <TextInput
+          value={invite}
+          onChangeText={setInvite}
+          placeholder="Convidar: @handle1, @handle2..."
+          placeholderTextColor={colors.textSecondary}
+          autoCapitalize="none"
+          style={[
+            type.body,
+            {
+              color: colors.textPrimary,
+              backgroundColor: colors.surfaceAlt,
+              borderRadius: radius.button,
+              height: 50,
+              paddingHorizontal: spacing.md,
+              marginVertical: spacing.sm,
+            },
+          ]}
+        />
+        <Button title="Criar desafio" icon="🏆" onPress={handleCreate} loading={isSubmitting} />
+      </Card>
+    </ScrollView>
   );
 }

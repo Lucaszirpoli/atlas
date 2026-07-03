@@ -1,6 +1,7 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
-import { Alert, ScrollView, Text, View } from "react-native";
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
 
 import { checkHandleAvailability } from "../../api/auth";
 import { Button } from "../../components/Button";
@@ -11,7 +12,7 @@ import { useTheme } from "../../theme/ThemeProvider";
 const HANDLE_PATTERN = /^[a-z0-9_]{3,30}$/;
 
 export function RegisterScreen() {
-  const { colors, type, spacing } = useTheme();
+  const { colors, type, spacing, shadow } = useTheme();
   const { signUp } = useAuth();
   const navigation = useNavigation<any>();
 
@@ -50,9 +51,7 @@ export function RegisterScreen() {
       ? "3-30 caracteres: letras minúsculas, números ou _"
       : handleStatus === "taken"
         ? "Esse @handle já está em uso"
-        : handleStatus === "available"
-          ? "Disponível!"
-          : undefined;
+        : undefined;
 
   async function handleSubmit() {
     if (handleStatus !== "available") {
@@ -78,40 +77,80 @@ export function RegisterScreen() {
   }
 
   return (
-    <ScrollView
-      contentContainerStyle={{
-        flexGrow: 1,
-        justifyContent: "center",
-        padding: spacing.lg,
-        backgroundColor: colors.bg,
-      }}
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <Text style={[type.h1, { color: colors.textPrimary, marginBottom: spacing.lg }]}>
-        Criar conta
-      </Text>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: spacing.lg }}>
+        <View style={{ alignItems: "center", marginBottom: spacing.lg }}>
+          <View
+            style={[
+              {
+                width: 60,
+                height: 60,
+                borderRadius: 20,
+                backgroundColor: colors.primary,
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: spacing.sm,
+              },
+              shadow.md,
+            ]}
+          >
+            <Ionicons name="fitness" size={32} color={colors.textOnPrimary} />
+          </View>
+          <Text style={[type.h1, { color: colors.textPrimary }]}>Criar conta</Text>
+          <Text style={[type.bodySmall, { color: colors.textSecondary }]}>Leva menos de um minuto</Text>
+        </View>
 
-      <TextField label="Nome de exibição" value={displayName} onChangeText={setDisplayName} />
-      <TextField
-        label="@handle"
-        autoCapitalize="none"
-        value={handle}
-        onChangeText={(v) => setHandle(v.toLowerCase())}
-        error={handleHint}
-      />
-      <TextField
-        label="E-mail"
-        autoCapitalize="none"
-        keyboardType="email-address"
-        value={email}
-        onChangeText={setEmail}
-      />
-      <TextField label="Senha" secureTextEntry value={password} onChangeText={setPassword} />
+        <View
+          style={[
+            { backgroundColor: colors.surface, borderRadius: spacing.lg, padding: spacing.lg },
+            shadow.sm,
+          ]}
+        >
+          <TextField label="Nome de exibição" placeholder="Como quer ser chamado" value={displayName} onChangeText={setDisplayName} />
+          <View>
+            <TextField
+              label="@handle (nome de usuário único)"
+              autoCapitalize="none"
+              placeholder="seu_handle"
+              value={handle}
+              onChangeText={(v) => setHandle(v.toLowerCase())}
+              error={handleHint}
+            />
+            {handleStatus === "available" ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: -spacing.sm, marginBottom: spacing.sm, marginLeft: spacing.xs }}>
+                <Ionicons name="checkmark-circle" size={14} color={colors.success} />
+                <Text style={[type.caption, { color: colors.success }]}>Disponível!</Text>
+              </View>
+            ) : null}
+          </View>
+          <TextField
+            label="E-mail"
+            autoCapitalize="none"
+            keyboardType="email-address"
+            placeholder="voce@email.com"
+            value={email}
+            onChangeText={setEmail}
+          />
+          <TextField label="Senha" secureTextEntry placeholder="Mínimo 8 caracteres" value={password} onChangeText={setPassword} />
 
-      <Button title="Criar conta" onPress={handleSubmit} loading={isSubmitting} />
+          <View style={{ marginTop: spacing.sm }}>
+            <Button title="Criar conta" onPress={handleSubmit} loading={isSubmitting} />
+          </View>
+        </View>
 
-      <View style={{ marginTop: spacing.lg }}>
-        <Button title="Já tenho conta" variant="ghost" onPress={() => navigation.navigate("Login")} />
-      </View>
-    </ScrollView>
+        <View style={{ flexDirection: "row", justifyContent: "center", marginTop: spacing.lg }}>
+          <Text style={[type.body, { color: colors.textSecondary }]}>Já tem conta? </Text>
+          <Text
+            style={[type.body, { color: colors.primary, fontWeight: "700" }]}
+            onPress={() => navigation.navigate("Login")}
+          >
+            Entrar
+          </Text>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

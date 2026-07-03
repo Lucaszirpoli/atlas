@@ -1,6 +1,7 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import React, { useCallback, useState } from "react";
-import { Alert, FlatList, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 import { blockUser } from "../../api/blocksAndReports";
 import {
@@ -12,8 +13,8 @@ import {
   type FriendRequest,
   type UserSummary,
 } from "../../api/friends";
-import { Button } from "../../components/Button";
-import { TextField } from "../../components/TextField";
+import { Avatar } from "../../components/Avatar";
+import { Card } from "../../components/Card";
 import { useTheme } from "../../theme/ThemeProvider";
 
 export function FriendsScreen() {
@@ -40,7 +41,7 @@ export function FriendsScreen() {
     if (!handleInput.trim()) return;
     setIsSending(true);
     try {
-      await sendFriendRequest(handleInput.trim().toLowerCase());
+      await sendFriendRequest(handleInput.trim().toLowerCase().replace(/^@/, ""));
       setHandleInput("");
       await load();
     } catch (err: any) {
@@ -54,86 +55,151 @@ export function FriendsScreen() {
   const sentRequests = requests.filter((r) => r.direction === "sent");
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.lg }}>
-      <Text style={[type.h1, { color: colors.textPrimary, marginBottom: spacing.md }]}>Amigos</Text>
+    <ScrollView
+      style={{ backgroundColor: colors.bg }}
+      contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
+      showsVerticalScrollIndicator={false}
+    >
+      {/* Adicionar */}
+      <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.lg }}>
+        <View
+          style={{
+            flex: 1,
+            flexDirection: "row",
+            alignItems: "center",
+            backgroundColor: colors.surface,
+            borderRadius: radius.pill,
+            paddingHorizontal: spacing.md,
+            height: 50,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
+        >
+          <Text style={[type.body, { color: colors.textSecondary }]}>@</Text>
+          <TextInput
+            value={handleInput}
+            onChangeText={setHandleInput}
+            autoCapitalize="none"
+            placeholder="handle do amigo"
+            placeholderTextColor={colors.textSecondary}
+            style={[type.body, { flex: 1, color: colors.textPrimary, marginLeft: 4, height: "100%" }]}
+          />
+        </View>
+        <TouchableOpacity
+          onPress={handleSendRequest}
+          disabled={isSending}
+          activeOpacity={0.8}
+          style={{
+            width: 50,
+            height: 50,
+            borderRadius: 25,
+            backgroundColor: colors.primary,
+            alignItems: "center",
+            justifyContent: "center",
+            opacity: isSending ? 0.6 : 1,
+          }}
+        >
+          <Ionicons name="person-add" size={20} color={colors.textOnPrimary} />
+        </TouchableOpacity>
+      </View>
 
-      <TextField
-        label="Adicionar por @handle"
-        autoCapitalize="none"
-        value={handleInput}
-        onChangeText={setHandleInput}
-      />
-      <Button title="Enviar pedido" onPress={handleSendRequest} loading={isSending} />
-
+      {/* Pedidos recebidos */}
       {receivedRequests.length > 0 ? (
-        <View style={{ marginTop: spacing.lg }}>
-          <Text style={[type.h2, { color: colors.textPrimary, marginBottom: spacing.sm }]}>
+        <>
+          <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.sm, letterSpacing: 1, textTransform: "uppercase" }]}>
             Pedidos recebidos
           </Text>
           {receivedRequests.map((r) => (
-            <View
-              key={r.id}
-              style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: spacing.xs }}
-            >
-              <Text style={[type.body, { color: colors.textPrimary }]}>@{r.other_user.handle}</Text>
-              <View style={{ flexDirection: "row", gap: spacing.sm }}>
-                <TouchableOpacity onPress={async () => { await acceptFriendRequest(r.id); load(); }}>
-                  <Text style={[type.bodySmall, { color: colors.success }]}>Aceitar</Text>
+            <Card key={r.id} style={{ marginBottom: spacing.sm }}>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Avatar name={r.other_user.display_name} handle={r.other_user.handle} />
+                <View style={{ flex: 1, marginLeft: spacing.sm }}>
+                  <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>
+                    {r.other_user.display_name}
+                  </Text>
+                  <Text style={[type.caption, { color: colors.textSecondary }]}>@{r.other_user.handle}</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={async () => {
+                    await acceptFriendRequest(r.id);
+                    load();
+                  }}
+                  style={{
+                    backgroundColor: colors.primary,
+                    borderRadius: radius.pill,
+                    paddingVertical: 8,
+                    paddingHorizontal: 16,
+                    marginRight: spacing.xs,
+                  }}
+                >
+                  <Text style={[type.caption, { color: colors.textOnPrimary, fontWeight: "700" }]}>Aceitar</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={async () => { await declineFriendRequest(r.id); load(); }}>
-                  <Text style={[type.bodySmall, { color: colors.danger }]}>Recusar</Text>
+                <TouchableOpacity
+                  onPress={async () => {
+                    await declineFriendRequest(r.id);
+                    load();
+                  }}
+                  hitSlop={8}
+                >
+                  <Ionicons name="close-circle" size={26} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>
-            </View>
+            </Card>
           ))}
-        </View>
+        </>
       ) : null}
 
       {sentRequests.length > 0 ? (
-        <View style={{ marginTop: spacing.md }}>
-          <Text style={[type.caption, { color: colors.textSecondary }]}>
-            Pedidos enviados: {sentRequests.map((r) => `@${r.other_user.handle}`).join(", ")}
-          </Text>
-        </View>
+        <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.md }]}>
+          Aguardando resposta: {sentRequests.map((r) => `@${r.other_user.handle}`).join(", ")}
+        </Text>
       ) : null}
 
-      <Text style={[type.h2, { color: colors.textPrimary, marginTop: spacing.lg, marginBottom: spacing.sm }]}>
-        Meus amigos
+      {/* Amigos */}
+      <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm, marginBottom: spacing.sm, letterSpacing: 1, textTransform: "uppercase" }]}>
+        Meus amigos ({friends.length})
       </Text>
-      <FlatList
-        data={friends}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            onLongPress={() =>
-              Alert.alert(item.display_name, undefined, [
-                {
-                  text: "Bloquear",
-                  style: "destructive",
-                  onPress: async () => {
-                    await blockUser(item.handle);
-                    load();
-                  },
-                },
-                { text: "Cancelar", style: "cancel" },
-              ])
-            }
-            style={{
-              paddingVertical: spacing.sm,
-              borderBottomWidth: 1,
-              borderBottomColor: colors.border,
-            }}
-          >
-            <Text style={[type.body, { color: colors.textPrimary }]}>{item.display_name}</Text>
-            <Text style={[type.caption, { color: colors.textSecondary }]}>@{item.handle}</Text>
-          </TouchableOpacity>
-        )}
-        ListEmptyComponent={
-          <Text style={[type.bodySmall, { color: colors.textSecondary }]}>
-            Você ainda não tem amigos por aqui.
+      {friends.length === 0 ? (
+        <Card>
+          <Text style={[type.bodySmall, { color: colors.textSecondary, textAlign: "center", paddingVertical: spacing.sm }]}>
+            Você ainda não tem amigos por aqui.{"\n"}Adicione pelo @handle acima.
           </Text>
-        }
-      />
-    </View>
+        </Card>
+      ) : (
+        <Card padded={false}>
+          {friends.map((item, i) => (
+            <TouchableOpacity
+              key={item.id}
+              onLongPress={() =>
+                Alert.alert(item.display_name, undefined, [
+                  {
+                    text: "Bloquear",
+                    style: "destructive",
+                    onPress: async () => {
+                      await blockUser(item.handle);
+                      load();
+                    },
+                  },
+                  { text: "Cancelar", style: "cancel" },
+                ])
+              }
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                padding: spacing.md,
+                borderTopWidth: i === 0 ? 0 : 1,
+                borderTopColor: colors.border,
+              }}
+            >
+              <Avatar name={item.display_name} handle={item.handle} size={44} />
+              <View style={{ marginLeft: spacing.sm }}>
+                <Text style={[type.body, { color: colors.textPrimary, fontWeight: "600" }]}>{item.display_name}</Text>
+                <Text style={[type.caption, { color: colors.textSecondary }]}>@{item.handle}</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </Card>
+      )}
+    </ScrollView>
   );
 }

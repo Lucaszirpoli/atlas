@@ -71,15 +71,18 @@ export function ChatActionCard({
   return (
     <View
       style={{
-        backgroundColor: colors.surface,
+        backgroundColor: colors.primarySoft,
         borderRadius: radius.card,
-        borderWidth: 1,
+        borderWidth: 1.5,
         borderColor: colors.primary,
         padding: spacing.md,
         marginTop: spacing.sm,
       }}
     >
-      <Text style={[type.bodySmall, { color: colors.textPrimary, marginBottom: spacing.sm }]}>
+      <Text style={[type.caption, { color: colors.primary, fontWeight: "800", letterSpacing: 0.5, marginBottom: 4 }]}>
+        AÇÃO SUGERIDA · VOCÊ DECIDE
+      </Text>
+      <Text style={[type.bodySmall, { color: colors.textPrimary, marginBottom: spacing.md }]}>
         {describeAction(action)}
       </Text>
       <View style={{ flexDirection: "row", gap: spacing.sm }}>
@@ -87,7 +90,7 @@ export function ChatActionCard({
           <Button title="Confirmar" onPress={handleConfirm} loading={isSubmitting} />
         </View>
         <View style={{ flex: 1 }}>
-          <Button title="Cancelar" variant="ghost" onPress={() => onResolved("cancelled")} />
+          <Button title="Agora não" variant="ghost" onPress={() => onResolved("cancelled")} />
         </View>
       </View>
     </View>

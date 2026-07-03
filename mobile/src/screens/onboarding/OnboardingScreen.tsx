@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Alert, ScrollView, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import { submitOnboarding, type OnboardingPayload } from "../../api/onboarding";
 import { Button } from "../../components/Button";
@@ -355,10 +355,28 @@ export function OnboardingScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      {/* Barra de progresso */}
+      <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.xl + spacing.sm }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: spacing.xs }}>
+          <Text style={[type.caption, { color: colors.primary, fontWeight: "700" }]}>
+            Passo {step + 1} de {TOTAL_STEPS}
+          </Text>
+          <Text style={[type.caption, { color: colors.textSecondary }]}>
+            {Math.round(((step + 1) / TOTAL_STEPS) * 100)}%
+          </Text>
+        </View>
+        <View style={{ height: 6, backgroundColor: colors.border, borderRadius: 3 }}>
+          <View
+            style={{
+              height: 6,
+              width: `${((step + 1) / TOTAL_STEPS) * 100}%`,
+              backgroundColor: colors.primary,
+              borderRadius: 3,
+            }}
+          />
+        </View>
+      </View>
       <ScrollView contentContainerStyle={{ padding: spacing.lg, flexGrow: 1 }}>
-        <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
-          Passo {step + 1} de {TOTAL_STEPS}
-        </Text>
         {renderStep()}
       </ScrollView>
       <View style={{ flexDirection: "row", gap: spacing.sm, padding: spacing.lg }}>
@@ -450,23 +468,37 @@ function ConsentRow({
 }) {
   const { colors, type, spacing, radius } = useTheme();
   return (
-    <View
+    <Pressable
+      onPress={onToggle}
       style={{
         flexDirection: "row",
         alignItems: "flex-start",
+        backgroundColor: checked ? colors.primarySoft : colors.surface,
+        borderWidth: 1.5,
+        borderColor: checked ? colors.primary : colors.border,
+        borderRadius: radius.button,
+        padding: spacing.md,
         marginBottom: spacing.md,
       }}
     >
-      <OptionButton label={checked ? "✓" : " "} selected={checked} onPress={onToggle} />
-      <Text
-        style={[
-          type.bodySmall,
-          { color: colors.textPrimary, flex: 1, marginLeft: spacing.sm, marginTop: spacing.sm },
-        ]}
-        onPress={onToggle}
+      <View
+        style={{
+          width: 24,
+          height: 24,
+          borderRadius: 8,
+          borderWidth: 2,
+          borderColor: checked ? colors.primary : colors.border,
+          backgroundColor: checked ? colors.primary : "transparent",
+          alignItems: "center",
+          justifyContent: "center",
+          marginRight: spacing.sm,
+        }}
       >
-        {text}
-      </Text>
-    </View>
+        {checked ? (
+          <Text style={{ color: colors.textOnPrimary, fontSize: 14, fontWeight: "800" }}>✓</Text>
+        ) : null}
+      </View>
+      <Text style={[type.bodySmall, { color: colors.textPrimary, flex: 1 }]}>{text}</Text>
+    </Pressable>
   );
 }

@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
 import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
@@ -10,6 +11,8 @@ import {
   type SetType,
 } from "../../api/workoutSessions";
 import { Button } from "../../components/Button";
+import { Card } from "../../components/Card";
+import { OptionButton } from "../../components/OptionButton";
 import { RestTimerOverlay } from "../../components/RestTimerOverlay";
 import { useTheme } from "../../theme/ThemeProvider";
 
@@ -23,7 +26,7 @@ const SET_TYPE_LABELS: Record<SetType, string> = {
   to_failure: "Até a falha",
   technical_failure: "Falha técnica",
   tempo: "Tempo controlado",
-  eccentric_emphasis: "Excêntrica enfatizada",
+  eccentric_emphasis: "Excêntrica",
   pre_exhaustion: "Pré-exaustão",
   superset: "Superset",
   biset: "Bi-set",
@@ -89,13 +92,12 @@ export function WorkoutExecutionScreen() {
   const routineExercise = routine.exercises[exerciseIndex];
   const sets = setsByExercise[exerciseIndex];
   const isLastExercise = exerciseIndex === routine.exercises.length - 1;
+  const completedCount = sets.filter((s) => s.completed).length;
 
   function updateSet(setIdx: number, patch: Partial<SetRow>) {
     setSetsByExercise((prev) =>
       prev.map((rows, i) =>
-        i === exerciseIndex
-          ? rows.map((row, j) => (j === setIdx ? { ...row, ...patch } : row))
-          : rows
+        i === exerciseIndex ? rows.map((row, j) => (j === setIdx ? { ...row, ...patch } : row)) : rows
       )
     );
   }
@@ -136,10 +138,6 @@ export function WorkoutExecutionScreen() {
     );
   }
 
-  function goToNextExercise() {
-    setExerciseIndex((i) => Math.min(i + 1, routine!.exercises.length - 1));
-  }
-
   async function handleFinishWorkout() {
     setIsCompleting(true);
     try {
@@ -152,112 +150,154 @@ export function WorkoutExecutionScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView contentContainerStyle={{ padding: spacing.lg }}>
-        <Text style={[type.caption, { color: colors.textSecondary }]}>
-          Exercício {exerciseIndex + 1} de {routine.exercises.length}
+      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }} showsVerticalScrollIndicator={false}>
+        {/* Progresso de exercícios */}
+        <View style={{ flexDirection: "row", gap: 6, marginBottom: spacing.md }}>
+          {routine.exercises.map((_, i) => (
+            <View
+              key={i}
+              style={{
+                flex: 1,
+                height: 5,
+                borderRadius: 3,
+                backgroundColor: i < exerciseIndex ? colors.secondary : i === exerciseIndex ? colors.secondary + "88" : colors.border,
+              }}
+            />
+          ))}
+        </View>
+
+        <Text style={[type.caption, { color: colors.secondary, fontWeight: "700", letterSpacing: 1 }]}>
+          EXERCÍCIO {exerciseIndex + 1} DE {routine.exercises.length}
         </Text>
-        <Text style={[type.h1, { color: colors.textPrimary, marginBottom: spacing.sm }]}>
+        <Text style={[type.h1, { color: colors.textPrimary, marginTop: 2 }]}>
           {routineExercise.exercise.name}
         </Text>
-        <Text style={[type.bodySmall, { color: colors.textSecondary, marginBottom: spacing.lg }]}>
-          Meta: {routineExercise.target_sets}x {routineExercise.target_reps_min}
-          {routineExercise.target_reps_max ? `-${routineExercise.target_reps_max}` : ""} · descanso{" "}
-          {routineExercise.rest_seconds}s
-        </Text>
+        <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.xs, marginBottom: spacing.lg }}>
+          <Meta icon="repeat" text={`${routineExercise.target_sets}x ${routineExercise.target_reps_min}${routineExercise.target_reps_max ? `-${routineExercise.target_reps_max}` : ""} reps`} />
+          <Meta icon="timer-outline" text={`${routineExercise.rest_seconds}s descanso`} />
+          <Meta icon="checkmark-done" text={`${completedCount}/${sets.length} feitas`} />
+        </View>
 
         {sets.map((row, idx) => (
-          <View
+          <Card
             key={idx}
+            padded={false}
             style={{
-              backgroundColor: colors.surface,
-              borderRadius: radius.card,
-              borderWidth: 1,
-              borderColor: row.completed ? colors.secondary : colors.border,
-              padding: spacing.md,
               marginBottom: spacing.sm,
+              borderWidth: 1.5,
+              borderColor: row.completed ? colors.secondary : "transparent",
             }}
           >
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <Text style={[type.bodySmall, { color: colors.textSecondary }]}>
-                Série {idx + 1}
-                {row.previous ? ` · anterior: ${row.previous.weight_kg}kg x ${row.previous.reps}` : ""}
-              </Text>
-              <TouchableOpacity onPress={() => updateSet(idx, { showMore: !row.showMore })}>
-                <Text style={[type.bodySmall, { color: colors.textSecondary }]}>⋯</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.xs }}>
-              <SetInput label="kg" value={row.weight} onChangeText={(v) => updateSet(idx, { weight: v })} />
-              <SetInput label="reps" value={row.reps} onChangeText={(v) => updateSet(idx, { reps: v })} />
-              <TouchableOpacity
-                onPress={() => handleConfirmSet(idx)}
-                style={{
-                  marginLeft: "auto",
-                  width: 40,
-                  height: 40,
-                  borderRadius: 20,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: row.completed ? colors.secondary : colors.border,
-                }}
-              >
-                <Text style={{ color: row.completed ? "#FFFFFF" : colors.textSecondary }}>✓</Text>
-              </TouchableOpacity>
-            </View>
-
-            {row.showMore ? (
-              <View style={{ marginTop: spacing.sm }}>
-                <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.xs }]}>
-                  Tipo de série
-                </Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {SET_TYPE_ORDER.map((st) => (
-                    <TouchableOpacity
-                      key={st}
-                      onPress={() => updateSet(idx, { setType: st })}
-                      style={{
-                        borderWidth: 1,
-                        borderColor: row.setType === st ? colors.primary : colors.border,
-                        borderRadius: radius.button,
-                        paddingVertical: spacing.xs,
-                        paddingHorizontal: spacing.sm,
-                        marginRight: spacing.xs,
-                      }}
-                    >
-                      <Text style={[type.caption, { color: row.setType === st ? colors.primary : colors.textSecondary }]}>
-                        {SET_TYPE_LABELS[st]}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-                <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm }}>
-                  <SetInput label="RPE" value={row.rpe} onChangeText={(v) => updateSet(idx, { rpe: v })} />
-                  <SetInput label="RIR" value={row.rir} onChangeText={(v) => updateSet(idx, { rir: v })} />
+            <View style={{ padding: spacing.md }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.sm }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                  <View
+                    style={{
+                      width: 26,
+                      height: 26,
+                      borderRadius: 13,
+                      backgroundColor: row.completed ? colors.secondary : colors.surfaceAlt,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Text style={[type.caption, { color: row.completed ? colors.textOnPrimary : colors.textSecondary, fontWeight: "800" }]}>
+                      {idx + 1}
+                    </Text>
+                  </View>
+                  {row.previous ? (
+                    <Text style={[type.caption, { color: colors.textSecondary }]}>
+                      anterior: {row.previous.weight_kg}kg × {row.previous.reps}
+                    </Text>
+                  ) : (
+                    <Text style={[type.caption, { color: colors.textSecondary }]}>primeira vez</Text>
+                  )}
                 </View>
+                <TouchableOpacity onPress={() => updateSet(idx, { showMore: !row.showMore })} hitSlop={10}>
+                  <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
               </View>
-            ) : null}
-          </View>
+
+              <View style={{ flexDirection: "row", alignItems: "flex-end", gap: spacing.sm }}>
+                <SetInput label="kg" value={row.weight} onChangeText={(v) => updateSet(idx, { weight: v })} />
+                <Text style={[type.h2, { color: colors.textSecondary, marginBottom: 12 }]}>×</Text>
+                <SetInput label="reps" value={row.reps} onChangeText={(v) => updateSet(idx, { reps: v })} />
+                <View style={{ flex: 1 }} />
+                <TouchableOpacity
+                  onPress={() => handleConfirmSet(idx)}
+                  activeOpacity={0.8}
+                  style={{
+                    width: 52,
+                    height: 52,
+                    borderRadius: 26,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: row.completed ? colors.secondary : colors.surfaceAlt,
+                    borderWidth: row.completed ? 0 : 1.5,
+                    borderColor: colors.border,
+                  }}
+                >
+                  <Ionicons name="checkmark" size={26} color={row.completed ? colors.textOnPrimary : colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              {row.showMore ? (
+                <View style={{ marginTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md }}>
+                  <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.xs }]}>
+                    Tipo de série
+                  </Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={{ flexDirection: "row", gap: spacing.xs }}>
+                      {SET_TYPE_ORDER.map((st) => (
+                        <OptionButton
+                          key={st}
+                          compact
+                          label={SET_TYPE_LABELS[st]}
+                          selected={row.setType === st}
+                          onPress={() => updateSet(idx, { setType: st })}
+                        />
+                      ))}
+                    </View>
+                  </ScrollView>
+                  <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.xs }}>
+                    <SetInput label="RPE" value={row.rpe} onChangeText={(v) => updateSet(idx, { rpe: v })} />
+                    <SetInput label="RIR" value={row.rir} onChangeText={(v) => updateSet(idx, { rir: v })} />
+                  </View>
+                </View>
+              ) : null}
+            </View>
+          </Card>
         ))}
 
-        <Button title="+ série" variant="ghost" onPress={handleAddSet} />
+        <Button title="+ série extra" variant="ghost" onPress={handleAddSet} />
 
-        <View style={{ marginTop: spacing.lg }}>
+        <View style={{ marginTop: spacing.md }}>
           {isLastExercise ? (
-            <Button title="Concluir treino" onPress={handleFinishWorkout} loading={isCompleting} />
+            <Button title="Concluir treino" variant="secondary" onPress={handleFinishWorkout} loading={isCompleting} />
           ) : (
-            <Button title="Próximo exercício" onPress={goToNextExercise} />
+            <Button title="Próximo exercício →" variant="secondary" onPress={() => setExerciseIndex((i) => Math.min(i + 1, routine!.exercises.length - 1))} />
           )}
         </View>
+        {exerciseIndex > 0 ? (
+          <View style={{ marginTop: spacing.sm }}>
+            <Button title="← Exercício anterior" variant="ghost" onPress={() => setExerciseIndex((i) => Math.max(i - 1, 0))} />
+          </View>
+        ) : null}
       </ScrollView>
 
       {restSeconds !== null ? (
-        <RestTimerOverlay
-          seconds={restSeconds}
-          onFinish={() => setRestSeconds(null)}
-          onSkip={() => setRestSeconds(null)}
-        />
+        <RestTimerOverlay seconds={restSeconds} onFinish={() => setRestSeconds(null)} onSkip={() => setRestSeconds(null)} />
       ) : null}
+    </View>
+  );
+}
+
+function Meta({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: string }) {
+  const { colors, type } = useTheme();
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+      <Ionicons name={icon} size={14} color={colors.textSecondary} />
+      <Text style={[type.caption, { color: colors.textSecondary }]}>{text}</Text>
     </View>
   );
 }
@@ -274,20 +314,19 @@ function SetInput({
   const { colors, type, spacing, radius } = useTheme();
   return (
     <View>
-      <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.xs }]}>{label}</Text>
+      <Text style={[type.caption, { color: colors.textSecondary, marginBottom: 4, textAlign: "center" }]}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={(v) => onChangeText(v.replace(/[^0-9.]/g, ""))}
         keyboardType="decimal-pad"
         style={[
-          type.body,
+          type.h2,
           {
             color: colors.textPrimary,
-            borderWidth: 1,
-            borderColor: colors.border,
+            backgroundColor: colors.surfaceAlt,
             borderRadius: radius.button,
-            width: 70,
-            height: 40,
+            width: 78,
+            height: 52,
             textAlign: "center",
           },
         ]}

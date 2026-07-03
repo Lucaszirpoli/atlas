@@ -17,8 +17,10 @@ export function NutritionStack() {
   return (
     <Stack.Navigator
       screenOptions={{
-        headerStyle: { backgroundColor: colors.surface },
+        headerStyle: { backgroundColor: colors.bg },
+        headerShadowVisible: false,
         headerTintColor: colors.textPrimary,
+        headerTitleStyle: { fontWeight: "700" },
       }}
     >
       <Stack.Screen name="Diary" component={DiaryScreen} options={{ title: "Nutrição" }} />

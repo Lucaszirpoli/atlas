@@ -17,8 +17,10 @@ export function TrainingStack() {
   return (
     <Stack.Navigator
       screenOptions={{
-        headerStyle: { backgroundColor: colors.surface },
+        headerStyle: { backgroundColor: colors.bg },
+        headerShadowVisible: false,
         headerTintColor: colors.textPrimary,
+        headerTitleStyle: { fontWeight: "700" },
       }}
     >
       <Stack.Screen name="RoutineList" component={RoutineListScreen} options={{ title: "Treino" }} />

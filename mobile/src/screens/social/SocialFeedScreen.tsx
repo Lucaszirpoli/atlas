@@ -1,23 +1,38 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import React, { useCallback, useState } from "react";
 import { Alert, FlatList, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 import { reportContent } from "../../api/blocksAndReports";
 import { commentOnPost, getFeed, reactToPost, removeReaction, type FeedPost } from "../../api/feed";
-import { Button } from "../../components/Button";
+import { Avatar } from "../../components/Avatar";
+import { Card } from "../../components/Card";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
 
+const POST_META: Record<FeedPost["post_type"], { icon: keyof typeof Ionicons.glyphMap; color: string }> = {
+  workout: { icon: "barbell", color: "#FF6B35" },
+  meal: { icon: "restaurant", color: "#1F7A5C" },
+  progress_photo: { icon: "camera", color: "#E8637A" },
+};
+
 function describePost(post: FeedPost): string {
   if (post.post_type === "workout") {
-    const s = post.summary;
-    return `Concluiu um treino — ${Math.round(s.volume_total_kg ?? 0)}kg de volume total`;
+    return `Concluiu um treino · ${Math.round(post.summary.volume_total_kg ?? 0)}kg de volume`;
   }
   if (post.post_type === "meal") {
-    const s = post.summary;
-    return `Compartilhou uma refeição (${s.categoria ?? ""}) — ${Math.round(s.kcal_total ?? 0)} kcal`;
+    return `Compartilhou uma refeição${post.summary.categoria ? ` (${post.summary.categoria})` : ""} · ${Math.round(post.summary.kcal_total ?? 0)} kcal`;
   }
   return "Compartilhou uma foto de progresso";
+}
+
+function timeAgo(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 60) return `${Math.max(mins, 1)}min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
 }
 
 export function SocialFeedScreen() {
@@ -53,10 +68,7 @@ export function SocialFeedScreen() {
 
   function handleReport(post: FeedPost) {
     Alert.alert("Denunciar post", "Por que você está denunciando isso?", [
-      {
-        text: "Conteúdo inapropriado",
-        onPress: () => reportContent("feed_post", post.id, "Conteúdo inapropriado"),
-      },
+      { text: "Conteúdo inapropriado", onPress: () => reportContent("feed_post", post.id, "Conteúdo inapropriado") },
       { text: "Assédio", onPress: () => reportContent("feed_post", post.id, "Assédio") },
       { text: "Cancelar", style: "cancel" },
     ]);
@@ -64,106 +76,182 @@ export function SocialFeedScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      {/* Header */}
       <View
         style={{
           flexDirection: "row",
+          alignItems: "center",
           justifyContent: "space-between",
-          padding: spacing.lg,
-          paddingBottom: spacing.sm,
+          paddingHorizontal: spacing.lg,
+          paddingTop: spacing.xl,
+          paddingBottom: spacing.md,
         }}
       >
-        <Text style={[type.h1, { color: colors.textPrimary }]}>Social</Text>
-        <View style={{ flexDirection: "row", gap: spacing.md }}>
-          <TouchableOpacity onPress={() => navigation.navigate("Friends")}>
-            <Text style={[type.body, { color: colors.primary }]}>Amigos</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate("Challenges")}>
-            <Text style={[type.body, { color: colors.primary }]}>Desafios</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate("Privacy")}>
-            <Text style={[type.body, { color: colors.primary }]}>⚙</Text>
-          </TouchableOpacity>
+        <Text style={[type.h1, { color: colors.textPrimary, fontSize: 26 }]}>Social</Text>
+        <View style={{ flexDirection: "row", gap: spacing.sm }}>
+          <HeaderIcon icon="people" onPress={() => navigation.navigate("Friends")} />
+          <HeaderIcon icon="trophy" onPress={() => navigation.navigate("Challenges")} />
+          <HeaderIcon icon="shield-checkmark" onPress={() => navigation.navigate("Privacy")} />
         </View>
       </View>
 
       <FlatList
         data={posts}
         keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={{ padding: spacing.lg, paddingTop: 0 }}
+        contentContainerStyle={{ padding: spacing.lg, paddingTop: 0, paddingBottom: spacing.xxl }}
+        showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <Text style={[type.body, { color: colors.textSecondary }]}>
-            Nada por aqui ainda. Adicione amigos para ver o feed deles.
-          </Text>
+          <Card>
+            <View style={{ alignItems: "center", paddingVertical: spacing.lg }}>
+              <View
+                style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: 22,
+                  backgroundColor: colors.moduleSocial + "22",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginBottom: spacing.md,
+                }}
+              >
+                <Ionicons name="people" size={30} color={colors.moduleSocial} />
+              </View>
+              <Text style={[type.h2, { color: colors.textPrimary, marginBottom: 4 }]}>Seu feed está vazio</Text>
+              <Text style={[type.bodySmall, { color: colors.textSecondary, textAlign: "center" }]}>
+                Adicione amigos pelo @handle para{"\n"}acompanhar os treinos deles.
+              </Text>
+            </View>
+          </Card>
         }
-        renderItem={({ item }) => (
-          <View
-            style={{
-              backgroundColor: colors.surface,
-              borderRadius: radius.card,
-              borderWidth: 1,
-              borderColor: colors.moduleSocial,
-              padding: spacing.md,
-              marginBottom: spacing.md,
-            }}
-          >
-            <Text style={[type.bodySmall, { color: colors.textSecondary, marginBottom: spacing.xs }]}>
-              {item.author.display_name} · @{item.author.handle}
-            </Text>
-            <Text style={[type.body, { color: colors.textPrimary, marginBottom: spacing.xs }]}>
-              {describePost(item)}
-            </Text>
-            {item.caption ? (
-              <Text style={[type.bodySmall, { color: colors.textPrimary, marginBottom: spacing.xs }]}>
-                {item.caption}
-              </Text>
-            ) : null}
+        renderItem={({ item }) => {
+          const meta = POST_META[item.post_type];
+          return (
+            <Card style={{ marginBottom: spacing.md }}>
+              {/* Autor */}
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
+                <Avatar name={item.author.display_name} handle={item.author.handle} />
+                <View style={{ flex: 1, marginLeft: spacing.sm }}>
+                  <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>
+                    {item.author.display_name}
+                  </Text>
+                  <Text style={[type.caption, { color: colors.textSecondary }]}>
+                    @{item.author.handle} · {timeAgo(item.created_at)}
+                  </Text>
+                </View>
+                {item.author.id !== user?.id ? (
+                  <TouchableOpacity onPress={() => handleReport(item)} hitSlop={10}>
+                    <Ionicons name="ellipsis-horizontal" size={18} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
 
-            <View style={{ flexDirection: "row", alignItems: "center", marginTop: spacing.sm, gap: spacing.md }}>
-              <TouchableOpacity onPress={() => handleReact(item)}>
-                <Text style={[type.body, { color: item.my_reaction ? colors.secondary : colors.textSecondary }]}>
-                  👍 {item.reaction_count}
+              {/* Conteúdo */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  backgroundColor: meta.color + "12",
+                  borderRadius: radius.button,
+                  padding: spacing.md,
+                }}
+              >
+                <Ionicons name={meta.icon} size={22} color={meta.color} style={{ marginRight: spacing.sm }} />
+                <Text style={[type.bodySmall, { color: colors.textPrimary, flex: 1, fontWeight: "500" }]}>
+                  {describePost(item)}
                 </Text>
-              </TouchableOpacity>
-              {item.author.id !== user?.id ? (
-                <TouchableOpacity onPress={() => handleReport(item)}>
-                  <Text style={[type.caption, { color: colors.textSecondary }]}>Denunciar</Text>
-                </TouchableOpacity>
+              </View>
+              {item.caption ? (
+                <Text style={[type.bodySmall, { color: colors.textPrimary, marginTop: spacing.sm }]}>
+                  {item.caption}
+                </Text>
               ) : null}
-            </View>
 
-            {item.comments.map((c) => (
-              <Text key={c.id} style={[type.caption, { color: colors.textSecondary, marginTop: spacing.xs }]}>
-                <Text style={{ fontWeight: "600" }}>{c.author.display_name}: </Text>
-                {c.content}
-              </Text>
-            ))}
+              {/* Reações */}
+              <View style={{ flexDirection: "row", alignItems: "center", marginTop: spacing.md, gap: spacing.md }}>
+                <TouchableOpacity
+                  onPress={() => handleReact(item)}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 5,
+                    backgroundColor: item.my_reaction ? colors.secondarySoft : colors.surfaceAlt,
+                    borderRadius: radius.pill,
+                    paddingVertical: 6,
+                    paddingHorizontal: 14,
+                  }}
+                >
+                  <Ionicons
+                    name={item.my_reaction ? "heart" : "heart-outline"}
+                    size={16}
+                    color={item.my_reaction ? colors.secondary : colors.textSecondary}
+                  />
+                  <Text style={[type.caption, { color: item.my_reaction ? colors.secondary : colors.textSecondary, fontWeight: "700" }]}>
+                    {item.reaction_count}
+                  </Text>
+                </TouchableOpacity>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                  <Ionicons name="chatbubble-outline" size={15} color={colors.textSecondary} />
+                  <Text style={[type.caption, { color: colors.textSecondary }]}>{item.comments.length}</Text>
+                </View>
+              </View>
 
-            <View style={{ flexDirection: "row", marginTop: spacing.sm, alignItems: "center" }}>
-              <TextInput
-                value={commentDrafts[item.id] ?? ""}
-                onChangeText={(v) => setCommentDrafts((prev) => ({ ...prev, [item.id]: v }))}
-                placeholder="Comentar..."
-                placeholderTextColor={colors.textSecondary}
-                style={[
-                  type.bodySmall,
-                  {
-                    flex: 1,
-                    color: colors.textPrimary,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    borderRadius: radius.button,
-                    paddingHorizontal: spacing.sm,
-                    height: 36,
-                  },
-                ]}
-              />
-              <TouchableOpacity onPress={() => handleComment(item)} style={{ marginLeft: spacing.sm }}>
-                <Text style={[type.bodySmall, { color: colors.primary }]}>Enviar</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
+              {/* Comentários */}
+              {item.comments.map((c) => (
+                <View key={c.id} style={{ flexDirection: "row", marginTop: spacing.sm }}>
+                  <Text style={[type.caption, { color: colors.textPrimary, flex: 1 }]}>
+                    <Text style={{ fontWeight: "700" }}>{c.author.display_name}</Text> {c.content}
+                  </Text>
+                </View>
+              ))}
+
+              <View style={{ flexDirection: "row", marginTop: spacing.sm, alignItems: "center", gap: spacing.sm }}>
+                <TextInput
+                  value={commentDrafts[item.id] ?? ""}
+                  onChangeText={(v) => setCommentDrafts((prev) => ({ ...prev, [item.id]: v }))}
+                  placeholder="Comentar..."
+                  placeholderTextColor={colors.textSecondary}
+                  style={[
+                    type.bodySmall,
+                    {
+                      flex: 1,
+                      color: colors.textPrimary,
+                      backgroundColor: colors.surfaceAlt,
+                      borderRadius: radius.pill,
+                      paddingHorizontal: spacing.md,
+                      height: 38,
+                    },
+                  ]}
+                />
+                <TouchableOpacity onPress={() => handleComment(item)} hitSlop={8}>
+                  <Ionicons name="send" size={18} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+            </Card>
+          );
+        }}
       />
     </View>
+  );
+}
+
+function HeaderIcon({ icon, onPress }: { icon: keyof typeof Ionicons.glyphMap; onPress: () => void }) {
+  const { colors } = useTheme();
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
+      style={{
+        width: 40,
+        height: 40,
+        borderRadius: 14,
+        backgroundColor: colors.surface,
+        borderWidth: 1,
+        borderColor: colors.border,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Ionicons name={icon} size={19} color={colors.textPrimary} />
+    </TouchableOpacity>
   );
 }
