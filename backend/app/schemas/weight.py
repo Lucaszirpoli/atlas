@@ -4,7 +4,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class WeightLogCreate(BaseModel):
-    weight_kg: float = Field(gt=0, le=400)
+    # Faixa humana plausível — evita registros absurdos (ex: 5kg) que
+    # distorceriam o gráfico de evolução. Alinhado ao onboarding.
+    weight_kg: float = Field(ge=25, le=400)
     recorded_at: datetime | None = None
 
 

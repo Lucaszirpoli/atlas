@@ -4,12 +4,24 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.db import get_db
 from app.core.security import get_current_user
+from app.models.exercise import Exercise
 from app.models.routine import Routine, RoutineExercise
 from app.models.user import User
 from app.schemas.routine import RoutineCreate, RoutineRead, RoutineUpdate
 from app.services import routine_service
 
 router = APIRouter(prefix="/routines", tags=["routines"])
+
+
+def _validate_exercises_exist(db: Session, payload_exercises: list) -> None:
+    ids = {item.exercise_id for item in payload_exercises}
+    found = set(db.execute(select(Exercise.id).where(Exercise.id.in_(ids))).scalars())
+    missing = ids - found
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Exercícios não encontrados: {sorted(missing)}",
+        )
 
 
 def _load(db: Session, routine_id: int, user_id: int) -> Routine:
@@ -74,6 +86,7 @@ def create_routine(
             ),
         )
 
+    _validate_exercises_exist(db, payload.exercises)
     routine = Routine(user_id=current_user.id, name=payload.name)
     db.add(routine)
     db.flush()
@@ -98,6 +111,7 @@ def update_routine(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Routine:
+    _validate_exercises_exist(db, payload.exercises)
     routine = _load(db, routine_id, current_user.id)
     routine.name = payload.name
     _replace_exercises(db, routine, payload.exercises)
