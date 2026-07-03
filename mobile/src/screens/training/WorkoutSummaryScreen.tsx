@@ -6,6 +6,7 @@ import { ScrollView, Text, View } from "react-native";
 import type { WorkoutSessionSummary } from "../../api/workoutSessions";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
+import { Confetti } from "../../components/Confetti";
 import { useTheme } from "../../theme/ThemeProvider";
 
 function formatDuration(totalSeconds: number): string {
@@ -21,6 +22,7 @@ export function WorkoutSummaryScreen() {
   const { summary }: { summary: WorkoutSessionSummary } = route.params;
 
   const uniqueExercises = new Set(summary.session.sets.map((s) => s.exercise_id)).size;
+  const hasPr = summary.prs.length > 0;
 
   return (
     <ScrollView
@@ -28,6 +30,7 @@ export function WorkoutSummaryScreen() {
       contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
       showsVerticalScrollIndicator={false}
     >
+      {hasPr ? <Confetti /> : null}
       {/* Celebração */}
       <View style={{ alignItems: "center", marginVertical: spacing.lg }}>
         <View

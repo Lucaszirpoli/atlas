@@ -78,7 +78,8 @@ export function ProfileScreen() {
 
       {/* Menu */}
       <Card padded={false} style={{ marginBottom: spacing.lg }}>
-        <MenuRow icon="moon" label="Sono" onPress={() => navigation.navigate("Sleep")} first />
+        <MenuRow icon="trending-up" label="Evolução" onPress={() => navigation.navigate("Evolution")} first />
+        <MenuRow icon="moon" label="Sono" onPress={() => navigation.navigate("Sleep")} />
         <MenuRow icon="mail" label="E-mail" trailing={user?.email} />
       </Card>
 

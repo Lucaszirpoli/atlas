@@ -176,6 +176,31 @@ export function HomeScreen() {
           hint="Ver diário"
           onPress={() => navigation.navigate("Nutricao")}
         />
+
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate("Evolution")}
+          style={{ marginTop: spacing.xs }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: colors.primaryDark,
+              borderRadius: 20,
+              padding: spacing.lg,
+            }}
+          >
+            <Ionicons name="trending-up" size={26} color={colors.textOnPrimary} />
+            <View style={{ flex: 1, marginLeft: spacing.md }}>
+              <Text style={[type.h2, { color: colors.textOnPrimary }]}>Sua evolução</Text>
+              <Text style={[type.caption, { color: colors.textOnPrimary, opacity: 0.85 }]}>
+                Peso, volume e carga ao longo do tempo
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.textOnPrimary} />
+          </View>
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );

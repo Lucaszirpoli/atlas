@@ -5,6 +5,7 @@ import { ActivityIndicator, View } from "react-native";
 
 import { useAuth } from "../context/AuthContext";
 import { ChatScreen } from "../screens/ai/ChatScreen";
+import { EvolutionScreen } from "../screens/evolution/EvolutionScreen";
 import { OnboardingScreen } from "../screens/onboarding/OnboardingScreen";
 import { SleepScreen } from "../screens/sleep/SleepScreen";
 import { useTheme } from "../theme/ThemeProvider";
@@ -14,14 +15,24 @@ import { MainTabs } from "./MainTabs";
 const Stack = createNativeStackNavigator();
 
 function AppStack() {
+  const { colors } = useTheme();
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+        headerStyle: { backgroundColor: colors.bg },
+        headerShadowVisible: false,
+        headerTintColor: colors.textPrimary,
+        headerTitleStyle: { fontWeight: "700" },
+      }}
+    >
       <Stack.Screen name="Main" component={MainTabs} />
       <Stack.Screen name="Chat" component={ChatScreen} options={{ presentation: "modal" }} />
+      <Stack.Screen name="Sleep" component={SleepScreen} options={{ headerShown: true, title: "Sono" }} />
       <Stack.Screen
-        name="Sleep"
-        component={SleepScreen}
-        options={{ headerShown: true, title: "Sono" }}
+        name="Evolution"
+        component={EvolutionScreen}
+        options={{ headerShown: true, title: "Evolução" }}
       />
     </Stack.Navigator>
   );

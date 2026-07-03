@@ -1,0 +1,244 @@
+import { Ionicons } from "@expo/vector-icons";
+import React, { useEffect, useState } from "react";
+import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+
+import {
+  getExerciseProgression,
+  getExercisesWithHistory,
+  getVolumeEvolution,
+  getWeightEvolution,
+  type ExerciseOption,
+  type ExerciseProgressionPoint,
+  type VolumePoint,
+  type WeightPoint,
+} from "../../api/evolution";
+import { logWeight } from "../../api/weight";
+import { Button } from "../../components/Button";
+import { Card } from "../../components/Card";
+import { HelpDot } from "../../components/HelpDot";
+import { LineChart, type ChartPoint } from "../../components/LineChart";
+import { useTheme } from "../../theme/ThemeProvider";
+
+function movingAverage(points: WeightPoint[], window = 7): ChartPoint[] {
+  return points.map((p, i) => {
+    const slice = points.slice(Math.max(0, i - window + 1), i + 1);
+    const avg = slice.reduce((s, x) => s + x.weight_kg, 0) / slice.length;
+    return { x: new Date(p.date).getTime(), y: avg };
+  });
+}
+
+export function EvolutionScreen() {
+  const { colors, type, spacing } = useTheme();
+
+  const [weight, setWeight] = useState<WeightPoint[]>([]);
+  const [volume, setVolume] = useState<VolumePoint[]>([]);
+  const [exercises, setExercises] = useState<ExerciseOption[]>([]);
+  const [selectedExercise, setSelectedExercise] = useState<ExerciseOption | null>(null);
+  const [progression, setProgression] = useState<ExerciseProgressionPoint[]>([]);
+  const [newWeight, setNewWeight] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  async function loadAll() {
+    const [w, v, ex] = await Promise.all([
+      getWeightEvolution(),
+      getVolumeEvolution(),
+      getExercisesWithHistory(),
+    ]);
+    setWeight(w);
+    setVolume(v);
+    setExercises(ex);
+    if (ex.length > 0 && !selectedExercise) {
+      setSelectedExercise(ex[0]);
+    }
+  }
+
+  useEffect(() => {
+    loadAll();
+  }, []);
+
+  useEffect(() => {
+    if (selectedExercise) {
+      getExerciseProgression(selectedExercise.id).then((r) => setProgression(r.points));
+    }
+  }, [selectedExercise]);
+
+  async function handleSaveWeight() {
+    const value = Number(newWeight.replace(",", "."));
+    if (!value || value < 30 || value > 400) {
+      Alert.alert("Peso inválido", "Informe um valor entre 30 e 400 kg.");
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await logWeight(value);
+      setNewWeight("");
+      await loadAll();
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  const weightSeries: ChartPoint[] = weight.map((p) => ({ x: new Date(p.date).getTime(), y: p.weight_kg }));
+  const weightAvg = movingAverage(weight);
+  const latestWeight = weight.length ? weight[weight.length - 1].weight_kg : null;
+  const weightDelta = weight.length >= 2 ? weight[weight.length - 1].weight_kg - weight[0].weight_kg : 0;
+
+  const volumeSeries: ChartPoint[] = volume.map((p) => ({ x: new Date(p.date).getTime(), y: p.volume_kg }));
+  const progSeries: ChartPoint[] = progression.map((p) => ({ x: new Date(p.date).getTime(), y: p.max_weight_kg }));
+
+  return (
+    <ScrollView
+      style={{ backgroundColor: colors.bg }}
+      contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
+      showsVerticalScrollIndicator={false}
+    >
+      {/* PESO */}
+      <Card accent={colors.primary} style={{ marginBottom: spacing.md }}>
+        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.xs }}>
+          <Ionicons name="scale" size={18} color={colors.primary} />
+          <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8, flex: 1 }]}>Peso</Text>
+          <HelpDot
+            title="Média móvel de 7 dias"
+            text={
+              "O peso oscila muito de um dia pro outro (água, comida, intestino). A linha tracejada é a média " +
+              "dos últimos 7 dias — ela mostra a tendência real, sem o sobe-e-desce que costuma dar ansiedade."
+            }
+          />
+        </View>
+        {latestWeight ? (
+          <View style={{ flexDirection: "row", alignItems: "baseline", marginBottom: spacing.sm }}>
+            <Text style={[type.display, { color: colors.textPrimary, fontSize: 34 }]}>{latestWeight}</Text>
+            <Text style={[type.h2, { color: colors.textSecondary }]}> kg</Text>
+            {weight.length >= 2 ? (
+              <Text
+                style={[
+                  type.bodySmall,
+                  { color: weightDelta <= 0 ? colors.success : colors.warning, marginLeft: spacing.sm, fontWeight: "700" },
+                ]}
+              >
+                {weightDelta > 0 ? "+" : ""}
+                {weightDelta.toFixed(1)}kg no período
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+
+        {weight.length >= 2 ? (
+          <LineChart
+            series={[
+              { data: weightSeries, color: colors.border, showDots: true },
+              { data: weightAvg, color: colors.primary, dashed: true },
+            ]}
+            formatY={(v) => v.toFixed(1)}
+          />
+        ) : (
+          <Text style={[type.bodySmall, { color: colors.textSecondary, marginVertical: spacing.sm }]}>
+            Registre seu peso ao menos 2 vezes para ver o gráfico de tendência.
+          </Text>
+        )}
+
+        <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm, alignItems: "center" }}>
+          <TextInput
+            value={newWeight}
+            onChangeText={(v) => setNewWeight(v.replace(/[^0-9.,]/g, ""))}
+            keyboardType="decimal-pad"
+            placeholder="Novo peso (kg)"
+            placeholderTextColor={colors.textSecondary}
+            style={[
+              type.body,
+              {
+                flex: 1,
+                color: colors.textPrimary,
+                backgroundColor: colors.surfaceAlt,
+                borderRadius: 14,
+                height: 48,
+                paddingHorizontal: spacing.md,
+                textAlign: "center",
+              },
+            ]}
+          />
+          <Button title="Registrar" onPress={handleSaveWeight} loading={isSaving} />
+        </View>
+      </Card>
+
+      {/* VOLUME DE TREINO */}
+      <Card accent={colors.secondary} style={{ marginBottom: spacing.md }}>
+        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
+          <Ionicons name="stats-chart" size={18} color={colors.secondary} />
+          <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8, flex: 1 }]}>Volume de treino</Text>
+          <HelpDot
+            title="Volume total"
+            text={
+              "Volume = peso × repetições, somado de todas as séries de um treino. É um bom indicador de quanto " +
+              "trabalho você fez. Subir o volume ao longo das semanas costuma andar junto com ganho de força e músculo."
+            }
+          />
+        </View>
+        {volume.length >= 2 ? (
+          <LineChart
+            series={[{ data: volumeSeries, color: colors.secondary, showDots: true }]}
+            formatY={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}t` : `${Math.round(v)}`)}
+          />
+        ) : (
+          <Text style={[type.bodySmall, { color: colors.textSecondary, paddingVertical: spacing.sm }]}>
+            Conclua ao menos 2 treinos para ver a evolução do volume.
+          </Text>
+        )}
+      </Card>
+
+      {/* PROGRESSÃO POR EXERCÍCIO */}
+      <Card>
+        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
+          <Ionicons name="trending-up" size={18} color={colors.moduleTraining} />
+          <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8 }]}>Carga por exercício</Text>
+        </View>
+        {exercises.length === 0 ? (
+          <Text style={[type.bodySmall, { color: colors.textSecondary, paddingVertical: spacing.sm }]}>
+            Registre treinos para acompanhar a evolução de carga de cada exercício.
+          </Text>
+        ) : (
+          <>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.sm }}>
+              <View style={{ flexDirection: "row", gap: spacing.xs }}>
+                {exercises.map((ex) => {
+                  const active = selectedExercise?.id === ex.id;
+                  return (
+                    <TouchableOpacity
+                      key={ex.id}
+                      onPress={() => setSelectedExercise(ex)}
+                      style={{
+                        borderRadius: 999,
+                        paddingVertical: 8,
+                        paddingHorizontal: 14,
+                        backgroundColor: active ? colors.moduleTraining : colors.surfaceAlt,
+                      }}
+                    >
+                      <Text
+                        style={[
+                          type.caption,
+                          { color: active ? colors.textOnPrimary : colors.textPrimary, fontWeight: active ? "700" : "500" },
+                        ]}
+                      >
+                        {ex.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+            {progSeries.length >= 2 ? (
+              <LineChart
+                series={[{ data: progSeries, color: colors.moduleTraining, showDots: true }]}
+                formatY={(v) => `${Math.round(v)}kg`}
+              />
+            ) : (
+              <Text style={[type.bodySmall, { color: colors.textSecondary, paddingVertical: spacing.sm }]}>
+                Faça esse exercício em ao menos 2 treinos para ver o gráfico.
+              </Text>
+            )}
+          </>
+        )}
+      </Card>
+    </ScrollView>
+  );
+}

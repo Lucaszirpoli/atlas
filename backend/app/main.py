@@ -7,6 +7,7 @@ from app.routers import (
     auth,
     blocks,
     challenges,
+    evolution,
     exercises,
     feed,
     foods,
@@ -60,6 +61,7 @@ app.include_router(feed.router)
 app.include_router(challenges.router)
 app.include_router(sleep.router)
 app.include_router(workout_insights.router)
+app.include_router(evolution.router)
 
 
 @app.get("/health")
