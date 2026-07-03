@@ -12,6 +12,7 @@ import {
 } from "../../api/workoutSessions";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
+import { HelpDot } from "../../components/HelpDot";
 import { OptionButton } from "../../components/OptionButton";
 import { RestTimerOverlay } from "../../components/RestTimerOverlay";
 import { useTheme } from "../../theme/ThemeProvider";
@@ -243,9 +244,18 @@ export function WorkoutExecutionScreen() {
 
               {row.showMore ? (
                 <View style={{ marginTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md }}>
-                  <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.xs }]}>
-                    Tipo de série
-                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.xs }}>
+                    <Text style={[type.caption, { color: colors.textSecondary }]}>Tipo de série</Text>
+                    <HelpDot
+                      title="Tipo de série"
+                      text={
+                        "Deixe em 'Válida' se for uma série normal. Os outros tipos são técnicas avançadas: " +
+                        "Drop-set (reduzir o peso e continuar sem descanso), Rest-pause (pausas curtas dentro da série), " +
+                        "Até a falha (ir até não conseguir mais uma repetição), Aquecimento (série leve de preparação), etc. " +
+                        "Não é obrigatório marcar nada."
+                      }
+                    />
+                  </View>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                     <View style={{ flexDirection: "row", gap: spacing.xs }}>
                       {SET_TYPE_ORDER.map((st) => (
@@ -259,6 +269,17 @@ export function WorkoutExecutionScreen() {
                       ))}
                     </View>
                   </ScrollView>
+                  <View style={{ flexDirection: "row", alignItems: "center", marginTop: spacing.sm }}>
+                    <Text style={[type.caption, { color: colors.textSecondary }]}>Intensidade (opcional)</Text>
+                    <HelpDot
+                      title="RPE e RIR"
+                      text={
+                        "RPE = quão pesada a série foi, de 0 a 10 (10 = esforço máximo). " +
+                        "RIR = quantas repetições você ainda conseguiria fazer antes de falhar (0 = falhou). " +
+                        "São formas de medir o esforço — preencha só se quiser acompanhar isso."
+                      }
+                    />
+                  </View>
                   <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.xs }}>
                     <SetInput label="RPE" value={row.rpe} onChangeText={(v) => updateSet(idx, { rpe: v })} />
                     <SetInput label="RIR" value={row.rir} onChangeText={(v) => updateSet(idx, { rir: v })} />

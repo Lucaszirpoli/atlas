@@ -3,6 +3,7 @@ import { Alert, Pressable, ScrollView, Text, TextInput, View } from "react-nativ
 
 import { submitOnboarding, type OnboardingPayload } from "../../api/onboarding";
 import { Button } from "../../components/Button";
+import { HelpDot } from "../../components/HelpDot";
 import { OptionButton } from "../../components/OptionButton";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
@@ -176,7 +177,16 @@ export function OnboardingScreen() {
         );
       case 4:
         return (
-          <Step title="Como é seu nível de atividade fora do treino?">
+          <Step
+            title="Como é seu nível de atividade fora do treino?"
+            help={{
+              title: "Nível de atividade",
+              text:
+                "Considere seu dia SEM contar o treino. Sedentário: trabalho sentado e pouco movimento. " +
+                "Leve: caminha um pouco no dia a dia. Moderado: fica bastante em pé ou se move com frequência. " +
+                "Ativo/Muito ativo: trabalho físico ou muito movimento diário.",
+            }}
+          >
             {[
               ["sedentary", "Sedentário"],
               ["light", "Leve"],
@@ -195,7 +205,16 @@ export function OnboardingScreen() {
         );
       case 5:
         return (
-          <Step title="Qual seu objetivo principal?">
+          <Step
+            title="Qual seu objetivo principal?"
+            help={{
+              title: "Qual escolher?",
+              text:
+                "Emagrecimento: perder gordura. Hipertrofia: ganhar músculo. Manutenção: manter o corpo atual. " +
+                "Performance: melhorar força e rendimento. Recomposição: perder gordura e ganhar músculo ao mesmo " +
+                "tempo (mais lento, funciona melhor pra iniciantes ou quem voltou de pausa).",
+            }}
+          >
             {[
               ["emagrecimento", "Emagrecimento"],
               ["hipertrofia", "Hipertrofia"],
@@ -401,16 +420,21 @@ export function OnboardingScreen() {
 function Step({
   title,
   subtitle,
+  help,
   children,
 }: {
   title: string;
   subtitle?: string;
+  help?: { title: string; text: string };
   children: React.ReactNode;
 }) {
   const { colors, type, spacing } = useTheme();
   return (
     <View>
-      <Text style={[type.h1, { color: colors.textPrimary, marginBottom: spacing.xs }]}>{title}</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.xs }}>
+        <Text style={[type.h1, { color: colors.textPrimary, flex: 1 }]}>{title}</Text>
+        {help ? <HelpDot title={help.title} text={help.text} /> : null}
+      </View>
       {subtitle ? (
         <Text style={[type.bodySmall, { color: colors.textSecondary, marginBottom: spacing.md }]}>
           {subtitle}

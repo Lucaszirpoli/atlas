@@ -31,6 +31,21 @@ function greeting(): string {
   return "Boa noite";
 }
 
+const MOTIVATION = [
+  "Constância vence intensidade 💪",
+  "Um treino de cada vez 🔥",
+  "Seu único adversário é o de ontem 🚀",
+  "Pequenos passos, grandes resultados 🌱",
+  "Hoje conta. Sempre conta ✨",
+  "Disciplina é liberdade 🧠",
+  "Corpo forte, mente forte ⚡",
+];
+
+function motivationOfTheDay(): string {
+  const dayIndex = Math.floor(Date.now() / 86400000) % MOTIVATION.length;
+  return MOTIVATION[dayIndex];
+}
+
 export function HomeScreen() {
   const { colors, type, spacing } = useTheme();
   const navigation = useNavigation<any>();
@@ -75,31 +90,38 @@ export function HomeScreen() {
         contentContainerStyle={{ padding: spacing.lg, paddingTop: spacing.xl + spacing.md, paddingBottom: spacing.xxl }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Cabeçalho */}
-        <Text style={[type.caption, { color: colors.textSecondary, textTransform: "capitalize" }]}>
-          {dateLabel}
-        </Text>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.lg }}>
-          <Text style={[type.h1, { color: colors.textPrimary, fontSize: 28 }]}>
+        {/* Hero de boas-vindas */}
+        <View
+          style={{
+            backgroundColor: colors.primary,
+            borderRadius: 24,
+            padding: spacing.lg,
+            marginBottom: spacing.md,
+          }}
+        >
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <Text style={[type.caption, { color: colors.textOnPrimary, opacity: 0.85, textTransform: "capitalize" }]}>
+              {dateLabel}
+            </Text>
+            <View
+              style={{
+                paddingVertical: 4,
+                paddingHorizontal: 12,
+                borderRadius: 999,
+                backgroundColor: user?.plan === "pro" ? colors.secondary : "rgba(255,255,255,0.18)",
+              }}
+            >
+              <Text style={[type.caption, { color: colors.textOnPrimary, fontWeight: "800" }]}>
+                {user?.plan === "pro" ? "★ PRO" : "FREE"}
+              </Text>
+            </View>
+          </View>
+          <Text style={[type.h1, { color: colors.textOnPrimary, fontSize: 28, marginTop: 4 }]}>
             {greeting()}, {firstName} 👋
           </Text>
-          <View
-            style={{
-              paddingVertical: 4,
-              paddingHorizontal: 12,
-              borderRadius: 999,
-              backgroundColor: user?.plan === "pro" ? colors.secondarySoft : colors.surfaceAlt,
-            }}
-          >
-            <Text
-              style={[
-                type.caption,
-                { color: user?.plan === "pro" ? colors.secondary : colors.textSecondary, fontWeight: "700" },
-              ]}
-            >
-              {user?.plan === "pro" ? "PRO" : "FREE"}
-            </Text>
-          </View>
+          <Text style={[type.bodySmall, { color: colors.textOnPrimary, opacity: 0.9, marginTop: 2 }]}>
+            {motivationOfTheDay()}
+          </Text>
         </View>
 
         {/* Anéis: calorias + água */}

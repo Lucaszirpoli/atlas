@@ -17,7 +17,7 @@ import { getChatHistory, sendChatMessage, type ChatMessage } from "../../api/ai"
 import { ChatActionCard } from "../../components/ChatActionCard";
 import { useTheme } from "../../theme/ThemeProvider";
 
-type DisplayMessage = ChatMessage & { resolvedAction?: "confirmed" | "cancelled" };
+type DisplayMessage = ChatMessage & { resolvedAction?: "confirmed" | "cancelled"; isError?: boolean };
 
 const SUGGESTIONS = [
   "Comi 2 ovos e uma banana no café",
@@ -65,7 +65,21 @@ export function ChatScreen() {
         },
       ]);
     } catch (err: any) {
-      Alert.alert("Não foi possível enviar", err?.response?.data?.detail ?? "Tente novamente.");
+      // Alert não aparece na web — mostramos o erro como bolha no próprio chat.
+      const detail =
+        err?.response?.data?.detail ??
+        "Não consegui falar com o servidor. Verifique sua conexão e tente de novo.";
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now() + 2,
+          role: "assistant",
+          content: detail,
+          proposed_action: null,
+          created_at: new Date().toISOString(),
+          isError: true,
+        },
+      ]);
     } finally {
       setIsSending(false);
     }
@@ -166,9 +180,13 @@ export function ChatScreen() {
             >
               <View
                 style={{
-                  backgroundColor: item.role === "user" ? colors.primary : colors.surface,
+                  backgroundColor: item.isError
+                    ? colors.danger + "14"
+                    : item.role === "user"
+                      ? colors.primary
+                      : colors.surface,
                   borderWidth: item.role === "assistant" ? 1 : 0,
-                  borderColor: colors.border,
+                  borderColor: item.isError ? colors.danger : colors.border,
                   borderRadius: 18,
                   borderBottomRightRadius: item.role === "user" ? 6 : 18,
                   borderBottomLeftRadius: item.role === "assistant" ? 6 : 18,
@@ -176,6 +194,14 @@ export function ChatScreen() {
                   paddingHorizontal: spacing.md,
                 }}
               >
+                {item.isError ? (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 2 }}>
+                    <Ionicons name="warning" size={13} color={colors.danger} />
+                    <Text style={[type.caption, { color: colors.danger, fontWeight: "700" }]}>
+                      Não deu certo
+                    </Text>
+                  </View>
+                ) : null}
                 <Text style={[type.body, { color: item.role === "user" ? colors.textOnPrimary : colors.textPrimary }]}>
                   {item.content}
                 </Text>

@@ -8,6 +8,7 @@ import { listMealCategories, listMealsForDay, type MealCategory, type MealLog } 
 import { getTodayWaterSummary, logWater, type WaterSummary } from "../../api/water";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
+import { HelpDot } from "../../components/HelpDot";
 import { ProgressRing } from "../../components/ProgressRing";
 import { useTheme } from "../../theme/ThemeProvider";
 
@@ -140,6 +141,13 @@ export function DiaryScreen() {
                 </Text>
               </Text>
             </View>
+            <HelpDot
+              title="Meta de água"
+              text={
+                "Sua meta é calculada como 35ml por kg do seu peso atual — uma referência comum de hidratação. " +
+                "Se você atualizar seu peso, a meta acompanha. Os botões +200/+300/+500 registram na hora."
+              }
+            />
           </View>
           <View style={{ flexDirection: "row", gap: spacing.xs }}>
             {QUICK_WATER.map((amount) => (

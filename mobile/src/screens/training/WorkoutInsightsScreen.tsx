@@ -4,6 +4,7 @@ import { ScrollView, Text, View } from "react-native";
 
 import { getWorkoutInsights, type DeloadSuggestion, type PlateauEntry } from "../../api/workoutInsights";
 import { Card } from "../../components/Card";
+import { HelpDot } from "../../components/HelpDot";
 import { useTheme } from "../../theme/ThemeProvider";
 
 export function WorkoutInsightsScreen() {
@@ -36,6 +37,14 @@ export function WorkoutInsightsScreen() {
               color={deload.suggested ? colors.warning : colors.success}
             />
             <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8 }]}>Deload</Text>
+            <HelpDot
+              title="O que é deload?"
+              text={
+                "Uma semana mais leve de propósito (menos peso ou menos séries) depois de várias semanas intensas. " +
+                "Parece contraintuitivo, mas é quando o corpo se recupera de verdade e volta a progredir. " +
+                "Recomendado a cada 4-8 semanas de treino pesado."
+              }
+            />
             <View style={{ flex: 1 }} />
             <Text style={[type.caption, { color: colors.textSecondary }]}>
               {deload.consecutive_weeks_trained} semanas seguidas
@@ -45,9 +54,18 @@ export function WorkoutInsightsScreen() {
         </Card>
       ) : null}
 
-      <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.sm, letterSpacing: 1, textTransform: "uppercase" }]}>
-        Exercícios em platô
-      </Text>
+      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
+        <Text style={[type.caption, { color: colors.textSecondary, letterSpacing: 1, textTransform: "uppercase" }]}>
+          Exercícios em platô
+        </Text>
+        <HelpDot
+          title="O que é platô?"
+          text={
+            "É quando um exercício para de evoluir: você repete o mesmo peso por várias sessões seguidas. " +
+            "É normal e tem solução — trocar o exercício, mudar a faixa de repetições ou fazer um deload."
+          }
+        />
+      </View>
       {plateaus.length === 0 ? (
         <Card>
           <View style={{ flexDirection: "row", alignItems: "center" }}>

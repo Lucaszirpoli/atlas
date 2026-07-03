@@ -1,41 +1,265 @@
 external_id,name,kcal_per_100g,protein_g_per_100g,carbs_g_per_100g,fat_g_per_100g,fiber_g_per_100g,sodium_mg_per_100g,sugar_g_per_100g,default_portion_g,default_portion_label
 TACO-063,Arroz branco cozido,128,2.5,28.1,0.2,1.6,1,0.1,100,1 colher de servir
+TACO-064,Arroz integral cozido,124,2.6,25.8,1,2.7,1,0.4,100,1 colher de servir
 TACO-072,Feijão carioca cozido,76,4.8,13.6,0.5,8.5,2,0.3,100,1 concha
 TACO-235,Feijão preto cozido,77,4.5,14,0.5,8.4,2,0.3,100,1 concha
+TACO-236,Lentilha cozida,93,6.3,16.3,0.5,7.9,2,0.5,100,1 concha
+TACO-237,Grão-de-bico cozido,164,8.9,27.4,2.6,7.6,7,0.6,100,1 concha
+TACO-238,Ervilha cozida,84,5.4,15.1,0.4,5.5,3,2.3,80,3 colheres de sopa
+TACO-239,Soja cozida,173,16.6,9.9,9,6,1,1.9,80,3 colheres de sopa
 TACO-100,Pão francês,300,8,58.6,3.1,2.3,648,2.2,50,1 unidade
+TACO-101,Pão de forma tradicional,253,9.4,49,2.9,2.4,489,4.7,50,2 fatias
+TACO-102,Pão integral,246,10.7,44.5,2.9,6.9,477,4.3,50,2 fatias
+TACO-103,Pão de batata,289,7.4,52,5.6,2,420,5,60,1 unidade
 TACO-104,Tapioca (goma hidratada),101,0.1,25,0,0.9,3,0,60,1 unidade média
+TACO-105,Cuscuz de milho cozido,113,2.2,25.3,0.7,2.1,32,0.5,100,1 fatia
+TACO-106,Torrada integral,373,12.5,63,7.5,7.2,510,4,20,2 unidades
+TACO-107,Biscoito cream cracker,432,10,68.7,14.4,2.5,854,2.5,25,4 unidades
+TACO-108,Biscoito de polvilho,437,1.3,72,15.8,0.5,556,1,25,1 punhado
+TACO-109,Croissant,406,8.2,45.8,21,2.3,470,7,60,1 unidade
 TACO-137,Ovo de galinha cozido,146,13.3,0.6,9.5,0,140,0.4,50,1 unidade
 TACO-138,Ovo de galinha frito,258,20.2,0.3,20.9,0,207,0.3,50,1 unidade
+TACO-139,Ovo mexido com pouco óleo,180,13.5,0.9,13.5,0,190,0.5,100,2 ovos
+TACO-140,Aveia em flocos,394,13.9,66.6,8.5,9.1,5,0,30,2 colheres de sopa
+TACO-141,Granola tradicional,421,10,66,12,7,20,20,40,4 colheres de sopa
+TACO-142,Farinha de mandioca,361,1.2,87.9,0.3,6.4,3,0.5,20,1 colher de sopa
+TACO-143,Farinha de trigo,360,9.8,75.1,1.4,2.3,1,0.3,20,1 colher de sopa
+TACO-144,Fubá de milho,353,7.2,78.8,1.9,4.7,1,0.6,20,1 colher de sopa
+TACO-145,Quinoa cozida,120,4.4,21.3,1.9,2.8,7,0.9,100,4 colheres de sopa
+TACO-146,Milho verde cozido,98,3.2,17.1,2.4,3.9,1,3.2,80,1 espiga pequena
+TACO-147,Pipoca estourada sem manteiga,387,12.9,77.9,4.5,14.5,4,0.9,25,1 tigela pequena
 TACO-042,Frango peito sem pele grelhado,159,32,0,3.6,0,63,0,100,1 filé médio
+TACO-043,Frango peito desfiado cozido,163,31.5,0,3.2,0,60,0,80,3 colheres de sopa
 TACO-050,Frango coxa sem pele assada,181,26.2,0,7.9,0,90,0,100,1 unidade
+TACO-051,Frango sobrecoxa assada,232,25.4,0,14.2,0,95,0,100,1 unidade
+TACO-052,Frango asa frita,298,26.5,0,20.9,0,110,0,90,3 unidades
+TACO-053,Frango empanado frito (à milanesa),260,22,12,13.5,0.5,320,0.8,120,1 filé
 TACO-030,Carne bovina patinho grelhado,219,35.9,0,7.3,0,52,0,100,1 bife médio
+TACO-031,Carne bovina alcatra grelhada,241,31.9,0,11.6,0,47,0,100,1 bife médio
+TACO-032,Carne bovina contrafilé grelhado,278,32.4,0,15.5,0,50,0,100,1 bife médio
+TACO-033,Carne bovina picanha grelhada,289,26,0,19.9,0,48,0,100,1 fatia média
+TACO-034,Carne bovina moída refogada,212,26.7,0,10.9,0,58,0,80,3 colheres de sopa
+TACO-035,Carne bovina costela assada,373,28.8,0,28.2,0,55,0,100,1 pedaço
+TACO-036,Carne bovina fígado grelhado,225,29.9,4.5,9,0,80,0,100,1 bife
+TACO-037,Carne bovina cupim assado,330,27,0,24,0,52,0,100,1 fatia
 TACO-013,Carne bovina acém cozido,212,26.7,0,10.9,0,58,0,100,1 pedaço
+TACO-014,Carne bovina músculo cozido,194,31.2,0,7.1,0,60,0,100,1 pedaço
+TACO-015,Carne de porco lombo assado,210,32.1,0,8.9,0,59,0,100,1 fatia
+TACO-016,Carne de porco pernil assado,262,29.9,0,15.6,0,62,0,100,1 fatia
+TACO-017,Costela de porco assada,397,26.5,0,32.3,0,65,0,100,1 pedaço
+TACO-018,Bisteca de porco grelhada,280,28,0,18.5,0,70,0,100,1 unidade
+TACO-019,Carne de cordeiro assada,258,26,0,17,0,66,0,100,1 fatia
 TACO-274,Tilápia grelhada,128,26.2,0,2.2,0,52,0,100,1 filé
+TACO-275,Salmão grelhado,243,26.1,0,14.5,0,59,0,100,1 filé
+TACO-276,Atum em lata em água,116,25.7,0,1,0,340,0,60,meia lata
+TACO-277,Sardinha em lata em óleo,285,15.9,0,24,0,420,0,60,2 unidades
+TACO-278,Merluza assada,122,23.4,0,2.5,0,90,0,100,1 filé
+TACO-279,Bacalhau cozido dessalgado,136,29,0,1.4,0,320,0,100,1 posta
+TACO-280,Camarão cozido,90,19,0,1,0,270,0,80,10 unidades
+TACO-281,Pescada frita,223,26.7,2.4,11.2,0,110,0,100,1 filé
 TACO-020,Batata inglesa cozida,52,1.2,11.9,0,1.3,2,0.8,100,1 unidade média
-TACO-090,Mandioca cozida,125,0.6,30.1,0.3,1.6,2,1.6,100,1 pedaço
 TACO-021,Batata doce cozida,77,0.6,18.4,0.1,2.2,10,5.4,100,1 unidade média
+TACO-022,Batata frita palito,267,4.1,35.6,12.6,3.2,220,0.3,100,1 porção pequena
+TACO-023,Purê de batata,88,1.8,13.9,2.9,1.1,180,1.2,100,2 colheres de servir
+TACO-090,Mandioca cozida,125,0.6,30.1,0.3,1.6,2,1.6,100,1 pedaço
+TACO-091,Mandioca frita,300,1.4,50.3,9.9,1.9,150,1.8,100,1 porção pequena
+TACO-092,Inhame cozido,97,2.1,23.2,0.2,1.7,4,0.5,100,1 pedaço
+TACO-093,Abóbora cabotiá cozida,48,1.4,10.8,0.7,2.5,1,4,100,3 colheres de sopa
+TACO-094,Mandioquinha cozida,80,0.9,18.9,0.2,1.8,3,1,100,1 unidade
 TACO-201,Alface crespa crua,11,1.3,1.7,0.2,1.7,5,0,50,4 folhas
 TACO-190,Tomate cru,15,1.1,3.1,0.2,1.2,4,2.6,100,1 unidade média
 TACO-180,Brócolis cozido,25,2.1,4.4,0.5,3.4,8,1.2,100,1 xícara
 TACO-160,Cenoura crua,34,1.3,7.7,0.2,3.2,35,4.7,100,1 unidade média
+TACO-161,Cenoura cozida,30,0.8,6.7,0.2,2.6,40,3.5,80,3 colheres de sopa
+TACO-162,Beterraba cozida,32,1.3,7.2,0.1,1.9,54,6.7,80,3 fatias
+TACO-163,Couve refogada,90,3.1,8.7,5.4,5.7,120,1.5,60,2 colheres de sopa
+TACO-164,Espinafre refogado,67,3.4,4.6,4.5,2.5,110,0.4,60,2 colheres de sopa
+TACO-165,Repolho cru,17,0.9,3.9,0.1,1.9,7,2.4,60,1 xícara
+TACO-166,Pepino cru,10,0.9,2,0,1.1,2,1.4,60,meia unidade
+TACO-167,Abobrinha refogada,26,1.1,4.2,0.8,1.4,60,2,80,3 colheres de sopa
+TACO-168,Berinjela grelhada,27,1.2,6.2,0.2,2.9,3,2.5,80,4 fatias
+TACO-169,Chuchu cozido,19,0.4,4.8,0,1,2,2.1,80,3 colheres de sopa
+TACO-170,Quiabo refogado,50,2.1,6.4,2.7,4.6,70,1.5,80,3 colheres de sopa
+TACO-171,Vagem cozida,25,1.5,5.3,0.2,2.4,2,1.4,80,3 colheres de sopa
+TACO-172,Pimentão cru,21,1.1,4.9,0.2,1.7,2,2.4,40,meia unidade
+TACO-173,Cebola crua,39,1.7,8.9,0.1,2.2,1,4.7,30,3 colheres de sopa
+TACO-174,Couve-flor cozida,19,1.2,3.9,0.2,2.1,10,1.2,80,3 buquês
+TACO-175,Salada verde mista,15,1.2,2.5,0.2,1.8,8,1,80,1 prato de sobremesa
 TACO-001,Açaí polpa congelada (sem xarope),58,0.8,6.2,3.9,2.6,4,0,100,1 tigela pequena
+TACO-002,Açaí na tigela com xarope de guaraná,110,1,21,3.5,2,10,15,200,1 tigela média
 TACO-260,Banana prata,98,1.3,26,0.1,2,0,17.6,100,1 unidade média
 TACO-261,Banana nanica,92,1.4,23.8,0.1,1.9,0,15.7,100,1 unidade média
 TACO-250,Maçã com casca,56,0.3,15.2,0,2,1,12,130,1 unidade média
 TACO-251,Mamão papaya,40,0.5,10.4,0.1,1,3,7.8,150,1 fatia média
 TACO-252,Laranja pera,37,1,8.9,0.1,1,0,7.4,150,1 unidade média
+TACO-253,Manga palmer,64,0.4,16.7,0.2,1.6,1,14.3,100,1 fatia grande
+TACO-254,Abacaxi,48,0.9,12.3,0.1,1,0,9.9,100,1 fatia média
+TACO-255,Melancia,33,0.9,8.1,0,0.1,0,6.2,150,1 fatia média
+TACO-256,Melão,29,0.7,7.5,0,0.3,11,6.5,150,1 fatia média
+TACO-257,Uva itália,53,0.7,13.6,0.2,0.9,2,12.2,100,1 cacho pequeno
+TACO-258,Morango,30,0.9,6.8,0.3,1.7,1,4.7,100,8 unidades
+TACO-259,Abacate,96,1.2,6,8.4,6.3,2,0.3,100,meia unidade pequena
+TACO-262,Kiwi,51,1.3,11.5,0.6,2.7,2,8.9,80,1 unidade
+TACO-263,Pera,53,0.6,14,0.1,3,0,9.8,130,1 unidade média
+TACO-264,Goiaba vermelha,54,1.1,13,0.4,6.2,2,8.9,100,1 unidade média
+TACO-265,Caqui,71,0.4,19.3,0.1,6.5,1,14,110,1 unidade
+TACO-266,Tangerina ponkan,38,0.7,9.6,0.1,0.9,1,7.7,130,1 unidade
+TACO-267,Limão (suco),22,0.9,7.3,0.1,0.4,1,1.4,30,1 unidade
+TACO-268,Coco fresco,406,3.7,10.4,42,5.4,15,4,30,1 pedaço pequeno
+TACO-269,Maracujá polpa,68,2,12.3,2.1,1.1,4,8,50,1 unidade
 TACO-500,Whey protein concentrado (média mercado BR),380,80,8,6,1,150,4,30,1 scoop
+TACO-504,Whey protein isolado (média mercado BR),370,90,2,1,0,180,1,30,1 scoop
+TACO-505,Creatina monohidratada,0,0,0,0,0,0,0,5,1 dosador
+TACO-506,Albumina em pó,370,78,6,0.5,0,480,4,30,2 colheres de sopa
+TACO-507,Barra de proteína (média),380,30,38,12,3,200,22,45,1 unidade
+TACO-508,Pasta de amendoim integral,589,25,18,50,8,10,6,20,1 colher de sopa
 TACO-501,Leite integral,61,3.2,4.5,3.3,0,40,4.5,200,1 copo
 TACO-502,Leite desnatado,35,3.4,4.9,0.2,0,42,4.9,200,1 copo
 TACO-503,Iogurte natural integral,61,3.9,4.9,3,0,50,4.9,170,1 pote
+TACO-509,Iogurte natural desnatado,42,4.1,5.8,0.2,0,55,5.8,170,1 pote
+TACO-510,Iogurte grego tradicional,110,4.5,13,4.5,0,60,12,100,1 pote
+TACO-511,Requeijão cremoso,257,9.6,3,23.4,0,450,3,30,1 colher de sopa
+TACO-512,Creme de leite,221,1.5,4.5,22,0,45,4.5,30,2 colheres de sopa
+TACO-513,Leite condensado,313,7.7,57,6.7,0,101,55,20,1 colher de sopa
+TACO-514,Leite em pó integral,497,25.4,39.2,26.9,0,371,38,25,2 colheres de sopa
+TACO-515,Bebida láctea de morango,70,2.1,11.5,1.8,0,50,10.5,200,1 copo
 TACO-401,Queijo minas frescal,264,17.4,3.2,20.2,0,346,3.2,30,1 fatia
 TACO-402,Queijo muçarela,330,22.6,3.6,25.2,0,646,1.2,30,1 fatia
-TACO-140,Aveia em flocos,394,13.9,66.6,8.5,9.1,5,0,30,2 colheres de sopa
-TACO-141,Granola tradicional,421,10,66,12,7,20,20,40,4 colheres de sopa
+TACO-403,Queijo prato,360,22.7,1.9,29.1,0,580,1.5,30,1 fatia
+TACO-404,Queijo parmesão ralado,453,35.6,1.7,33.5,0,1844,0.8,10,1 colher de sopa
+TACO-405,Queijo cottage,98,11.1,3.4,4.3,0,405,3,50,2 colheres de sopa
+TACO-406,Ricota fresca,140,12.6,3.8,8.1,0,283,0.3,50,1 fatia grossa
+TACO-407,Queijo coalho,330,24,2.5,25,0,690,1,50,1 espeto
+TACO-408,Cream cheese tradicional,290,5.5,4.5,28,0,320,4,30,1 colher de sopa
+TACO-420,Presunto cozido,129,14.4,1.5,7,0,1100,1.2,30,2 fatias
+TACO-421,Peito de peru defumado,96,17,1.5,2.3,0,1000,1.3,30,2 fatias
+TACO-422,Mortadela,269,11.9,3.5,23,0,1300,1,30,2 fatias
+TACO-423,Salame,398,25.8,2.3,32,0,1600,0.5,20,4 fatias finas
+TACO-424,Linguiça toscana grelhada,296,16.4,0,25.5,0,1050,0,80,1 gomo
+TACO-425,Linguiça calabresa,320,17,2,27,0,1200,1,50,meia unidade
+TACO-426,Salsicha,257,12.2,3.1,21.8,0,1120,1.5,50,1 unidade
+TACO-427,Bacon frito,541,32,1.4,44,0,1770,1,20,2 fatias
 TACO-600,Azeite de oliva extra virgem,884,0,0,100,0,2,0,10,1 colher de sopa
 TACO-601,Óleo de soja,884,0,0,100,0,0,0,10,1 colher de sopa
+TACO-602,Manteiga com sal,726,0.4,0.1,82.4,0,579,0.1,10,1 colher de chá
+TACO-603,Margarina com sal,596,0,0,67,0,800,0,10,1 colher de chá
+TACO-604,Óleo de coco,890,0,0,100,0,0,0,10,1 colher de sopa
+TACO-605,Maionese tradicional,680,1,2.5,74,0,630,1.8,15,1 colher de sopa
+TACO-606,Ketchup,105,1.5,25,0.1,0.6,1050,21,15,1 colher de sopa
+TACO-607,Mostarda,70,4.5,6,3.5,2,1100,2.5,10,1 colher de chá
+TACO-608,Molho de tomate pronto,35,1.4,6.5,0.5,1.5,410,4.5,60,3 colheres de sopa
+TACO-620,Castanha de caju torrada,570,18.5,29.1,46.3,3.7,16,6,30,1 punhado
+TACO-621,Castanha-do-pará,643,14.5,15.1,63.5,7.9,2,2.3,20,3 unidades
+TACO-622,Amendoim torrado,606,22.5,20.3,54,8,5,4.2,30,1 punhado
+TACO-623,Amêndoa torrada,640,18.6,29.5,55.1,11.6,3,4.8,30,1 punhado
+TACO-624,Nozes,654,15.2,13.7,65.2,6.7,2,2.6,20,4 unidades
+TACO-625,Mix de castanhas,600,17,22,52,8,10,4,30,1 punhado
+TACO-626,Chia em grãos,486,16.5,42.1,30.7,34.4,16,0,15,1 colher de sopa
+TACO-627,Linhaça em grãos,495,14.1,43.3,32.3,33.5,9,1.5,15,1 colher de sopa
+TACO-628,Uva passa,299,3.1,79.2,0.5,3.7,11,59.2,20,1 colher de sopa
+TACO-629,Damasco seco,241,3.4,62.6,0.5,7.3,10,53.4,30,4 unidades
 TACO-700,Feijoada (porção pronta tradicional),180,10.5,12,10.2,4.5,480,1.5,200,1 concha média
 TACO-701,Pão de queijo,353,8.5,31.7,21.5,0.7,530,2,30,1 unidade média
 TACO-702,Farofa pronta,411,3.5,64,15.5,3,900,1,30,1 colher de sopa
+TACO-703,Strogonoff de frango,150,12,6,8.5,0.3,380,2.5,150,4 colheres de sopa
+TACO-704,Strogonoff de carne,165,11.5,6,10.5,0.3,390,2.5,150,4 colheres de sopa
+TACO-705,Lasanha à bolonhesa,164,8.9,13.5,8.3,1,420,3,200,1 pedaço médio
+TACO-706,Macarrão cozido com molho de tomate,120,3.8,23,1.5,1.5,220,2.5,200,1 prato raso
+TACO-707,Macarrão à carbonara,200,8,22,9,1,450,1.5,200,1 prato raso
+TACO-708,Escondidinho de carne seca,155,8.5,14,7.5,1.2,430,1,200,1 porção média
+TACO-709,Moqueca de peixe,120,12,3.5,6.8,0.5,350,1.5,200,1 porção média
+TACO-710,Baião de dois,140,7,18,4.5,3,380,0.5,200,1 prato raso
+TACO-711,Arroz carreteiro,160,9,17,6.5,1,420,0.5,200,1 prato raso
+TACO-712,Panqueca de carne com molho,150,8,14,7,0.8,400,2,160,2 unidades
+TACO-713,Frango xadrez,110,10,7,4.5,1,480,3,200,1 porção média
+TACO-714,Yakisoba de carne e legumes,120,6.5,15,4,1.5,520,3,250,1 porção média
+TACO-715,Risoto de frango,155,7,20,5,0.6,410,0.8,200,1 porção média
+TACO-716,Sopa de legumes com carne,55,3.5,6.5,1.8,1.2,290,1.2,300,1 prato fundo
+TACO-717,Caldo verde,60,2.5,7,2.4,0.9,340,0.8,300,1 prato fundo
+TACO-718,Canja de galinha,70,5,8.5,1.5,0.4,310,0.4,300,1 prato fundo
+TACO-719,Vaca atolada,150,9.5,11,7.8,1,410,0.6,250,1 porção média
+TACO-720,Rabada com agrião,190,14,3,13.5,0.4,380,0.4,200,1 porção média
+TACO-721,Dobradinha,110,12.5,2.5,5.5,0.3,360,0.3,200,1 porção média
+TACO-722,Tutu de feijão,120,5.5,17,3.5,4.5,420,0.5,150,3 colheres de sopa
+TACO-723,Virado à paulista,180,9,15,9.5,3.5,460,0.8,250,1 porção média
+TACO-724,Omelete simples (2 ovos),195,13.5,1.2,15,0,320,0.8,120,1 unidade
+TACO-725,Crepioca (tapioca com ovo),160,8.5,18,6,0.7,180,0.3,100,1 unidade
+TACO-726,Salpicão de frango,170,9,9,11,1,380,2.5,120,3 colheres de sopa
+TACO-727,Maionese de batata (salada),160,2,14,10.5,1,340,1.5,100,2 colheres de servir
+TACO-730,Coxinha de frango,283,10.2,29.7,13.9,1.1,570,1.5,80,1 unidade média
+TACO-731,Pastel de carne frito,340,9.5,32,19.5,1.3,620,1,80,1 unidade média
+TACO-732,Pastel de queijo frito,350,10,32,20.5,1,600,1,80,1 unidade média
+TACO-733,Empada de frango,380,8.5,34,23.5,1.2,540,2,60,1 unidade
+TACO-734,Esfiha de carne aberta,260,10.5,34,9,1.5,520,3,80,1 unidade
+TACO-735,Quibe frito,255,13,15,15.5,1.8,580,0.8,80,1 unidade
+TACO-736,Quibe assado,190,13.5,14,9,2,520,0.8,120,1 fatia
+TACO-737,Enroladinho de salsicha,320,8,36,15.5,1.4,650,3,70,1 unidade
+TACO-738,Bolinho de bacalhau,270,12,21,15,1.2,640,0.5,60,2 unidades
+TACO-739,Torta salgada de frango (fatia),265,9.5,22,15.5,1,480,2,120,1 fatia média
+TACO-740,Sanduíche natural de frango,190,10,20,7.5,1.8,380,2.5,150,1 unidade
+TACO-741,Misto quente,270,12.5,28,12,1.5,720,4,110,1 unidade
+TACO-742,Hambúrguer caseiro (pão + carne + queijo),260,13,24,12.5,1.4,560,4.5,180,1 unidade
+TACO-743,X-salada de lanchonete,245,11.5,23,12,1.5,540,4.5,220,1 unidade
+TACO-744,Cachorro-quente completo,265,9,29,12.5,1.5,780,5,200,1 unidade
+TACO-745,Pizza de muçarela (fatia),270,11.5,31,11.5,1.8,600,3.5,125,1 fatia grande
+TACO-746,Pizza de calabresa (fatia),290,12,30,14,1.7,720,3.2,125,1 fatia grande
+TACO-747,Pizza de frango com catupiry (fatia),275,13,29,12,1.6,640,3.4,125,1 fatia grande
+TACO-748,Tapioca com queijo,190,6,29,5.5,0.8,290,0.5,120,1 unidade
+TACO-749,Açaí com granola e banana,130,1.8,24,3.4,2.4,10,16,300,1 tigela média
+TACO-760,Bolo de banana,270,4.2,45,8.5,1.8,210,26,80,1 fatia média
+TACO-761,Bolo de cenoura com cobertura de chocolate,360,4.5,52,15,1.2,240,34,80,1 fatia média
+TACO-762,Bolo de chocolate simples,340,5,51,13,1.5,250,30,80,1 fatia média
+TACO-763,Bolo de fubá,330,5.5,52,11,1,260,26,80,1 fatia média
+TACO-764,Bolo de laranja,320,4.8,50,11.5,0.9,230,28,80,1 fatia média
+TACO-765,Bolo de milho,310,5,49,10.5,1.4,240,24,80,1 fatia média
+TACO-766,Bolo simples (massa branca),315,5,50,10.5,0.8,240,27,80,1 fatia média
+TACO-767,Bolo de banana fit (aveia e sem açúcar),220,6,35,6.5,3.2,120,12,80,1 fatia média
+TACO-768,Brigadeiro,330,3.5,58,10,1,60,50,20,1 unidade
+TACO-769,Beijinho,335,2.8,56,11.5,1.2,65,49,20,1 unidade
+TACO-770,Pudim de leite condensado,197,5.4,33,5.4,0,90,31,110,1 fatia
+TACO-771,Mousse de maracujá,235,3.5,26,13.5,0.3,75,24,100,1 taça pequena
+TACO-772,Pavê de chocolate,290,4.5,34,15.5,0.8,120,26,100,1 fatia
+TACO-773,Sorvete de creme,207,3.5,24,11,0,80,21,60,1 bola
+TACO-774,Açúcar refinado,387,0,99.5,0,0,0,99.5,5,1 colher de chá
+TACO-775,Mel de abelha,309,0.4,84,0,0,4,82,10,1 colher de sopa
+TACO-776,Chocolate ao leite,540,7.2,59.5,30.3,2.2,80,52,25,1 barra pequena
+TACO-777,Chocolate 70% cacau,580,9,34,44,10,20,24,25,1 barra pequena
+TACO-778,Doce de leite,306,6.8,55,6.5,0,130,50,20,1 colher de sopa
+TACO-779,Goiabada,270,0.5,70,0.1,3.5,25,60,30,1 fatia fina
+TACO-780,Paçoca de amendoim,470,15,47,25,3.5,110,32,22,1 unidade
+TACO-781,Rapadura,352,1,90,0.1,0,20,85,20,1 pedaço pequeno
+TACO-782,Gelatina pronta,60,1.1,14,0,0,55,13,110,1 pote
+TACO-783,Cookie com gotas de chocolate,480,5.5,64,22,2,300,32,30,2 unidades
+TACO-784,Sonho de padaria,300,6,40,13,1,240,16,90,1 unidade
+TACO-785,Churros com doce de leite,390,5,52,18,1.3,220,28,80,1 unidade
 TACO-800,Café coado sem açúcar,2,0.1,0.4,0,0,2,0,150,1 xícara
 TACO-801,Água de coco,22,0.1,5.3,0,0,25,5.3,200,1 copo
+TACO-802,Café com leite sem açúcar,32,1.7,2.5,1.7,0,21,2.5,200,1 xícara grande
+TACO-803,Suco de laranja natural,42,0.7,9.6,0.1,0.2,1,8.6,250,1 copo
+TACO-804,Suco de limão adoçado (limonada),40,0.1,10.5,0,0.1,2,10,250,1 copo
+TACO-805,Suco de uva integral,57,0.3,14.1,0,0.1,3,13.5,250,1 copo
+TACO-806,Vitamina de banana com leite,90,3,15.5,1.8,0.8,35,11.5,300,1 copo grande
+TACO-807,Refrigerante de cola,42,0,10.5,0,0,5,10.5,350,1 lata
+TACO-808,Refrigerante zero,0,0,0,0,0,15,0,350,1 lata
+TACO-809,Guaraná,39,0,10,0,0,6,10,350,1 lata
+TACO-810,Cerveja pilsen,41,0.5,3.3,0,0,4,0,350,1 lata
+TACO-811,Vinho tinto seco,83,0.1,2.6,0,0,4,0.6,125,1 taça
+TACO-812,Cachaça,231,0,0,0,0,1,0,50,1 dose
+TACO-813,Chá mate sem açúcar,3,0,0.6,0,0,2,0,200,1 copo
+TACO-814,Chá verde sem açúcar,1,0,0.2,0,0,1,0,200,1 xícara
+TACO-815,Isotônico,26,0,6.4,0,0,45,6,500,1 garrafa
+TACO-816,Energético,45,0,11,0,0,100,11,250,1 lata
+TACO-817,Leite de coco,166,1,2.2,17,0,10,1.9,50,3 colheres de sopa
+TACO-818,Bebida vegetal de amêndoas,24,0.5,3,1.1,0.3,60,2.5,200,1 copo
+TACO-819,Bebida vegetal de aveia,45,0.8,7.5,1.3,0.8,40,4,200,1 copo
+TACO-830,Macarrão instantâneo preparado (com tempero),190,4,26,7.5,1,880,1,90,meio pacote
+TACO-831,Nhoque de batata cozido,155,4,32,1,1.5,300,0.7,200,1 prato raso
+TACO-832,Macarrão parafuso cozido (sem molho),138,4.5,28.5,0.6,1.5,1,0.5,150,1 escumadeira
+TACO-833,Massa de panqueca (unidade sem recheio),140,5,18,5,0.5,150,2,50,1 unidade
+TACO-834,Polenta cozida,70,1.5,15.5,0.3,1.2,120,0.3,150,1 porção média
+TACO-835,Polenta frita,190,2.5,30,6.5,1.5,220,0.4,120,1 porção pequena
+TACO-836,Wrap/rap10 integral,300,9,50,7,4.5,620,3,45,1 unidade
+TACO-840,Peito de frango cru (para receitas),120,23,0,1.9,0,55,0,100,1 filé
+TACO-841,Patinho moído cru (para receitas),133,21.5,0,5.3,0,60,0,100,100 gramas
+TACO-842,Clara de ovo,48,10.9,0.7,0,0,160,0.7,35,1 clara
+TACO-843,Gema de ovo,353,15.7,1.6,30.9,0,50,0.5,18,1 gema
