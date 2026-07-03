@@ -4,6 +4,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  View,
   type PressableProps,
 } from "react-native";
 
@@ -13,6 +14,7 @@ type ButtonProps = PressableProps & {
   title: string;
   variant?: "primary" | "secondary" | "ghost";
   loading?: boolean;
+  icon?: string;
 };
 
 export function Button({
@@ -20,10 +22,11 @@ export function Button({
   variant = "primary",
   loading,
   disabled,
+  icon,
   style,
   ...rest
 }: ButtonProps) {
-  const { colors, type, radius, spacing } = useTheme();
+  const { colors, type, radius, spacing, shadow } = useTheme();
 
   const backgroundColor =
     variant === "primary"
@@ -31,7 +34,8 @@ export function Button({
       : variant === "secondary"
         ? colors.secondary
         : "transparent";
-  const textColor = variant === "ghost" ? colors.primary : "#FFFFFF";
+  const textColor = variant === "ghost" ? colors.primary : colors.textOnPrimary;
+  const isSolid = variant !== "ghost";
 
   return (
     <Pressable
@@ -40,10 +44,13 @@ export function Button({
         styles.base,
         {
           backgroundColor,
-          borderRadius: radius.button,
-          paddingVertical: spacing.md,
-          opacity: state.pressed || disabled ? 0.7 : 1,
+          borderRadius: radius.pill,
+          paddingVertical: spacing.md - 1,
+          paddingHorizontal: spacing.lg,
+          transform: [{ scale: state.pressed ? 0.98 : 1 }],
+          opacity: disabled ? 0.45 : 1,
         },
+        isSolid && !disabled ? shadow.sm : null,
         typeof style === "function" ? style(state) : style,
       ]}
       {...rest}
@@ -51,7 +58,10 @@ export function Button({
       {loading ? (
         <ActivityIndicator color={textColor} />
       ) : (
-        <Text style={[type.body, styles.text, { color: textColor }]}>{title}</Text>
+        <View style={styles.row}>
+          {icon ? <Text style={[styles.icon, { color: textColor }]}>{icon}</Text> : null}
+          <Text style={[type.body, styles.text, { color: textColor }]}>{title}</Text>
+        </View>
       )}
     </Pressable>
   );
@@ -61,8 +71,19 @@ const styles = StyleSheet.create({
   base: {
     alignItems: "center",
     justifyContent: "center",
+    minHeight: 52,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  icon: {
+    fontSize: 16,
   },
   text: {
-    fontWeight: "600",
+    fontWeight: "700",
+    fontSize: 16,
+    letterSpacing: 0.2,
   },
 });

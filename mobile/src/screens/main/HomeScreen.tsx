@@ -1,123 +1,207 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import React, { useCallback, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
-import { useAuth } from "../../context/AuthContext";
+import { getCurrentGoal, type CalorieGoal } from "../../api/goals";
+import { listMealsForDay, type MealLog } from "../../api/meals";
 import { listSleepLogs, type SleepLog } from "../../api/sleep";
 import { getTodayWaterSummary, type WaterSummary } from "../../api/water";
 import { listWorkoutSessions, type WorkoutSessionDetail } from "../../api/workoutSessions";
+import { Card } from "../../components/Card";
+import { ProgressRing } from "../../components/ProgressRing";
+import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
 
 function startOfWeekIso(): string {
   const d = new Date();
-  const day = d.getDay();
-  d.setDate(d.getDate() - day);
+  d.setDate(d.getDate() - d.getDay());
   d.setHours(0, 0, 0, 0);
   return d.toISOString();
 }
 
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Bom dia";
+  if (h < 18) return "Boa tarde";
+  return "Boa noite";
+}
+
 export function HomeScreen() {
-  const { colors, type, spacing, radius } = useTheme();
+  const { colors, type, spacing } = useTheme();
   const navigation = useNavigation<any>();
   const { user } = useAuth();
 
+  const [goal, setGoal] = useState<CalorieGoal | null>(null);
+  const [meals, setMeals] = useState<MealLog[]>([]);
   const [water, setWater] = useState<WaterSummary | null>(null);
   const [sleepLogs, setSleepLogs] = useState<SleepLog[]>([]);
   const [sessions, setSessions] = useState<WorkoutSessionDetail[]>([]);
 
   useFocusEffect(
     useCallback(() => {
-      getTodayWaterSummary().then(setWater);
-      listSleepLogs().then(setSleepLogs);
-      listWorkoutSessions().then(setSessions);
+      getCurrentGoal().then(setGoal).catch(() => {});
+      listMealsForDay(todayIso()).then(setMeals).catch(() => {});
+      getTodayWaterSummary().then(setWater).catch(() => {});
+      listSleepLogs().then(setSleepLogs).catch(() => {});
+      listWorkoutSessions().then(setSessions).catch(() => {});
     }, [])
   );
 
-  const lastSleep = sleepLogs[0];
+  const kcalConsumed = meals.reduce((s, m) => s + m.items.reduce((a, i) => a + i.kcal, 0), 0);
+  const kcalGoal = goal?.kcal ?? 0;
+  const kcalProgress = kcalGoal > 0 ? kcalConsumed / kcalGoal : 0;
+
+  const waterProgress = water && water.goal_ml > 0 ? water.total_ml_today / water.goal_ml : 0;
+
   const weekStart = startOfWeekIso();
-  const workoutsThisWeek = sessions.filter(
-    (s) => s.completed_at && s.completed_at >= weekStart
-  ).length;
+  const workoutsThisWeek = sessions.filter((s) => s.completed_at && s.completed_at >= weekStart).length;
+  const lastSleep = sleepLogs[0];
+
+  const firstName = user?.display_name?.split(" ")[0] ?? "";
+  const dateLabel = new Date().toLocaleDateString("pt-BR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
 
   return (
-    <ScrollView
-      contentContainerStyle={{ padding: spacing.lg, backgroundColor: colors.bg, flexGrow: 1 }}
-    >
-      <Text style={[type.h1, { color: colors.textPrimary, marginBottom: spacing.xs }]}>
-        Olá, {user?.display_name?.split(" ")[0] ?? "tudo bem"}
-      </Text>
-      <Text style={[type.body, { color: colors.textSecondary, marginBottom: spacing.lg }]}>
-        Seu resumo da semana
-      </Text>
-
-      <View
-        style={{
-          backgroundColor: colors.surface,
-          borderRadius: radius.card,
-          borderWidth: 1,
-          borderColor: colors.border,
-          padding: spacing.md,
-          marginBottom: spacing.md,
-        }}
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <ScrollView
+        contentContainerStyle={{ padding: spacing.lg, paddingTop: spacing.xl + spacing.md, paddingBottom: spacing.xxl }}
+        showsVerticalScrollIndicator={false}
       >
-        <SummaryRow
-          icon="🏋️"
-          label="Treinos concluídos essa semana"
+        {/* Cabeçalho */}
+        <Text style={[type.caption, { color: colors.textSecondary, textTransform: "capitalize" }]}>
+          {dateLabel}
+        </Text>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.lg }}>
+          <Text style={[type.h1, { color: colors.textPrimary, fontSize: 28 }]}>
+            {greeting()}, {firstName} 👋
+          </Text>
+          <View
+            style={{
+              paddingVertical: 4,
+              paddingHorizontal: 12,
+              borderRadius: 999,
+              backgroundColor: user?.plan === "pro" ? colors.secondarySoft : colors.surfaceAlt,
+            }}
+          >
+            <Text
+              style={[
+                type.caption,
+                { color: user?.plan === "pro" ? colors.secondary : colors.textSecondary, fontWeight: "700" },
+              ]}
+            >
+              {user?.plan === "pro" ? "PRO" : "FREE"}
+            </Text>
+          </View>
+        </View>
+
+        {/* Anéis: calorias + água */}
+        <Card style={{ marginBottom: spacing.md }}>
+          <Text style={[type.h2, { color: colors.textPrimary, marginBottom: spacing.md }]}>Hoje</Text>
+          <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
+            <ProgressRing
+              size={130}
+              strokeWidth={13}
+              progress={kcalProgress}
+              value={kcalGoal > 0 ? `${Math.round(kcalConsumed)}` : "—"}
+              label={kcalGoal > 0 ? `/ ${Math.round(kcalGoal)} kcal` : "sem meta"}
+              color={kcalProgress > 1 ? colors.warning : colors.primary}
+            />
+            <ProgressRing
+              size={130}
+              strokeWidth={13}
+              progress={waterProgress}
+              value={`${((water?.total_ml_today ?? 0) / 1000).toFixed(1)}L`}
+              label={`/ ${((water?.goal_ml ?? 0) / 1000).toFixed(1)}L água`}
+              color={colors.info}
+            />
+          </View>
+        </Card>
+
+        {/* Cards de módulo */}
+        <StatCard
+          icon="barbell"
+          iconColor={colors.moduleTraining}
+          title="Treinos essa semana"
           value={String(workoutsThisWeek)}
+          hint={workoutsThisWeek === 0 ? "Bora começar?" : "Mandou bem!"}
+          onPress={() => navigation.navigate("Treino")}
         />
-        <SummaryRow
-          icon="💧"
-          label="Água hoje"
-          value={`${water?.total_ml_today ?? 0} / ${water?.goal_ml ?? 0} ml`}
+        <StatCard
+          icon="moon"
+          iconColor={colors.moduleSleep}
+          title="Última noite de sono"
+          value={
+            lastSleep
+              ? `${Math.floor(lastSleep.duration_minutes / 60)}h${String(lastSleep.duration_minutes % 60).padStart(2, "0")}`
+              : "—"
+          }
+          hint={lastSleep ? `Qualidade ${lastSleep.quality}/5` : "Toque para registrar"}
+          onPress={() => navigation.navigate("Sleep")}
         />
-        <TouchableOpacity onPress={() => navigation.navigate("Sleep")}>
-          <SummaryRow
-            icon="😴"
-            label="Última noite de sono"
-            value={
-              lastSleep
-                ? `${Math.floor(lastSleep.duration_minutes / 60)}h${lastSleep.duration_minutes % 60}min · nota ${lastSleep.quality}`
-                : "Registrar"
-            }
-          />
-        </TouchableOpacity>
-      </View>
-
-      <View
-        style={{
-          backgroundColor: colors.surface,
-          borderRadius: radius.card,
-          borderWidth: 1,
-          borderColor: colors.border,
-          padding: spacing.md,
-        }}
-      >
-        <Text style={[type.h2, { color: colors.textPrimary, marginBottom: spacing.xs }]}>
-          Plano atual
-        </Text>
-        <Text style={[type.body, { color: colors.textSecondary }]}>
-          {user?.plan === "pro" ? "Pro" : "Free"}
-        </Text>
-      </View>
-    </ScrollView>
+        <StatCard
+          icon="restaurant"
+          iconColor={colors.moduleNutrition}
+          title="Refeições registradas hoje"
+          value={String(meals.length)}
+          hint="Ver diário"
+          onPress={() => navigation.navigate("Nutricao")}
+        />
+      </ScrollView>
+    </View>
   );
 }
 
-function SummaryRow({ icon, label, value }: { icon: string; label: string; value: string }) {
+function StatCard({
+  icon,
+  iconColor,
+  title,
+  value,
+  hint,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  iconColor: string;
+  title: string;
+  value: string;
+  hint: string;
+  onPress: () => void;
+}) {
   const { colors, type, spacing } = useTheme();
   return (
-    <View
-      style={{
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        paddingVertical: spacing.xs,
-      }}
-    >
-      <Text style={[type.bodySmall, { color: colors.textSecondary }]}>
-        {icon} {label}
-      </Text>
-      <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "600" }]}>{value}</Text>
-    </View>
+    <TouchableOpacity activeOpacity={0.7} onPress={onPress} style={{ marginBottom: spacing.md }}>
+      <Card>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <View
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 16,
+              backgroundColor: iconColor + "22",
+              alignItems: "center",
+              justifyContent: "center",
+              marginRight: spacing.md,
+            }}
+          >
+            <Ionicons name={icon} size={24} color={iconColor} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[type.caption, { color: colors.textSecondary }]}>{title}</Text>
+            <Text style={[type.h2, { color: colors.textPrimary, fontSize: 22 }]}>{value}</Text>
+          </View>
+          <View style={{ alignItems: "flex-end" }}>
+            <Text style={[type.caption, { color: iconColor, fontWeight: "600" }]}>{hint}</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+          </View>
+        </View>
+      </Card>
+    </TouchableOpacity>
   );
 }

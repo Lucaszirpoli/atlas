@@ -2,7 +2,7 @@ import React, { createContext, useContext, useMemo } from "react";
 import { useColorScheme } from "react-native";
 
 import { darkColors, lightColors, type ColorScheme } from "./colors";
-import { radius, spacing } from "./spacing";
+import { radius, shadow, spacing } from "./spacing";
 import { typeScale } from "./typography";
 
 type Theme = {
@@ -10,6 +10,7 @@ type Theme = {
   type: typeof typeScale;
   spacing: typeof spacing;
   radius: typeof radius;
+  shadow: typeof shadow;
   isDark: boolean;
 };
 
@@ -25,6 +26,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       type: typeScale,
       spacing,
       radius,
+      shadow,
       isDark,
     }),
     [isDark]

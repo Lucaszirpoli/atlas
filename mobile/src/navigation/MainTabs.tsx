@@ -32,9 +32,17 @@ export function MainTabs() {
           headerShown: false,
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textSecondary,
-          tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name={ICONS[route.name]} color={color} size={size} />
+          tabBarStyle: {
+            backgroundColor: colors.surface,
+            borderTopColor: colors.border,
+            borderTopWidth: 1,
+            height: 64,
+            paddingTop: 8,
+            paddingBottom: 10,
+          },
+          tabBarLabelStyle: { fontSize: 11, fontWeight: "600", marginTop: 2 },
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={ICONS[route.name]} color={color} size={focused ? 25 : 23} />
           ),
         })}
       >
