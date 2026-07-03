@@ -21,3 +21,7 @@ export async function logWater(amountMl: number): Promise<WaterLog> {
   const { data } = await api.post<WaterLog>("/water", { amount_ml: amountMl });
   return data;
 }
+
+export async function deleteWaterLog(id: number): Promise<void> {
+  await api.delete(`/water/${id}`);
+}

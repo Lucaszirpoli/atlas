@@ -27,3 +27,7 @@ export async function logSleep(payload: {
   const { data } = await api.post<SleepLog>("/sleep", payload);
   return data;
 }
+
+export async function deleteSleepLog(id: number): Promise<void> {
+  await api.delete(`/sleep/${id}`);
+}

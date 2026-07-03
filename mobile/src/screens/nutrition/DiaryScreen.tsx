@@ -1,10 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import React, { useCallback, useState } from "react";
-import { RefreshControl, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Alert, RefreshControl, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
+import { getNutritionHistory, type NutritionHistory } from "../../api/evolution";
 import { getCurrentGoal, type CalorieGoal } from "../../api/goals";
-import { listMealCategories, listMealsForDay, type MealCategory, type MealLog } from "../../api/meals";
+import { deleteMealLog, listMealCategories, listMealsForDay, type MealCategory, type MealLog } from "../../api/meals";
 import { getTodayWaterSummary, logWater, type WaterSummary } from "../../api/water";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
@@ -39,19 +40,36 @@ export function DiaryScreen() {
   const [meals, setMeals] = useState<MealLog[]>([]);
   const [goal, setGoal] = useState<CalorieGoal | null>(null);
   const [water, setWater] = useState<WaterSummary | null>(null);
+  const [history, setHistory] = useState<NutritionHistory | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   async function loadAll() {
-    const [cats, mealsForDay, currentGoal, waterSummary] = await Promise.all([
+    const [cats, mealsForDay, currentGoal, waterSummary, hist] = await Promise.all([
       listMealCategories(),
       listMealsForDay(todayIso()),
       getCurrentGoal(),
       getTodayWaterSummary(),
+      getNutritionHistory(14).catch(() => null),
     ]);
     setCategories(cats);
     setMeals(mealsForDay);
     setGoal(currentGoal);
     setWater(waterSummary);
+    setHistory(hist);
+  }
+
+  async function handleDeleteFood(mealLogId: number, foodName: string) {
+    Alert.alert("Remover alimento", `Remover "${foodName}" do seu diário?`, [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Remover",
+        style: "destructive",
+        onPress: async () => {
+          await deleteMealLog(mealLogId);
+          loadAll();
+        },
+      },
+    ]);
   }
 
   useFocusEffect(
@@ -128,6 +146,30 @@ export function DiaryScreen() {
         ) : null}
       </Card>
 
+      {/* Histórico 14 dias + adesão */}
+      {history && history.days.length > 0 ? (
+        <Card style={{ marginBottom: spacing.md }}>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
+            <Ionicons name="calendar" size={18} color={colors.primary} />
+            <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8, flex: 1 }]}>Últimos 14 dias</Text>
+            <HelpDot
+              title="Janela de 14 dias"
+              text={
+                "Mostra quanto você comeu por dia nas últimas duas semanas. As barras dentro da meta ficam verdes; " +
+                "as que passaram, laranja. A linha pontilhada é a sua meta de calorias."
+              }
+            />
+          </View>
+          <FourteenDayBars history={history} />
+          {history.goal_kcal ? (
+            <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm }]}>
+              {history.days_within_goal} de {history.days_logged}{" "}
+              {history.days_logged === 1 ? "dia registrado" : "dias registrados"} dentro da meta
+            </Text>
+          ) : null}
+        </Card>
+      ) : null}
+
       {/* Água */}
       <Card accent={colors.info} style={{ marginBottom: spacing.lg }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
@@ -184,8 +226,9 @@ export function DiaryScreen() {
         Refeições de hoje
       </Text>
       {categories.map((category) => {
-        const categoryItems = meals.filter((m) => m.meal_category_id === category.id).flatMap((m) => m.items);
-        const categoryKcal = categoryItems.reduce((s, i) => s + i.kcal, 0);
+        const categoryMeals = meals.filter((m) => m.meal_category_id === category.id);
+        const categoryItems = categoryMeals.flatMap((m) => m.items.map((item) => ({ item, mealLogId: m.id })));
+        const categoryKcal = categoryItems.reduce((s, x) => s + x.item.kcal, 0);
         return (
           <Card key={category.id} padded={false} style={{ marginBottom: spacing.md }}>
             <View style={{ padding: spacing.md }}>
@@ -211,13 +254,18 @@ export function DiaryScreen() {
 
               {categoryItems.length > 0 ? (
                 <View style={{ marginTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm }}>
-                  {categoryItems.map((item) => (
-                    <View key={item.id} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
+                  {categoryItems.map(({ item, mealLogId }) => (
+                    <View key={item.id} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 5 }}>
                       <Text style={[type.bodySmall, { color: colors.textPrimary, flex: 1 }]} numberOfLines={1}>
                         {item.food.name}
                         <Text style={{ color: colors.textSecondary }}> · {Math.round(item.quantity_g)}g</Text>
                       </Text>
-                      <Text style={[type.bodySmall, { color: colors.textSecondary }]}>{Math.round(item.kcal)} kcal</Text>
+                      <Text style={[type.bodySmall, { color: colors.textSecondary, marginRight: spacing.md }]}>
+                        {Math.round(item.kcal)} kcal
+                      </Text>
+                      <TouchableOpacity onPress={() => handleDeleteFood(mealLogId, item.food.name)} hitSlop={8}>
+                        <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
+                      </TouchableOpacity>
                     </View>
                   ))}
                 </View>
@@ -243,6 +291,46 @@ export function DiaryScreen() {
         );
       })}
     </ScrollView>
+  );
+}
+
+function FourteenDayBars({ history }: { history: NutritionHistory }) {
+  const { colors, type } = useTheme();
+  const goal = history.goal_kcal ?? 0;
+  const maxKcal = Math.max(...history.days.map((d) => d.kcal), goal, 1) * 1.1;
+  const CHART_H = 90;
+
+  return (
+    <View>
+      <View style={{ flexDirection: "row", alignItems: "flex-end", height: CHART_H, gap: 3, position: "relative" }}>
+        {/* linha da meta */}
+        {goal > 0 ? (
+          <View
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: (goal / maxKcal) * CHART_H,
+              borderTopWidth: 1,
+              borderStyle: "dashed",
+              borderColor: colors.primary,
+              opacity: 0.6,
+            }}
+          />
+        ) : null}
+        {history.days.map((d) => {
+          const h = d.kcal > 0 ? Math.max((d.kcal / maxKcal) * CHART_H, 3) : 2;
+          const within = goal > 0 && d.kcal > 0 && d.kcal <= goal * 1.05;
+          const over = goal > 0 && d.kcal > goal * 1.05;
+          const color = d.kcal === 0 ? colors.surfaceAlt : over ? colors.warning : within ? colors.primary : colors.textSecondary;
+          return <View key={d.date} style={{ flex: 1, height: h, backgroundColor: color, borderRadius: 3 }} />;
+        })}
+      </View>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 4 }}>
+        <Text style={[type.caption, { color: colors.textSecondary }]}>14 dias atrás</Text>
+        <Text style={[type.caption, { color: colors.textSecondary }]}>hoje</Text>
+      </View>
+    </View>
   );
 }
 

@@ -26,3 +26,16 @@ export async function getExerciseProgression(
   const { data } = await api.get(`/evolution/exercise/${exerciseId}`);
   return data;
 }
+
+export type NutritionDay = { date: string; kcal: number };
+export type NutritionHistory = {
+  days: NutritionDay[];
+  goal_kcal: number | null;
+  days_logged: number;
+  days_within_goal: number;
+};
+
+export async function getNutritionHistory(days = 14): Promise<NutritionHistory> {
+  const { data } = await api.get<NutritionHistory>("/evolution/nutrition", { params: { days } });
+  return data;
+}

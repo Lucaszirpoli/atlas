@@ -40,3 +40,16 @@ def log_weight(
     db.commit()
     db.refresh(log)
     return log
+
+
+@router.delete("/{log_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_weight_log(
+    log_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    log = db.get(WeightLog, log_id)
+    if log is None or log.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registro não encontrado")
+    db.delete(log)
+    db.commit()

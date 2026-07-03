@@ -87,7 +87,12 @@ export function SocialFeedScreen() {
           paddingBottom: spacing.md,
         }}
       >
-        <Text style={[type.h1, { color: colors.textPrimary, fontSize: 26 }]}>Social</Text>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={10} style={{ marginRight: spacing.sm }}>
+            <Ionicons name="chevron-back" size={26} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={[type.h1, { color: colors.textPrimary, fontSize: 26 }]}>Social</Text>
+        </View>
         <View style={{ flexDirection: "row", gap: spacing.sm }}>
           <HeaderIcon icon="people" onPress={() => navigation.navigate("Friends")} />
           <HeaderIcon icon="trophy" onPress={() => navigation.navigate("Challenges")} />

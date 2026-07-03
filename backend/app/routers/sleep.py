@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -57,3 +57,16 @@ def log_sleep(
     db.commit()
     db.refresh(log)
     return _serialize(log)
+
+
+@router.delete("/{log_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_sleep_log(
+    log_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    log = db.get(SleepLog, log_id)
+    if log is None or log.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registro não encontrado")
+    db.delete(log)
+    db.commit()

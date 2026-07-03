@@ -29,3 +29,15 @@ class ExerciseProgressionPoint(BaseModel):
 class ExerciseProgressionResponse(BaseModel):
     exercise_name: str
     points: list[ExerciseProgressionPoint]
+
+
+class NutritionDay(BaseModel):
+    date: str
+    kcal: int
+
+
+class NutritionHistoryResponse(BaseModel):
+    days: list[NutritionDay]
+    goal_kcal: float | None
+    days_logged: int
+    days_within_goal: int

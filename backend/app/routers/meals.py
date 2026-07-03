@@ -155,3 +155,16 @@ def create_saved_meal(
     db.commit()
     db.refresh(saved_meal)
     return saved_meal
+
+
+@router.delete("/{meal_log_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_meal_log(
+    meal_log_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    meal_log = db.get(MealLog, meal_log_id)
+    if meal_log is None or meal_log.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Refeição não encontrada")
+    db.delete(meal_log)
+    db.commit()

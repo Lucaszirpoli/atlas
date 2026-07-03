@@ -67,6 +67,10 @@ export async function listMealsForDay(isoDate: string): Promise<MealLog[]> {
   return data;
 }
 
+export async function deleteMealLog(id: number): Promise<void> {
+  await api.delete(`/meals/${id}`);
+}
+
 export async function listSavedMeals(): Promise<SavedMeal[]> {
   const { data } = await api.get<SavedMeal[]>("/meals/saved");
   return data;

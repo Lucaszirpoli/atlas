@@ -6,6 +6,7 @@ import { FlatList, Image, Pressable, Text, TextInput, View } from "react-native"
 import { listExercises, type Exercise, type MuscleGroup } from "../../api/exercises";
 import { OptionButton } from "../../components/OptionButton";
 import { useTheme } from "../../theme/ThemeProvider";
+import { exercisePickBus } from "./exercisePickBus";
 
 const MUSCLE_LABELS: Partial<Record<MuscleGroup, string>> = {
   chest: "Peito",
@@ -89,7 +90,10 @@ export function ExercisePickerScreen() {
         showsVerticalScrollIndicator={false}
         renderItem={({ item }) => (
           <Pressable
-            onPress={() => navigation.navigate("RoutineBuilder", { pickedExercise: item })}
+            onPress={() => {
+              exercisePickBus.pick(item);
+              navigation.goBack();
+            }}
             style={({ pressed }) => ({
               flexDirection: "row",
               alignItems: "center",

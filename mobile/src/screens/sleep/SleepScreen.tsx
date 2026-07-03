@@ -1,8 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
-import { Alert, ScrollView, Text, TextInput, View } from "react-native";
+import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
-import { listSleepLogs, logSleep, type SleepLog, type WakeFeeling } from "../../api/sleep";
+import { deleteSleepLog, listSleepLogs, logSleep, type SleepLog, type WakeFeeling } from "../../api/sleep";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { OptionButton } from "../../components/OptionButton";
@@ -48,6 +48,20 @@ export function SleepScreen() {
 
   function load() {
     listSleepLogs().then(setLogs);
+  }
+
+  function handleDelete(id: number) {
+    Alert.alert("Excluir registro de sono", "Tem certeza que quer remover esse registro?", [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Excluir",
+        style: "destructive",
+        onPress: async () => {
+          await deleteSleepLog(id);
+          load();
+        },
+      },
+    ]);
   }
 
   useEffect(() => {
@@ -161,15 +175,20 @@ export function SleepScreen() {
           <Card>
             {logs.map((log, i) => (
               <View key={log.id} style={{ marginTop: i === 0 ? 0 : spacing.md }}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
                   <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "600" }]}>
                     {new Date(log.sleep_at).toLocaleDateString("pt-BR", { weekday: "short", day: "numeric" })}
                   </Text>
-                  <Text style={[type.bodySmall, { color: colors.textSecondary }]}>
-                    {Math.floor(log.duration_minutes / 60)}h{String(log.duration_minutes % 60).padStart(2, "0")}
-                    {" · "}
-                    {"★".repeat(log.quality)}
-                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Text style={[type.bodySmall, { color: colors.textSecondary, marginRight: spacing.sm }]}>
+                      {Math.floor(log.duration_minutes / 60)}h{String(log.duration_minutes % 60).padStart(2, "0")}
+                      {" · "}
+                      {"★".repeat(log.quality)}
+                    </Text>
+                    <TouchableOpacity onPress={() => handleDelete(log.id)} hitSlop={8}>
+                      <Ionicons name="close-circle" size={17} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
                 <View style={{ height: 8, backgroundColor: colors.surfaceAlt, borderRadius: 4 }}>
                   <View

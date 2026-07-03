@@ -8,6 +8,7 @@ import { createRoutine, getRoutine, updateRoutine } from "../../api/routines";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { useTheme } from "../../theme/ThemeProvider";
+import { exercisePickBus } from "./exercisePickBus";
 
 type BuilderExercise = {
   exercise: Exercise;
@@ -21,11 +22,23 @@ export function RoutineBuilderScreen() {
   const { colors, type, spacing, radius } = useTheme();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { routineId, pickedExercise } = route.params ?? {};
+  const { routineId } = route.params ?? {};
 
   const [name, setName] = useState("");
   const [exercises, setExercises] = useState<BuilderExercise[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Registra o handler que recebe cada exercício escolhido no picker. Fica
+  // ativo enquanto o builder está montado; permite adicionar quantos quiser.
+  useEffect(() => {
+    exercisePickBus.setHandler((exercise: Exercise) => {
+      setExercises((prev) => [
+        ...prev,
+        { exercise, target_sets: 3, target_reps_min: 8, target_reps_max: 12, rest_seconds: 90 },
+      ]);
+    });
+    return () => exercisePickBus.setHandler(null);
+  }, []);
 
   useEffect(() => {
     if (routineId) {
@@ -43,16 +56,6 @@ export function RoutineBuilderScreen() {
       });
     }
   }, [routineId]);
-
-  useEffect(() => {
-    if (pickedExercise) {
-      setExercises((prev) => [
-        ...prev,
-        { exercise: pickedExercise, target_sets: 3, target_reps_min: 8, target_reps_max: 12, rest_seconds: 90 },
-      ]);
-      navigation.setParams({ pickedExercise: undefined });
-    }
-  }, [pickedExercise]);
 
   function updateExercise(index: number, patch: Partial<BuilderExercise>) {
     setExercises((prev) => prev.map((e, i) => (i === index ? { ...e, ...patch } : e)));

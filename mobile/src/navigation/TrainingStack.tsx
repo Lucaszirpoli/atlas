@@ -1,6 +1,7 @@
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import React from "react";
 
+import { HeaderBack } from "../components/HeaderBack";
 import { ExercisePickerScreen } from "../screens/training/ExercisePickerScreen";
 import { RoutineBuilderScreen } from "../screens/training/RoutineBuilderScreen";
 import { RoutineListScreen } from "../screens/training/RoutineListScreen";
@@ -23,7 +24,11 @@ export function TrainingStack() {
         headerTitleStyle: { fontWeight: "700" },
       }}
     >
-      <Stack.Screen name="RoutineList" component={RoutineListScreen} options={{ title: "Treino" }} />
+      <Stack.Screen
+        name="RoutineList"
+        component={RoutineListScreen}
+        options={{ title: "Treino", headerLeft: () => <HeaderBack /> }}
+      />
       <Stack.Screen
         name="RoutineBuilder"
         component={RoutineBuilderScreen}
