@@ -240,11 +240,15 @@ function StatCard({
             <Ionicons name={icon} size={24} color={iconColor} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[type.caption, { color: colors.textSecondary }]}>{title}</Text>
+            <Text style={[type.caption, { color: colors.textSecondary }]} numberOfLines={1}>
+              {title}
+            </Text>
             <Text style={[type.h2, { color: colors.textPrimary, fontSize: 22 }]}>{value}</Text>
           </View>
-          <View style={{ alignItems: "flex-end" }}>
-            <Text style={[type.caption, { color: iconColor, fontWeight: "600" }]}>{hint}</Text>
+          <View style={{ alignItems: "flex-end", marginLeft: spacing.sm }}>
+            <Text style={[type.caption, { color: iconColor, fontWeight: "600" }]} numberOfLines={1}>
+              {hint}
+            </Text>
             <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
           </View>
         </View>
