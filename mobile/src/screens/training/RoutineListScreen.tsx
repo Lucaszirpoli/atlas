@@ -3,6 +3,7 @@ import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import React, { useCallback, useState } from "react";
 import { Alert, FlatList, Text, TouchableOpacity, View } from "react-native";
 
+import { getVolumeEvolution, type VolumePoint } from "../../api/evolution";
 import {
   archiveRoutine,
   deleteRoutine,
@@ -13,10 +14,19 @@ import {
 import { startWorkoutSession } from "../../api/workoutSessions";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
+import { HelpDot } from "../../components/HelpDot";
+import { LineChart, type ChartPoint } from "../../components/LineChart";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
 
 const ROUTINE_LIMIT = { free: 3, pro: 7 };
+
+function startOfWeekIso(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - d.getDay());
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+}
 
 export function RoutineListScreen() {
   const { colors, type, spacing, radius } = useTheme();
@@ -24,10 +34,12 @@ export function RoutineListScreen() {
   const { user } = useAuth();
 
   const [routines, setRoutines] = useState<Routine[]>([]);
+  const [volume, setVolume] = useState<VolumePoint[]>([]);
 
   useFocusEffect(
     useCallback(() => {
       listRoutines().then(setRoutines);
+      getVolumeEvolution().then(setVolume).catch(() => {});
     }, [])
   );
 
@@ -80,6 +92,10 @@ export function RoutineListScreen() {
   const limit = user?.plan === "pro" ? ROUTINE_LIMIT.pro : ROUTINE_LIMIT.free;
   const atLimit = routines.length >= limit;
 
+  const weekStart = startOfWeekIso();
+  const workoutsThisWeek = volume.filter((v) => v.date >= weekStart).length;
+  const volumeSeries: ChartPoint[] = volume.map((p) => ({ x: new Date(p.date).getTime(), y: p.volume_kg }));
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.lg }}>
       {/* Header interno */}
@@ -118,6 +134,32 @@ export function RoutineListScreen() {
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={{ paddingBottom: spacing.lg }}
         showsVerticalScrollIndicator={false}
+        ListHeaderComponent={
+          volume.length >= 2 ? (
+            <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate("Evolution")}>
+              <Card style={{ marginBottom: spacing.md }}>
+                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
+                  <Ionicons name="stats-chart" size={18} color={colors.secondary} />
+                  <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8, flex: 1, fontSize: 17 }]}>
+                    Volume por treino
+                  </Text>
+                  <Text style={[type.caption, { color: colors.secondary, fontWeight: "700" }]}>
+                    {workoutsThisWeek} esta semana
+                  </Text>
+                  <HelpDot
+                    title="Volume"
+                    text="Peso × repetições somado em cada treino. Ver a linha subir ao longo das semanas é sinal de progresso. Toque para a evolução completa."
+                  />
+                </View>
+                <LineChart
+                  series={[{ data: volumeSeries, color: colors.secondary, showDots: true }]}
+                  height={130}
+                  formatY={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}t` : `${Math.round(v)}`)}
+                />
+              </Card>
+            </TouchableOpacity>
+          ) : null
+        }
         renderItem={({ item }) => {
           const totalSets = item.exercises.reduce((s, e) => s + e.target_sets, 0);
           return (
