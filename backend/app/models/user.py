@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, String, func
+from sqlalchemy import DateTime, Enum, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -32,6 +32,9 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(100))
     plan: Mapped[Plan] = mapped_column(Enum(Plan, name="plan"), default=Plan.FREE)
     onboarding_completed: Mapped[bool] = mapped_column(default=False)
+    # Isca da IA: créditos grátis de chat para o plano Free provar o assistente
+    # antes do paywall. Pro é ilimitado e ignora esse contador.
+    ai_free_credits: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

@@ -14,6 +14,7 @@ class UserRead(BaseModel):
     display_name: str
     plan: Plan
     onboarding_completed: bool
+    ai_free_credits: int
     created_at: datetime
 
 

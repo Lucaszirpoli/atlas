@@ -15,6 +15,7 @@ import {
 
 import { getChatHistory, sendChatMessage, type ChatMessage } from "../../api/ai";
 import { ChatActionCard } from "../../components/ChatActionCard";
+import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
 
 type DisplayMessage = ChatMessage & { resolvedAction?: "confirmed" | "cancelled"; isError?: boolean };
@@ -28,8 +29,11 @@ const SUGGESTIONS = [
 export function ChatScreen() {
   const { colors, type, spacing, radius, shadow } = useTheme();
   const navigation = useNavigation<any>();
+  const { user, refreshUser } = useAuth();
   const listRef = useRef<FlatList>(null);
 
+  const isPro = user?.plan === "pro";
+  const [credits, setCredits] = useState(user?.ai_free_credits ?? 0);
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -64,6 +68,10 @@ export function ChatScreen() {
           created_at: new Date().toISOString(),
         },
       ]);
+      if (!isPro && response.free_credits_remaining != null) {
+        setCredits(response.free_credits_remaining);
+        refreshUser().catch(() => {}); // sincroniza o badge do FAB
+      }
     } catch (err: any) {
       // Alert não aparece na web — mostramos o erro como bolha no próprio chat.
       const detail =
@@ -129,6 +137,34 @@ export function ChatScreen() {
           <Ionicons name="close" size={24} color={colors.textSecondary} />
         </TouchableOpacity>
       </View>
+
+      {/* Banner de isca — só para Free */}
+      {!isPro ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+            paddingVertical: spacing.sm,
+            paddingHorizontal: spacing.lg,
+            backgroundColor: credits > 0 ? colors.primarySoft : colors.secondarySoft,
+          }}
+        >
+          <Ionicons
+            name={credits > 0 ? "gift" : "lock-closed"}
+            size={15}
+            color={credits > 0 ? colors.primary : colors.secondary}
+          />
+          <Text style={[type.caption, { color: colors.textPrimary, flex: 1 }]}>
+            {credits > 0
+              ? `Você tem ${credits} ${credits === 1 ? "mensagem grátis" : "mensagens grátis"} para testar a IA`
+              : "Suas mensagens grátis acabaram — assine o Pro para continuar"}
+          </Text>
+          <TouchableOpacity onPress={() => navigation.navigate("Profile")}>
+            <Text style={[type.caption, { color: colors.secondary, fontWeight: "800" }]}>Ver Pro</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       {isLoadingHistory ? (
         <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.lg }} />

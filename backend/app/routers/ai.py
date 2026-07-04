@@ -6,9 +6,9 @@ from app.ai.orchestrator import run_chat_turn
 from app.ai.vision import analyze_meal_photo
 from app.core.config import settings
 from app.core.db import get_db
-from app.core.security import require_pro_plan
+from app.core.security import get_current_user, require_pro_plan
 from app.models.chat_message import ChatMessage
-from app.models.user import User
+from app.models.user import Plan, User
 from app.schemas.ai import (
     ChatMessageRead,
     ChatRequest,
@@ -35,23 +35,41 @@ def _require_api_key() -> None:
 @router.post("/chat", response_model=ChatResponse)
 def chat(
     payload: ChatRequest,
-    current_user: User = Depends(require_pro_plan),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
     _require_api_key()
+    # Isca: Pro é ilimitado; Free tem alguns créditos grátis para provar a IA.
+    is_pro = current_user.plan == Plan.PRO
+    if not is_pro:
+        if current_user.ai_free_credits <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=(
+                    "Você usou suas mensagens grátis com o assistente. Assine o Pro "
+                    "para conversar sem limite, montar treino por IA e registrar refeição por foto."
+                ),
+            )
     try:
-        return run_chat_turn(db, current_user.id, payload.message, payload.context_module)
+        result = run_chat_turn(db, current_user.id, payload.message, payload.context_module)
     except Exception as exc:  # erro da API da Anthropic (chave inválida, rede etc.)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"O assistente não conseguiu responder agora ({type(exc).__name__}). Tente de novo em instantes.",
         ) from exc
 
+    if not is_pro:
+        current_user.ai_free_credits = max(current_user.ai_free_credits - 1, 0)
+        db.add(current_user)
+        db.commit()
+        result["free_credits_remaining"] = current_user.ai_free_credits
+    return result
+
 
 @router.get("/chat/history", response_model=list[ChatMessageRead])
 def chat_history(
     limit: int = 50,
-    current_user: User = Depends(require_pro_plan),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[ChatMessage]:
     stmt = (

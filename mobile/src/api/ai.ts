@@ -16,7 +16,7 @@ export type ChatMessage = {
 export async function sendChatMessage(
   message: string,
   contextModule?: string
-): Promise<{ reply: string; proposed_action: ProposedAction | null }> {
+): Promise<{ reply: string; proposed_action: ProposedAction | null; free_credits_remaining: number | null }> {
   const { data } = await api.post("/ai/chat", { message, context_module: contextModule });
   return data;
 }

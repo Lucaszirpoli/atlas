@@ -12,6 +12,7 @@ export type UserRead = {
   display_name: string;
   plan: "free" | "pro";
   onboarding_completed: boolean;
+  ai_free_credits: number;
   created_at: string;
 };
 

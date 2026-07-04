@@ -13,6 +13,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     proposed_action: dict | None = None
+    free_credits_remaining: int | None = None
 
 
 class ChatMessageRead(BaseModel):
