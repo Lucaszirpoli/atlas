@@ -12,7 +12,7 @@ import {
   View,
 } from "react-native";
 
-import { searchFoods, type Food } from "../../api/foods";
+import { createCustomFood, searchFoods, type Food } from "../../api/foods";
 import { logMeal } from "../../api/meals";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
@@ -32,6 +32,42 @@ export function AddFoodScreen() {
   const [selectedFood, setSelectedFood] = useState<Food | null>(null);
   const [quantityG, setQuantityG] = useState("100");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Cadastro rápido de alimento que não existe na base (ataca o churn
+  // "base de alimentos incompleta"). Valores por 100g.
+  const [customMode, setCustomMode] = useState(false);
+  const [custom, setCustom] = useState({ name: "", kcal: "", protein: "", carbs: "", fat: "" });
+  const [isCreating, setIsCreating] = useState(false);
+
+  function openCustom() {
+    setCustom({ name: query.trim(), kcal: "", protein: "", carbs: "", fat: "" });
+    setCustomMode(true);
+  }
+
+  async function handleCreateCustom() {
+    const kcal = Number(custom.kcal.replace(",", "."));
+    if (!custom.name.trim() || Number.isNaN(kcal) || kcal <= 0) {
+      Alert.alert("Faltam dados", "Informe pelo menos o nome e as calorias por 100g.");
+      return;
+    }
+    setIsCreating(true);
+    try {
+      const food = await createCustomFood({
+        name: custom.name.trim(),
+        kcal_per_100g: kcal,
+        protein_g_per_100g: Number(custom.protein.replace(",", ".")) || 0,
+        carbs_g_per_100g: Number(custom.carbs.replace(",", ".")) || 0,
+        fat_g_per_100g: Number(custom.fat.replace(",", ".")) || 0,
+      });
+      setCustomMode(false);
+      setSelectedFood(food);
+      setQuantityG(String(food.default_portion_g ?? 100));
+    } catch (err: any) {
+      Alert.alert("Não foi possível cadastrar", err?.response?.data?.detail ?? "Tente novamente.");
+    } finally {
+      setIsCreating(false);
+    }
+  }
 
   useEffect(() => {
     if (barcodeResult) {
@@ -76,6 +112,32 @@ export function AddFoodScreen() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  if (customMode) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.lg }}>
+        <Card style={{ marginBottom: spacing.md }}>
+          <Text style={[type.h2, { color: colors.textPrimary, marginBottom: spacing.xs }]}>
+            Cadastrar alimento
+          </Text>
+          <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.md }]}>
+            Valores por 100g (olhe a embalagem). Fica salvo pra você reusar depois.
+          </Text>
+          <CustomInput label="Nome" value={custom.name} onChangeText={(v) => setCustom((c) => ({ ...c, name: v }))} keyboard="default" />
+          <View style={{ flexDirection: "row", gap: spacing.sm }}>
+            <CustomInput label="kcal" value={custom.kcal} onChangeText={(v) => setCustom((c) => ({ ...c, kcal: v }))} flex={1.2} />
+            <CustomInput label="Prot (g)" value={custom.protein} onChangeText={(v) => setCustom((c) => ({ ...c, protein: v }))} />
+            <CustomInput label="Carb (g)" value={custom.carbs} onChangeText={(v) => setCustom((c) => ({ ...c, carbs: v }))} />
+            <CustomInput label="Gord (g)" value={custom.fat} onChangeText={(v) => setCustom((c) => ({ ...c, fat: v }))} />
+          </View>
+        </Card>
+        <Button title="Cadastrar e usar" onPress={handleCreateCustom} loading={isCreating} />
+        <View style={{ marginTop: spacing.sm }}>
+          <Button title="Cancelar" variant="ghost" onPress={() => setCustomMode(false)} />
+        </View>
+      </View>
+    );
   }
 
   if (selectedFood) {
@@ -216,11 +278,29 @@ export function AddFoodScreen() {
             <Ionicons name="add-circle" size={26} color={colors.primary} />
           </Pressable>
         )}
-        ListEmptyComponent={
+        ListFooterComponent={
           query.trim().length >= 2 && !isSearching ? (
-            <Text style={[type.bodySmall, { color: colors.textSecondary, textAlign: "center", marginTop: spacing.lg }]}>
-              Nada encontrado — tente outro nome.
-            </Text>
+            <TouchableOpacity
+              onPress={openCustom}
+              activeOpacity={0.7}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                borderWidth: 2,
+                borderStyle: "dashed",
+                borderColor: colors.primary + "66",
+                borderRadius: radius.card,
+                paddingVertical: spacing.md,
+                marginTop: spacing.sm,
+              }}
+            >
+              <Ionicons name="add-circle" size={20} color={colors.primary} />
+              <Text style={[type.bodySmall, { color: colors.primary, fontWeight: "700" }]} numberOfLines={1}>
+                Não achou? Cadastrar "{query.trim()}"
+              </Text>
+            </TouchableOpacity>
           ) : null
         }
       />
@@ -281,6 +361,43 @@ function NutrientPill({ label, value, color }: { label: string; value: number; c
     <View style={{ alignItems: "center", flex: 1 }}>
       <Text style={[type.h2, { color, fontSize: 20 }]}>{value}</Text>
       <Text style={[type.caption, { color: colors.textSecondary }]}>{label}</Text>
+    </View>
+  );
+}
+
+function CustomInput({
+  label,
+  value,
+  onChangeText,
+  keyboard = "decimal-pad",
+  flex = 1,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (v: string) => void;
+  keyboard?: "decimal-pad" | "default";
+  flex?: number;
+}) {
+  const { colors, type, spacing, radius } = useTheme();
+  return (
+    <View style={{ flex, marginBottom: spacing.sm }}>
+      <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.xs }]}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={(v) => onChangeText(keyboard === "decimal-pad" ? v.replace(/[^0-9.,]/g, "") : v)}
+        keyboardType={keyboard === "decimal-pad" ? "decimal-pad" : "default"}
+        style={[
+          type.body,
+          {
+            color: colors.textPrimary,
+            backgroundColor: colors.surfaceAlt,
+            borderRadius: radius.button,
+            height: 48,
+            paddingHorizontal: spacing.md,
+            textAlign: keyboard === "decimal-pad" ? "center" : "left",
+          },
+        ]}
+      />
     </View>
   );
 }
