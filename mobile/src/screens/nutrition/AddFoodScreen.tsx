@@ -12,7 +12,14 @@ import {
   View,
 } from "react-native";
 
-import { createCustomFood, searchFoods, type Food } from "../../api/foods";
+import {
+  addFavoriteFood,
+  createCustomFood,
+  listFavoriteFoods,
+  removeFavoriteFood,
+  searchFoods,
+  type Food,
+} from "../../api/foods";
 import { logMeal } from "../../api/meals";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
@@ -38,6 +45,39 @@ export function AddFoodScreen() {
   const [customMode, setCustomMode] = useState(false);
   const [custom, setCustom] = useState({ name: "", kcal: "", protein: "", carbs: "", fat: "" });
   const [isCreating, setIsCreating] = useState(false);
+
+  // Favoritos: reuso em 1 toque, reduz a fricção do registro diário.
+  const [favorites, setFavorites] = useState<Food[]>([]);
+  const [favIds, setFavIds] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    listFavoriteFoods()
+      .then((f) => {
+        setFavorites(f);
+        setFavIds(new Set(f.map((x) => x.id)));
+      })
+      .catch(() => {});
+  }, []);
+
+  async function toggleFavorite(food: Food) {
+    const isFav = favIds.has(food.id);
+    setFavIds((prev) => {
+      const next = new Set(prev);
+      if (isFav) next.delete(food.id);
+      else next.add(food.id);
+      return next;
+    });
+    try {
+      if (isFav) await removeFavoriteFood(food.id);
+      else await addFavoriteFood(food.id);
+      setFavorites(await listFavoriteFoods());
+    } catch {
+      /* rollback silencioso: recarrega do servidor */
+      const f = await listFavoriteFoods().catch(() => favorites);
+      setFavorites(f);
+      setFavIds(new Set(f.map((x) => x.id)));
+    }
+  }
 
   function openCustom() {
     setCustom({ name: query.trim(), kcal: "", protein: "", carbs: "", fat: "" });
@@ -249,9 +289,16 @@ export function AddFoodScreen() {
       ) : null}
 
       <FlatList
-        data={results}
+        data={query.trim().length < 2 ? favorites : results}
         keyExtractor={(item) => String(item.id)}
         showsVerticalScrollIndicator={false}
+        ListHeaderComponent={
+          query.trim().length < 2 && favorites.length > 0 ? (
+            <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.sm, letterSpacing: 1, textTransform: "uppercase" }]}>
+              ⭐ Seus favoritos — 1 toque para adicionar
+            </Text>
+          ) : null
+        }
         renderItem={({ item }) => (
           <Pressable
             onPress={() => {
@@ -268,6 +315,13 @@ export function AddFoodScreen() {
               opacity: pressed ? 0.8 : 1,
             })}
           >
+            <TouchableOpacity onPress={() => toggleFavorite(item)} hitSlop={8} style={{ marginRight: spacing.sm }}>
+              <Ionicons
+                name={favIds.has(item.id) ? "star" : "star-outline"}
+                size={22}
+                color={favIds.has(item.id) ? colors.warning : colors.textSecondary}
+              />
+            </TouchableOpacity>
             <View style={{ flex: 1 }}>
               <Text style={[type.body, { color: colors.textPrimary, fontWeight: "600" }]}>{item.name}</Text>
               <Text style={[type.caption, { color: colors.textSecondary, marginTop: 1 }]}>
