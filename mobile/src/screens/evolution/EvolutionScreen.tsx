@@ -30,8 +30,11 @@ function movingAverage(points: WeightPoint[], window = 7): ChartPoint[] {
   });
 }
 
+type ViewMode = "consistency" | "evolution";
+
 export function EvolutionScreen() {
   const { colors, type, spacing } = useTheme();
+  const [viewMode, setViewMode] = useState<ViewMode>("consistency");
 
   const [weight, setWeight] = useState<WeightPoint[]>([]);
   const [volume, setVolume] = useState<VolumePoint[]>([]);
@@ -40,16 +43,19 @@ export function EvolutionScreen() {
   const [progression, setProgression] = useState<ExerciseProgressionPoint[]>([]);
   const [newWeight, setNewWeight] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [consistency, setConsistency] = useState<ConsistencyHistory | null>(null);
 
   async function loadAll() {
-    const [w, v, ex] = await Promise.all([
+    const [w, v, ex, c] = await Promise.all([
       getWeightEvolution(),
       getVolumeEvolution(),
       getExercisesWithHistory(),
+      getConsistency(30),
     ]);
     setWeight(w);
     setVolume(v);
     setExercises(ex);
+    setConsistency(c);
     if (ex.length > 0 && !selectedExercise) {
       setSelectedExercise(ex[0]);
     }
@@ -95,13 +101,72 @@ export function EvolutionScreen() {
       contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
       showsVerticalScrollIndicator={false}
     >
-      {/* CONSTÂNCIA — o quanto a pessoa tem "aparecido" nos 4 hábitos, com
-          filtro por hábito. Vem primeiro porque é a visão mais glanceable
-          ("como eu tô indo no geral?") antes de entrar nos números específicos. */}
-      <ConsistencyCard />
+      {/* Duas barrinhas de toggle no topo: Constância vs Evolução */}
+      <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.lg }}>
+        <TouchableOpacity
+          onPress={() => setViewMode("consistency")}
+          style={{
+            flex: 1,
+            paddingVertical: spacing.sm,
+            paddingHorizontal: spacing.md,
+            borderRadius: 12,
+            backgroundColor: viewMode === "consistency" ? colors.secondary : colors.surface,
+            borderWidth: 1,
+            borderColor: viewMode === "consistency" ? colors.secondary : colors.border,
+            alignItems: "center",
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Ionicons name="flame" size={18} color={viewMode === "consistency" ? colors.textOnPrimary : colors.textPrimary} />
+            <Text
+              style={[
+                type.caption,
+                {
+                  color: viewMode === "consistency" ? colors.textOnPrimary : colors.textPrimary,
+                  fontWeight: "700",
+                },
+              ]}
+            >
+              Constância {consistency?.current_streak ? `${consistency.current_streak}d` : ""}
+            </Text>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setViewMode("evolution")}
+          style={{
+            flex: 1,
+            paddingVertical: spacing.sm,
+            paddingHorizontal: spacing.md,
+            borderRadius: 12,
+            backgroundColor: viewMode === "evolution" ? colors.moduleTraining : colors.surface,
+            borderWidth: 1,
+            borderColor: viewMode === "evolution" ? colors.moduleTraining : colors.border,
+            alignItems: "center",
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Ionicons name="stats-chart" size={18} color={viewMode === "evolution" ? colors.textOnPrimary : colors.textPrimary} />
+            <Text
+              style={[
+                type.caption,
+                {
+                  color: viewMode === "evolution" ? colors.textOnPrimary : colors.textPrimary,
+                  fontWeight: "700",
+                },
+              ]}
+            >
+              Evolução
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </View>
 
-      {/* PESO */}
-      <Card accent={colors.primary} style={{ marginBottom: spacing.md }}>
+      {viewMode === "consistency" ? (
+        <ConsistencyCard />
+      ) : (
+        <>
+          {/* PESO */}
+          <Card accent={colors.primary} style={{ marginBottom: spacing.md }}>
         <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.xs }}>
           <Ionicons name="scale" size={18} color={colors.primary} />
           <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8, flex: 1 }]}>Peso</Text>
@@ -247,6 +312,8 @@ export function EvolutionScreen() {
           </>
         )}
       </Card>
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -366,18 +433,18 @@ function ConsistencyFilterChip({
       style={{
         flexDirection: "row",
         alignItems: "center",
-        gap: 5,
+        gap: 7,
         borderRadius: 999,
-        paddingVertical: 8,
-        paddingHorizontal: 14,
+        paddingVertical: 10,
+        paddingHorizontal: 16,
         backgroundColor: active ? color : colors.surfaceAlt,
       }}
     >
-      <Ionicons name={filter.icon} size={13} color={active ? colors.textOnPrimary : colors.textSecondary} />
+      <Ionicons name={filter.icon} size={18} color={active ? colors.textOnPrimary : colors.textSecondary} />
       <Text
         style={[
           type.caption,
-          { color: active ? colors.textOnPrimary : colors.textPrimary, fontWeight: active ? "700" : "500" },
+          { color: active ? colors.textOnPrimary : colors.textPrimary, fontWeight: active ? "700" : "500", fontSize: 13 },
         ]}
       >
         {filter.label}
