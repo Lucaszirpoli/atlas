@@ -31,13 +31,25 @@ import { useTheme } from "../../theme/ThemeProvider";
 // então o eixo some e o gráfico normaliza tudo pra comparar só o formato.
 type MetricKey = "peso" | "treino" | "sono" | "dieta" | "carga";
 
+// "treino" é o VOLUME da sessão (peso × reps somado de todas as séries) — por
+// isso o rótulo é "Volume", não "Treino" (que dava a entender frequência).
 const METRICS: { key: MetricKey; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: "peso", label: "Peso", icon: "scale" },
-  { key: "treino", label: "Treino", icon: "barbell" },
+  { key: "treino", label: "Volume", icon: "barbell" },
   { key: "sono", label: "Sono", icon: "moon" },
   { key: "dieta", label: "Dieta", icon: "restaurant" },
   { key: "carga", label: "Carga", icon: "trending-up" },
 ];
+
+// Uma linha explicando o que cada métrica é e em que unidade — aparece de
+// subtítulo quando a pessoa está vendo uma métrica só.
+const METRIC_DESC: Record<MetricKey, string> = {
+  peso: "Seu peso corporal, em kg.",
+  treino: "Peso total levantado no treino (peso × reps de todas as séries), em kg/toneladas.",
+  sono: "Horas dormidas por noite.",
+  dieta: "Calorias consumidas por dia (kcal).",
+  carga: "Maior peso levantado no exercício escolhido, em kg.",
+};
 
 const RANGE_OPTIONS = [7, 15, 30] as const;
 type RangeDays = (typeof RANGE_OPTIONS)[number];
@@ -342,7 +354,7 @@ export function EvolutionScreen() {
           recuo); assim a linha aproveita a área cinza inteira. */}
       <Card padded={false} style={{ paddingVertical: spacing.lg }}>
         <View style={{ paddingHorizontal: spacing.lg }}>
-          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
             <Text style={[type.h2, { color: colors.textPrimary, flex: 1 }]}>
               {activeKeys.length === 0 ? "Selecione uma métrica" : "Sua evolução"}
             </Text>
@@ -359,6 +371,14 @@ export function EvolutionScreen() {
               }
             />
           </View>
+          {/* Subtítulo: com uma métrica só, explica o que ela é e a unidade. */}
+          <Text style={[type.caption, { color: colors.textSecondary, marginTop: 2, marginBottom: spacing.sm }]}>
+            {singleMetric
+              ? METRIC_DESC[singleMetric]
+              : activeKeys.length > 1
+                ? "Cada curva mostra o quanto variou em relação à sua média — compare os movimentos."
+                : "Toque nos ícones pra escolher o que ver."}
+          </Text>
 
           {/* Legenda — só precisa quando tem mais de uma curva */}
           {isMulti ? (
