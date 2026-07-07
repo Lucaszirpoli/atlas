@@ -138,8 +138,9 @@ export function DashboardScreen() {
         contentContainerStyle={{
           padding: spacing.lg,
           paddingTop: spacing.xl + spacing.md,
-          paddingBottom: spacing.xxl,
+          paddingBottom: spacing.lg,
           alignItems: "center",
+          flexGrow: 1,
         }}
         showsVerticalScrollIndicator={false}
       >
@@ -152,11 +153,13 @@ export function DashboardScreen() {
             marginBottom: spacing.lg,
           }}
         >
-          <View style={{ flex: 1 }}>
-            <Text style={[type.h1, { color: colors.textPrimary, fontSize: 26 }]}>
+          <View style={{ flex: 1, marginRight: spacing.sm }}>
+            <Text style={[type.h1, { color: colors.textPrimary, fontSize: 22 }]}>
               {greeting()}, {firstName}
             </Text>
-            <Text style={[type.bodySmall, { color: colors.textSecondary }]}>{motivationOfTheDay()}</Text>
+            <Text style={[type.caption, { color: colors.textSecondary }]} numberOfLines={1}>
+              {motivationOfTheDay()}
+            </Text>
           </View>
           <IconButton
             icon={isDark ? "sunny" : "moon"}
@@ -169,10 +172,13 @@ export function DashboardScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Grid 2×2 */}
-        <View style={{ width: contentW, flexDirection: "row", flexWrap: "wrap", gap }}>
+        {/* Grid 2×2 — os quadrados crescem pra preencher a altura da tela
+            (sem sobrar espaço vazio embaixo no celular). minHeight garante o
+            tamanho mínimo quadrado em telas curtas (aí a tela rola). */}
+        <View style={{ width: contentW, flex: 1, gap, minHeight: tile * 2 + gap }}>
+          <View style={{ flexDirection: "row", gap, flex: 1 }}>
           {/* Água — barra horizontal */}
-          <Tile size={tile} onPress={() => navigation.navigate("Water")}>
+          <Tile minH={tile} onPress={() => navigation.navigate("Water")}>
             <TileHeader icon="water" tint={colors.info} title="Água" />
             <View style={{ flex: 1, justifyContent: "center" }}>
               <Text style={[type.display, { color: colors.textPrimary, fontSize: 34, lineHeight: 38 }]}>
@@ -213,7 +219,7 @@ export function DashboardScreen() {
           </Tile>
 
           {/* Calorias — anel circular */}
-          <Tile size={tile} onPress={() => navigation.navigate("NutritionModule")}>
+          <Tile minH={tile} onPress={() => navigation.navigate("NutritionModule")}>
             <TileHeader icon="restaurant" tint={colors.moduleNutrition} title="Calorias" />
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
               <ProgressRing
@@ -226,9 +232,11 @@ export function DashboardScreen() {
               />
             </View>
           </Tile>
+          </View>
 
+          <View style={{ flexDirection: "row", gap, flex: 1 }}>
           {/* Sono — gráfico da semana atual */}
-          <Tile size={tile} onPress={() => navigation.navigate("Sleep")}>
+          <Tile minH={tile} onPress={() => navigation.navigate("Sleep")}>
             <TileHeader icon="moon" tint={colors.moduleSleep} title="Sono" />
             <View style={{ flex: 1, justifyContent: "flex-end" }}>
               <WeekSleepChart hours={sleepByDay} />
@@ -241,7 +249,7 @@ export function DashboardScreen() {
           </Tile>
 
           {/* Treino — treino de hoje */}
-          <Tile size={tile} onPress={() => navigation.navigate("TrainingModule")}>
+          <Tile minH={tile} onPress={() => navigation.navigate("TrainingModule")}>
             <TileHeader icon="barbell" tint={colors.moduleTraining} title="Treino" />
             <View style={{ flex: 1, justifyContent: "center" }}>
               <Text style={[type.caption, { color: colors.textSecondary, marginBottom: 2 }]}>
@@ -279,6 +287,7 @@ export function DashboardScreen() {
               </Text>
             </View>
           </Tile>
+          </View>
         </View>
       </ScrollView>
       <AiFab />
@@ -319,22 +328,22 @@ function IconButton({
 }
 
 function Tile({
-  size,
+  minH,
   onPress,
   children,
 }: {
-  size: number;
+  minH: number;
   onPress: () => void;
   children: React.ReactNode;
 }) {
   const { colors, spacing, shadow } = useTheme();
   return (
-    <TouchableOpacity activeOpacity={0.85} onPress={onPress}>
+    <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={{ flex: 1 }}>
       <View
         style={[
           {
-            width: size,
-            height: size,
+            flex: 1,
+            minHeight: minH,
             backgroundColor: colors.surface,
             borderRadius: 22,
             padding: spacing.md,
