@@ -211,7 +211,7 @@ export function DiaryScreen() {
                   backgroundColor: colors.info + "1A",
                 }}
               >
-                <Text style={[type.caption, { color: colors.info, fontWeight: "700" }]}>+{amount}</Text>
+                <Text style={[type.caption, { color: colors.info, fontWeight: "700", fontSize: 11 }]}>+{amount}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -380,8 +380,13 @@ function MacroBar({ label, value, goal, color }: { label: string; value: number;
   return (
     <View style={{ marginBottom: 10 }}>
       <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 3 }}>
-        <Text style={[type.caption, { color: colors.textSecondary }]}>{label}</Text>
-        <Text style={[type.caption, { color: colors.textPrimary, fontWeight: "600" }]}>
+        <Text style={[type.caption, { color: colors.textSecondary, flexShrink: 1 }]} numberOfLines={1}>
+          {label}
+        </Text>
+        <Text
+          style={[type.caption, { color: colors.textPrimary, fontWeight: "600", flexShrink: 0, marginLeft: 6 }]}
+          numberOfLines={1}
+        >
           {Math.round(value)}{goal > 0 ? `/${Math.round(goal)}g` : "g"}
         </Text>
       </View>

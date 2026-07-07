@@ -36,7 +36,11 @@ export function ProgressRing({
   const labelSize = Math.max(10, Math.round(size * 0.1));
 
   return (
-    <View style={{ alignItems: "center" }}>
+    // Largura travada em `size`: sem isso, se o texto abaixo (ex: "/ 3385
+    // kcal") for mais largo que o anel, o container cresce e rouba espaço
+    // de quem estiver ao lado (ex: as barras de macro na tela de Dieta),
+    // que por padrão não encolhem no RN — e o texto vaza pra fora da tela.
+    <View style={{ width: size, alignItems: "center" }}>
       <Svg width={size} height={size} style={{ transform: [{ rotate: "-90deg" }] }}>
         <Circle
           cx={size / 2}
@@ -59,7 +63,7 @@ export function ProgressRing({
         />
       </Svg>
       {/* Texto embaixo do anel, fora da sobreposição — sem tampação. */}
-      <View style={{ marginTop: 8, alignItems: "center" }}>
+      <View style={{ marginTop: 8, alignItems: "center", width: size }}>
         <Text
           style={{
             color: colors.textPrimary,
