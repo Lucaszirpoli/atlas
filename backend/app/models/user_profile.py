@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import ARRAY, DateTime, Enum, ForeignKey, String, Text, func
+from sqlalchemy import ARRAY, JSON, DateTime, Enum, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -75,9 +75,11 @@ class UserProfile(Base):
         default=TrainingStylePreference.IA_DECIDE,
     )
 
-    available_days: Mapped[list[str]] = mapped_column(ARRAY(String(10)), default=list)
+    available_days: Mapped[list[str]] = mapped_column(
+        ARRAY(String(10)).with_variant(JSON(), "sqlite"), default=list
+    )
     dietary_restrictions: Mapped[list[str]] = mapped_column(
-        ARRAY(String(50)), default=list
+        ARRAY(String(50)).with_variant(JSON(), "sqlite"), default=list
     )
     injuries_limitations: Mapped[str | None] = mapped_column(Text, nullable=True)
     preferred_advanced_technique: Mapped[str | None] = mapped_column(

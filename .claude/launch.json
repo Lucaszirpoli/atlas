@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "appfit-backend",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": ["/c", "cd /d backend && .venv\\Scripts\\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8090"],
+      "port": 8090
+    },
+    {
+      "name": "appfit-web",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": ["/c", "cd /d mobile && npx expo start --web --port 8091"],
+      "port": 8091
+    }
+  ]
+}

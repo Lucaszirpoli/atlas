@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import ARRAY, Boolean, DateTime, Enum, ForeignKey, String, Text, func
+from sqlalchemy import ARRAY, JSON, Boolean, DateTime, Enum, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -53,7 +53,9 @@ class Exercise(Base):
     primary_muscle_group: Mapped[MuscleGroup] = mapped_column(
         Enum(MuscleGroup, name="muscle_group")
     )
-    secondary_muscle_groups: Mapped[list[str]] = mapped_column(ARRAY(String(20)), default=list)
+    secondary_muscle_groups: Mapped[list[str]] = mapped_column(
+        ARRAY(String(20)).with_variant(JSON(), "sqlite"), default=list
+    )
     equipment: Mapped[Equipment] = mapped_column(Enum(Equipment, name="equipment"))
     difficulty: Mapped[Difficulty] = mapped_column(Enum(Difficulty, name="difficulty"))
     execution_text: Mapped[str | None] = mapped_column(Text, nullable=True)
