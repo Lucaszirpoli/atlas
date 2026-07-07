@@ -159,61 +159,33 @@ export function DashboardScreen() {
           </Text>
         </View>
 
-        {/* Duas barrinhas finas — recursos poderosos mas fáceis de achar
-            (o diferencial do app): Constância e Evolução total. Cada uma
-            abre a Evolution já na aba certa. */}
-        <View style={{ width: contentW, gap: spacing.sm, marginBottom: spacing.md }}>
-          {/* Constância — barrinha fina com o streak atual */}
-          {consistency ? (
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => navigation.navigate("Evolution", { initialMetrics: ["treino", "sono", "dieta"] })}
-            >
-              <View
-                style={{
-                  backgroundColor: colors.secondary,
-                  borderRadius: 14,
-                  paddingVertical: 10,
-                  paddingHorizontal: spacing.md,
-                  flexDirection: "row",
-                  alignItems: "center",
-                }}
-              >
-                <Ionicons name="flame" size={26} color="#FFFFFF" style={{ marginRight: spacing.sm }} />
-                <Text style={[type.body, { color: "#FFFFFF", flex: 1, fontWeight: "700" }]}>
-                  Média da constância: {consistency.current_streak} dia
-                  {consistency.current_streak !== 1 ? "s" : ""}
-                </Text>
-                <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
-              </View>
-            </TouchableOpacity>
-          ) : null}
-
-          {/* Evolução total — barrinha fina, atalho pro peso/volume/carga */}
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => navigation.navigate("Evolution", { initialMetrics: ["peso"] })}
+        {/* Barrinha fina única — recurso poderoso mas fácil de achar (o
+            diferencial do app): abre a Evolution com treino+sono+dieta já
+            ligados, prontos pra comparar. */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate("Evolution", { initialMetrics: ["treino", "sono", "dieta"] })}
+          style={{ width: contentW, marginBottom: spacing.md }}
+        >
+          <View
+            style={{
+              backgroundColor: colors.secondary,
+              borderRadius: 14,
+              paddingVertical: 10,
+              paddingHorizontal: spacing.md,
+              flexDirection: "row",
+              alignItems: "center",
+            }}
           >
-            <View
-              style={{
-                backgroundColor: colors.moduleTraining + "18",
-                borderRadius: 14,
-                paddingVertical: 10,
-                paddingHorizontal: spacing.md,
-                flexDirection: "row",
-                alignItems: "center",
-                borderWidth: 1,
-                borderColor: colors.moduleTraining + "40",
-              }}
-            >
-              <Ionicons name="stats-chart" size={26} color={colors.moduleTraining} style={{ marginRight: spacing.sm }} />
-              <Text style={[type.body, { color: colors.textPrimary, flex: 1, fontWeight: "700" }]}>
-                Veja sua evolução total
-              </Text>
-              <Ionicons name="chevron-forward" size={18} color={colors.moduleTraining} />
-            </View>
-          </TouchableOpacity>
-        </View>
+            <Ionicons name="flame" size={26} color="#FFFFFF" style={{ marginRight: spacing.sm }} />
+            <Text style={[type.body, { color: "#FFFFFF", flex: 1, fontWeight: "700" }]}>
+              {consistency
+                ? `Sua evolução: ${consistency.current_streak} dia${consistency.current_streak !== 1 ? "s" : ""} de constância`
+                : "Veja sua evolução"}
+            </Text>
+            <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
+          </View>
+        </TouchableOpacity>
 
         {/* Grid 2×2 — os quadrados crescem pra preencher a altura da tela
             (sem sobrar espaço vazio embaixo no celular). minHeight garante o

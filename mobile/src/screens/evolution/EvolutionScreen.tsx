@@ -39,6 +39,9 @@ const METRICS: { key: MetricKey; label: string; icon: keyof typeof Ionicons.glyp
   { key: "carga", label: "Carga", icon: "trending-up" },
 ];
 
+const RANGE_OPTIONS = [7, 15, 30] as const;
+type RangeDays = (typeof RANGE_OPTIONS)[number];
+
 function metricColor(colors: ReturnType<typeof useTheme>["colors"], key: MetricKey): string {
   return {
     peso: colors.primary,
@@ -65,6 +68,7 @@ export function EvolutionScreen() {
   const [active, setActive] = useState<Set<MetricKey>>(
     () => new Set<MetricKey>(route.params?.initialMetrics ?? ["peso"])
   );
+  const [rangeDays, setRangeDays] = useState<RangeDays>(30);
 
   const [weight, setWeight] = useState<WeightPoint[]>([]);
   const [volume, setVolume] = useState<VolumePoint[]>([]);
@@ -129,14 +133,28 @@ export function EvolutionScreen() {
     });
   }
 
+  const allActive = METRICS.every((m) => active.has(m.key));
+  function toggleAll() {
+    setActive(allActive ? new Set() : new Set(METRICS.map((m) => m.key)));
+  }
+
   // Dados brutos por métrica (cada função de acesso já sabe converter sua
-  // fonte pra {x: timestamp, y: valor}).
+  // fonte pra {x: timestamp, y: valor}), recortados pelo período escolhido
+  // (7/15/30 dias) — todas as métricas usam a mesma janela de tempo.
+  const cutoff = Date.now() - rangeDays * 24 * 60 * 60 * 1000;
+  const inRange = (p: ChartPoint) => p.x >= cutoff;
+
   const rawByMetric: Record<MetricKey, ChartPoint[]> = {
-    peso: weight.map((p) => ({ x: new Date(p.date).getTime(), y: p.weight_kg })),
-    treino: volume.map((p) => ({ x: new Date(p.date).getTime(), y: p.volume_kg })),
-    sono: sleepLogs.map((l) => ({ x: new Date(l.wake_at).getTime(), y: l.duration_minutes / 60 })),
-    dieta: nutritionDays.filter((d) => d.kcal > 0).map((d) => ({ x: new Date(d.date).getTime(), y: d.kcal })),
-    carga: progression.map((p) => ({ x: new Date(p.date).getTime(), y: p.max_weight_kg })),
+    peso: weight.map((p) => ({ x: new Date(p.date).getTime(), y: p.weight_kg })).filter(inRange),
+    treino: volume.map((p) => ({ x: new Date(p.date).getTime(), y: p.volume_kg })).filter(inRange),
+    sono: sleepLogs
+      .map((l) => ({ x: new Date(l.wake_at).getTime(), y: l.duration_minutes / 60 }))
+      .filter(inRange),
+    dieta: nutritionDays
+      .filter((d) => d.kcal > 0)
+      .map((d) => ({ x: new Date(d.date).getTime(), y: d.kcal }))
+      .filter(inRange),
+    carga: progression.map((p) => ({ x: new Date(p.date).getTime(), y: p.max_weight_kg })).filter(inRange),
   };
 
   const activeKeys = useMemo(() => METRICS.map((m) => m.key).filter((k) => active.has(k)), [active]);
@@ -169,8 +187,31 @@ export function EvolutionScreen() {
       showsVerticalScrollIndicator={false}
     >
       {/* Seletor múltiplo — liga quantas métricas quiser, todas aparecem
-          sobrepostas no mesmo gráfico embaixo. */}
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md }}>
+          sobrepostas no mesmo gráfico embaixo. "Todos" liga/desliga tudo
+          de uma vez. */}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.sm }}>
+        <TouchableOpacity
+          onPress={toggleAll}
+          activeOpacity={0.85}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 7,
+            paddingVertical: 10,
+            paddingHorizontal: 14,
+            borderRadius: 14,
+            backgroundColor: allActive ? colors.textPrimary : colors.surface,
+            borderWidth: 1,
+            borderColor: allActive ? colors.textPrimary : colors.border,
+          }}
+        >
+          <Ionicons name="apps" size={20} color={allActive ? colors.bg : colors.textSecondary} />
+          <Text
+            style={[type.caption, { color: allActive ? colors.bg : colors.textPrimary, fontWeight: "700" }]}
+          >
+            Todos
+          </Text>
+        </TouchableOpacity>
         {METRICS.map((m) => {
           const isActive = active.has(m.key);
           const color = metricColor(colors, m.key);
@@ -199,6 +240,37 @@ export function EvolutionScreen() {
                 ]}
               >
                 {m.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* Seletor de período — mesma janela pra todas as métricas ligadas */}
+      <View style={{ flexDirection: "row", gap: spacing.xs, marginBottom: spacing.md }}>
+        {RANGE_OPTIONS.map((d) => {
+          const isSel = rangeDays === d;
+          return (
+            <TouchableOpacity
+              key={d}
+              onPress={() => setRangeDays(d)}
+              activeOpacity={0.85}
+              style={{
+                paddingVertical: 7,
+                paddingHorizontal: 14,
+                borderRadius: 999,
+                backgroundColor: isSel ? colors.surfaceAlt : "transparent",
+                borderWidth: 1,
+                borderColor: isSel ? colors.border : "transparent",
+              }}
+            >
+              <Text
+                style={[
+                  type.caption,
+                  { color: isSel ? colors.textPrimary : colors.textSecondary, fontWeight: isSel ? "700" : "500" },
+                ]}
+              >
+                {d} dias
               </Text>
             </TouchableOpacity>
           );
