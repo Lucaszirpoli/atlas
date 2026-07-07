@@ -3,6 +3,7 @@ import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import React, { useCallback, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, useWindowDimensions, View } from "react-native";
 
+import { getConsistency, type ConsistencyHistory } from "../../api/evolution";
 import { getCurrentGoal, type CalorieGoal } from "../../api/goals";
 import { listMealsForDay, type MealLog } from "../../api/meals";
 import { listRoutines, type Routine } from "../../api/routines";
@@ -12,6 +13,7 @@ import { listWorkoutSessions, type WorkoutSessionDetail } from "../../api/workou
 import { AiFab } from "../../components/AiFab";
 import { Avatar } from "../../components/Avatar";
 import { ProgressRing } from "../../components/ProgressRing";
+import { motivationOfTheDay } from "../../content/motivation";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
 
@@ -23,16 +25,6 @@ function greeting(): string {
   if (h < 12) return "Bom dia";
   if (h < 18) return "Boa tarde";
   return "Boa noite";
-}
-const MOTIVATION = [
-  "Constância vence intensidade 💪",
-  "Um treino de cada vez 🔥",
-  "Seu único adversário é o de ontem 🚀",
-  "Pequenos passos, grandes resultados 🌱",
-  "Hoje conta. Sempre conta ✨",
-];
-function motivationOfTheDay(): string {
-  return MOTIVATION[Math.floor(Date.now() / 86400000) % MOTIVATION.length];
 }
 
 /** Chave de data local (não-UTC) para comparar dias sem escorregar de fuso. */
@@ -52,15 +44,17 @@ export function DashboardScreen() {
   const [sleepLogs, setSleepLogs] = useState<SleepLog[]>([]);
   const [sessions, setSessions] = useState<WorkoutSessionDetail[]>([]);
   const [routines, setRoutines] = useState<Routine[]>([]);
+  const [consistency, setConsistency] = useState<ConsistencyHistory | null>(null);
 
   async function load() {
-    const [g, m, w, s, sess, r] = await Promise.all([
+    const [g, m, w, s, sess, r, c] = await Promise.all([
       getCurrentGoal().catch(() => null),
       listMealsForDay(todayIso()).catch(() => []),
       getTodayWaterSummary().catch(() => null),
       listSleepLogs().catch(() => []),
       listWorkoutSessions().catch(() => []),
       listRoutines().catch(() => []),
+      getConsistency(30).catch(() => null),
     ]);
     setGoal(g);
     setMeals(m);
@@ -68,6 +62,7 @@ export function DashboardScreen() {
     setSleepLogs(s);
     setSessions(sess);
     setRoutines(r);
+    setConsistency(c);
   }
 
   useFocusEffect(
@@ -145,31 +140,49 @@ export function DashboardScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Topo: saudação + toggle de tema + social + perfil */}
-        <View
-          style={{
-            width: contentW,
-            flexDirection: "row",
-            alignItems: "center",
-            marginBottom: spacing.lg,
-          }}
-        >
-          <View style={{ flex: 1, marginRight: spacing.sm }}>
-            <Text style={[type.h1, { color: colors.textPrimary, fontSize: 22 }]}>
+        <View style={{ width: contentW, marginBottom: spacing.lg }}>
+          {/* Linha 1: saudação + ações. Fica só o essencial aqui pra nunca
+              disputar espaço com o nome da pessoa em telas estreitas. */}
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Text style={[type.h1, { color: colors.textPrimary, fontSize: 22, flex: 1 }]} numberOfLines={1}>
               {greeting()}, {firstName}
             </Text>
-            <Text style={[type.caption, { color: colors.textSecondary }]} numberOfLines={1}>
-              {motivationOfTheDay()}
-            </Text>
+            {consistency && consistency.current_streak > 0 ? (
+              <TouchableOpacity
+                onPress={() => navigation.navigate("Evolution")}
+                activeOpacity={0.8}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                  backgroundColor: colors.secondarySoft,
+                  borderRadius: 999,
+                  paddingVertical: 10,
+                  paddingHorizontal: 11,
+                  marginRight: spacing.sm,
+                }}
+              >
+                <Ionicons name="flame" size={16} color={colors.secondary} />
+                <Text style={[type.caption, { color: colors.secondary, fontWeight: "800" }]}>
+                  {consistency.current_streak}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            <IconButton
+              icon={isDark ? "sunny" : "moon"}
+              tint={isDark ? colors.warning : colors.moduleSleep}
+              onPress={toggleDark}
+            />
+            <IconButton icon="people" tint={colors.moduleSocial} onPress={() => navigation.navigate("Social")} />
+            <TouchableOpacity onPress={() => navigation.navigate("Profile")}>
+              <Avatar name={user?.display_name ?? "?"} handle={user?.handle ?? "?"} size={44} />
+            </TouchableOpacity>
           </View>
-          <IconButton
-            icon={isDark ? "sunny" : "moon"}
-            tint={isDark ? colors.warning : colors.moduleSleep}
-            onPress={toggleDark}
-          />
-          <IconButton icon="people" tint={colors.moduleSocial} onPress={() => navigation.navigate("Social")} />
-          <TouchableOpacity onPress={() => navigation.navigate("Profile")}>
-            <Avatar name={user?.display_name ?? "?"} handle={user?.handle ?? "?"} size={44} />
-          </TouchableOpacity>
+          {/* Linha 2: frase motivacional, com a linha inteira pra ela — nunca
+              mais corta com "..." por disputar espaço com os ícones. */}
+          <Text style={[type.caption, { color: colors.textSecondary, marginTop: 4 }]} numberOfLines={2}>
+            {motivationOfTheDay()}
+          </Text>
         </View>
 
         {/* Grid 2×2 — os quadrados crescem pra preencher a altura da tela

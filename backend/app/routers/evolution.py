@@ -14,10 +14,14 @@ from app.core.security import get_current_user
 from app.models.calorie_goal import CalorieGoal
 from app.models.exercise import Exercise
 from app.models.meal import MealLog, MealLogItem
+from app.models.sleep_log import SleepLog
 from app.models.user import User
+from app.models.water_log import WaterLog
 from app.models.weight_log import WeightLog
 from app.models.workout_session import WorkoutSession, WorkoutSetLog
 from app.schemas.evolution import (
+    ConsistencyDay,
+    ConsistencyResponse,
     ExerciseOption,
     ExerciseProgressionPoint,
     ExerciseProgressionResponse,
@@ -26,6 +30,7 @@ from app.schemas.evolution import (
     VolumePoint,
     WeightPoint,
 )
+from app.services import water_service
 
 router = APIRouter(prefix="/evolution", tags=["evolution"])
 
@@ -170,4 +175,104 @@ def nutrition_history(
         "goal_kcal": goal_kcal,
         "days_logged": len(logged_days),
         "days_within_goal": within,
+    }
+
+
+@router.get("/consistency", response_model=ConsistencyResponse)
+def consistency(
+    days: int = 30,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Visão geral de constância: dos 4 hábitos (treino, sono bom, água na
+    meta, dieta registrada), quantos a pessoa cumpriu em cada dia — vira o
+    'quão responsável eu tenho sido' com filtro por hábito no app. Tom sempre
+    informativo, nunca de culpa (espec. 3.7): um dia sem registro é só isso,
+    não uma falha."""
+    days = max(7, min(days, 90))
+    since = datetime.now(timezone.utc) - timedelta(days=days - 1)
+    since = since.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    trained_days: set[str] = set()
+    sessions = db.execute(
+        select(WorkoutSession.completed_at).where(
+            WorkoutSession.user_id == current_user.id,
+            WorkoutSession.completed_at.is_not(None),
+            WorkoutSession.completed_at >= since,
+        )
+    ).scalars()
+    for completed_at in sessions:
+        trained_days.add(completed_at.date().isoformat())
+
+    slept_well_days: set[str] = set()
+    sleep_logs = db.execute(
+        select(SleepLog).where(SleepLog.user_id == current_user.id, SleepLog.wake_at >= since)
+    ).scalars()
+    for log in sleep_logs:
+        duration_min = (log.wake_at - log.sleep_at).total_seconds() / 60
+        if duration_min >= 7 * 60:
+            slept_well_days.add(log.wake_at.date().isoformat())
+
+    water_per_day: dict[str, int] = defaultdict(int)
+    water_logs = db.execute(
+        select(WaterLog).where(WaterLog.user_id == current_user.id, WaterLog.logged_at >= since)
+    ).scalars()
+    for log in water_logs:
+        water_per_day[log.logged_at.date().isoformat()] += log.amount_ml
+    goal_ml = water_service.compute_goal_ml(db, current_user.id)
+
+    logged_food_days: set[str] = set()
+    meals = db.execute(
+        select(MealLog).where(MealLog.user_id == current_user.id, MealLog.logged_at >= since)
+    ).scalars()
+    for meal in meals:
+        logged_food_days.add(meal.logged_at.date().isoformat())
+
+    result = []
+    for offset in range(days):
+        d = (since + timedelta(days=offset)).date()
+        key = d.isoformat()
+        trained = key in trained_days
+        slept_well = key in slept_well_days
+        hydrated = bool(goal_ml) and water_per_day.get(key, 0) >= goal_ml * 0.9
+        logged_food = key in logged_food_days
+        habits_done = sum([trained, slept_well, hydrated, logged_food])
+        result.append(
+            {
+                "date": key,
+                "trained": trained,
+                "slept_well": slept_well,
+                "hydrated": hydrated,
+                "logged_food": logged_food,
+                "score": round(habits_done / 4 * 100),
+            }
+        )
+
+    # Sequência atual: dias consecutivos (voltando de hoje) com score >= 50
+    # (pelo menos 2 dos 4 hábitos). Hoje ainda não "acabou" — se ainda não
+    # bateu 50, não quebra a sequência, só não conta ainda (dá tempo).
+    today_key = datetime.now(timezone.utc).date().isoformat()
+    current_streak = 0
+    skipped_today = False
+    for r in reversed(result):
+        if r["score"] >= 50:
+            current_streak += 1
+        elif r["date"] == today_key and not skipped_today:
+            skipped_today = True
+        else:
+            break
+
+    best_streak = 0
+    running = 0
+    for r in result:
+        if r["score"] >= 50:
+            running += 1
+            best_streak = max(best_streak, running)
+        else:
+            running = 0
+
+    return {
+        "days": result,
+        "current_streak": current_streak,
+        "best_streak": best_streak,
     }

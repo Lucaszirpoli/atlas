@@ -41,3 +41,18 @@ class NutritionHistoryResponse(BaseModel):
     goal_kcal: float | None
     days_logged: int
     days_within_goal: int
+
+
+class ConsistencyDay(BaseModel):
+    date: str
+    trained: bool
+    slept_well: bool
+    hydrated: bool
+    logged_food: bool
+    score: int
+
+
+class ConsistencyResponse(BaseModel):
+    days: list[ConsistencyDay]
+    current_streak: int
+    best_streak: int

@@ -2,6 +2,7 @@ import React from "react";
 import { Text, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 
+import { fontFamily } from "../theme/typography";
 import { useTheme } from "../theme/ThemeProvider";
 
 export function ProgressRing({
@@ -11,6 +12,7 @@ export function ProgressRing({
   label,
   value,
   color,
+  valueSize,
 }: {
   progress: number;
   size?: number;
@@ -18,6 +20,8 @@ export function ProgressRing({
   label: string;
   value: string;
   color?: string;
+  /** Sobrescreve o tamanho da fonte do número central (senão escala com o anel). */
+  valueSize?: number;
 }) {
   const { colors, type } = useTheme();
   const ringColor = color ?? colors.primary;
@@ -26,6 +30,10 @@ export function ProgressRing({
   const circumference = 2 * Math.PI * radius;
   const clamped = Math.min(Math.max(progress, 0), 1);
   const strokeDashoffset = circumference * (1 - clamped);
+
+  // Escala a tipografia com o tamanho do anel para nunca vazar/tapar o gráfico.
+  const numberSize = valueSize ?? Math.max(16, Math.round(size * 0.26));
+  const labelSize = Math.max(10, Math.round(size * 0.1));
 
   return (
     <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
@@ -53,9 +61,40 @@ export function ProgressRing({
           strokeLinecap="round"
         />
       </Svg>
-      <View style={{ position: "absolute", alignItems: "center" }}>
-        <Text style={[type.h1, { color: colors.textPrimary }]}>{value}</Text>
-        <Text style={[type.caption, { color: colors.textSecondary }]}>{label}</Text>
+      {/* Overlay ancorado no centro do anel (preenche a box e centraliza) — sem
+          isso o texto escorrega pro canto e tapa o gráfico em anéis pequenos. */}
+      <View
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          alignItems: "center",
+          justifyContent: "center",
+          paddingHorizontal: strokeWidth,
+        }}
+        pointerEvents="none"
+      >
+        <Text
+          style={{
+            color: colors.textPrimary,
+            fontFamily: fontFamily.display,
+            fontSize: numberSize,
+            lineHeight: numberSize + 2,
+          }}
+          numberOfLines={1}
+        >
+          {value}
+        </Text>
+        {label ? (
+          <Text
+            style={[type.caption, { color: colors.textSecondary, fontSize: labelSize, textAlign: "center", marginTop: 1 }]}
+            numberOfLines={1}
+          >
+            {label}
+          </Text>
+        ) : null}
       </View>
     </View>
   );

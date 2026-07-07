@@ -39,3 +39,22 @@ export async function getNutritionHistory(days = 14): Promise<NutritionHistory> 
   const { data } = await api.get<NutritionHistory>("/evolution/nutrition", { params: { days } });
   return data;
 }
+
+export type ConsistencyDay = {
+  date: string;
+  trained: boolean;
+  slept_well: boolean;
+  hydrated: boolean;
+  logged_food: boolean;
+  score: number;
+};
+export type ConsistencyHistory = {
+  days: ConsistencyDay[];
+  current_streak: number;
+  best_streak: number;
+};
+
+export async function getConsistency(days = 30): Promise<ConsistencyHistory> {
+  const { data } = await api.get<ConsistencyHistory>("/evolution/consistency", { params: { days } });
+  return data;
+}

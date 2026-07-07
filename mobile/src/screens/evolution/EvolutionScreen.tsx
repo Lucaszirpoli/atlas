@@ -3,10 +3,13 @@ import React, { useEffect, useState } from "react";
 import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 import {
+  getConsistency,
   getExerciseProgression,
   getExercisesWithHistory,
   getVolumeEvolution,
   getWeightEvolution,
+  type ConsistencyDay,
+  type ConsistencyHistory,
   type ExerciseOption,
   type ExerciseProgressionPoint,
   type VolumePoint,
@@ -92,6 +95,11 @@ export function EvolutionScreen() {
       contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
       showsVerticalScrollIndicator={false}
     >
+      {/* CONSTÂNCIA — o quanto a pessoa tem "aparecido" nos 4 hábitos, com
+          filtro por hábito. Vem primeiro porque é a visão mais glanceable
+          ("como eu tô indo no geral?") antes de entrar nos números específicos. */}
+      <ConsistencyCard />
+
       {/* PESO */}
       <Card accent={colors.primary} style={{ marginBottom: spacing.md }}>
         <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.xs }}>
@@ -240,5 +248,189 @@ export function EvolutionScreen() {
         )}
       </Card>
     </ScrollView>
+  );
+}
+
+// --- Constância ------------------------------------------------------------
+// Mede o quanto a pessoa tem sido consistente nos 4 hábitos que o app
+// acompanha (treino, sono bom, água na meta, dieta registrada) e deixa
+// filtrar o gráfico pra ver só um deles — sem julgamento, um dia sem
+// registro é só isso, nunca "falha" (espec. 3.7).
+
+type ConsistencyFilterKey = "geral" | "treino" | "sono" | "agua" | "dieta";
+
+const CONSISTENCY_FILTERS: { key: ConsistencyFilterKey; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { key: "geral", label: "Geral", icon: "flame" },
+  { key: "treino", label: "Treino", icon: "barbell" },
+  { key: "sono", label: "Sono", icon: "moon" },
+  { key: "agua", label: "Água", icon: "water" },
+  { key: "dieta", label: "Dieta", icon: "restaurant" },
+];
+
+function useConsistencyFilterColor(filter: ConsistencyFilterKey): string {
+  const { colors } = useTheme();
+  return {
+    geral: colors.secondary,
+    treino: colors.moduleTraining,
+    sono: colors.moduleSleep,
+    agua: colors.info,
+    dieta: colors.moduleNutrition,
+  }[filter];
+}
+
+function ConsistencyCard() {
+  const { colors, type, spacing } = useTheme();
+  const [history, setHistory] = useState<ConsistencyHistory | null>(null);
+  const [filter, setFilter] = useState<ConsistencyFilterKey>("geral");
+  const filterColor = useConsistencyFilterColor(filter);
+
+  useEffect(() => {
+    getConsistency(30).then(setHistory).catch(() => {});
+  }, []);
+
+  return (
+    <Card accent={filterColor} style={{ marginBottom: spacing.md }}>
+      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
+        <Ionicons name="flame" size={18} color={colors.secondary} />
+        <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8, flex: 1 }]}>Constância</Text>
+        <HelpDot
+          title="Como isso é calculado"
+          text={
+            "Todo dia contamos 4 hábitos: treinar, dormir bem (7h ou mais), beber sua meta de água e registrar o " +
+            "que comeu. Bateu pelo menos 2 dos 4? O dia entra na sua sequência. Não é sobre ser perfeito todo dia — " +
+            "é sobre aparecer com frequência."
+          }
+        />
+      </View>
+
+      {history ? (
+        <>
+          <View style={{ flexDirection: "row", alignItems: "baseline", marginBottom: spacing.md }}>
+            <Text style={[type.display, { color: colors.textPrimary, fontSize: 34 }]}>{history.current_streak}</Text>
+            <Text style={[type.body, { color: colors.textSecondary, marginLeft: 6 }]}>
+              {history.current_streak === 1 ? "dia seguido" : "dias seguidos"} 🔥
+            </Text>
+            {history.best_streak > history.current_streak ? (
+              <Text style={[type.caption, { color: colors.textSecondary, marginLeft: "auto" }]}>
+                recorde: {history.best_streak}
+              </Text>
+            ) : null}
+          </View>
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.sm }}>
+            <View style={{ flexDirection: "row", gap: spacing.xs }}>
+              {CONSISTENCY_FILTERS.map((f) => {
+                const active = filter === f.key;
+                return (
+                  <ConsistencyFilterChip
+                    key={f.key}
+                    filter={f}
+                    active={active}
+                    onPress={() => setFilter(f.key)}
+                  />
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          <ConsistencyBars days={history.days} filter={filter} color={filterColor} />
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 4 }}>
+            <Text style={[type.caption, { color: colors.textSecondary }]}>30 dias atrás</Text>
+            <Text style={[type.caption, { color: colors.textSecondary }]}>hoje</Text>
+          </View>
+        </>
+      ) : (
+        <Text style={[type.bodySmall, { color: colors.textSecondary, paddingVertical: spacing.sm }]}>
+          Carregando sua constância...
+        </Text>
+      )}
+    </Card>
+  );
+}
+
+function ConsistencyFilterChip({
+  filter,
+  active,
+  onPress,
+}: {
+  filter: (typeof CONSISTENCY_FILTERS)[number];
+  active: boolean;
+  onPress: () => void;
+}) {
+  const { colors, type } = useTheme();
+  const color = useConsistencyFilterColor(filter.key);
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.8}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 5,
+        borderRadius: 999,
+        paddingVertical: 8,
+        paddingHorizontal: 14,
+        backgroundColor: active ? color : colors.surfaceAlt,
+      }}
+    >
+      <Ionicons name={filter.icon} size={13} color={active ? colors.textOnPrimary : colors.textSecondary} />
+      <Text
+        style={[
+          type.caption,
+          { color: active ? colors.textOnPrimary : colors.textPrimary, fontWeight: active ? "700" : "500" },
+        ]}
+      >
+        {filter.label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+function ConsistencyBars({
+  days,
+  filter,
+  color,
+}: {
+  days: ConsistencyDay[];
+  filter: ConsistencyFilterKey;
+  color: string;
+}) {
+  const { colors } = useTheme();
+  const CHART_H = 90;
+
+  function valueOf(d: ConsistencyDay): number {
+    switch (filter) {
+      case "geral":
+        return d.score / 100;
+      case "treino":
+        return d.trained ? 1 : 0;
+      case "sono":
+        return d.slept_well ? 1 : 0;
+      case "agua":
+        return d.hydrated ? 1 : 0;
+      case "dieta":
+        return d.logged_food ? 1 : 0;
+    }
+  }
+
+  return (
+    <View style={{ flexDirection: "row", alignItems: "flex-end", height: CHART_H, gap: 3 }}>
+      {days.map((d) => {
+        const v = valueOf(d);
+        const h = v > 0 ? Math.max(v * CHART_H, 4) : 2;
+        return (
+          <View
+            key={d.date}
+            style={{
+              flex: 1,
+              height: h,
+              borderRadius: 3,
+              backgroundColor: v > 0 ? color : colors.surfaceAlt,
+              opacity: v > 0 ? 0.35 + v * 0.65 : 1,
+            }}
+          />
+        );
+      })}
+    </View>
   );
 }
