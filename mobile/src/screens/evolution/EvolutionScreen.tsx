@@ -52,13 +52,25 @@ function metricColor(colors: ReturnType<typeof useTheme>["colors"], key: MetricK
   }[key];
 }
 
+// Normaliza pra sobrepor métricas de escalas diferentes SEM que uma variação
+// pequena vire um pico gigante. Em vez de esticar o min-max de cada série pra
+// altura toda (o que amplificava qualquer mudancinha — ex: dieta 3300->3400,
+// só +3%, estourava pro topo), centramos cada métrica na SUA MÉDIA e usamos
+// uma sensibilidade FIXA: ±NORM_BAND (30%) em torno da média ocupa a altura
+// toda. Assim um dia com +3% de kcal aparece como um degrau de ~3%, e a
+// métrica que de fato oscilou mais (em %) é a que se move mais — comparação
+// justa entre dieta, carga, etc. Clampa em [0,1]; o gráfico usa domínio fixo
+// [0,1] pra não reesticar isso de volta.
+const NORM_BAND = 0.3;
 function normalize(points: ChartPoint[]): ChartPoint[] {
   if (points.length === 0) return points;
   const ys = points.map((p) => p.y);
-  const min = Math.min(...ys);
-  const max = Math.max(...ys);
-  if (min === max) return points.map((p) => ({ ...p, y: 0.5 }));
-  return points.map((p) => ({ ...p, y: (p.y - min) / (max - min) }));
+  const mean = ys.reduce((a, b) => a + b, 0) / ys.length;
+  if (mean === 0) return points.map((p) => ({ ...p, y: 0.5 }));
+  return points.map((p) => {
+    const rel = (p.y / mean - 1) / (2 * NORM_BAND);
+    return { ...p, y: Math.max(0, Math.min(1, 0.5 + rel)) };
+  });
 }
 
 export function EvolutionScreen() {
@@ -338,10 +350,12 @@ export function EvolutionScreen() {
               title="Comparando métricas"
               text={
                 "Ligue mais de uma métrica pra ver se elas andam juntas — por exemplo, se a caloria sobe um dia e a " +
-                "carga sobe no treino seguinte. Com 2 ou mais ligadas, cada curva é normalizada (0 a 100%) pra caberem " +
-                "juntas no mesmo gráfico, já que peso, kcal e horas de sono têm escalas bem diferentes. Com só uma, os " +
-                "valores reais aparecem nos eixos. Se algum dia ficou sem registro, a linha segue reta com o último " +
-                "valor até o próximo registro — nunca some nem quebra."
+                "carga sobe no treino seguinte. Com 2 ou mais ligadas, cada curva mostra o quanto variou em relação à " +
+                "sua própria média, na mesma sensibilidade — uma mudança pequena (ex: 3% a mais de caloria) aparece " +
+                "como um degrau pequeno, não como um pico. Assim dá pra comparar os movimentos de métricas de escalas " +
+                "bem diferentes (kcal, kg, horas) de forma justa. Com só uma métrica, os valores reais aparecem nos " +
+                "eixos. Se algum dia ficou sem registro, a linha segue reta com o último valor até o próximo — nunca " +
+                "some nem quebra."
               }
             />
           </View>
@@ -372,6 +386,7 @@ export function EvolutionScreen() {
                 area: !isMulti,
               }))}
               showYAxis={!isMulti}
+              yDomain={isMulti ? [0, 1] : undefined}
               formatY={singleMetric ? singleUnit[singleMetric] : undefined}
             />
           </View>

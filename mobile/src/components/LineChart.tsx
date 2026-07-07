@@ -31,6 +31,7 @@ export function LineChart({
   formatX = defaultFormatX,
   showYAxis = true,
   showXAxis = true,
+  yDomain,
 }: {
   series: Series[];
   height?: number;
@@ -42,6 +43,10 @@ export function LineChart({
   showYAxis?: boolean;
   /** Rótulos de data no eixo X. */
   showXAxis?: boolean;
+  /** Domínio Y fixo [min, max]. Quando passado, o gráfico NÃO auto-ajusta a
+   * escala aos dados — essencial no modo normalizado, senão o auto-ajuste
+   * reesticaria a variação de volta pra altura toda e o "pico" voltaria. */
+  yDomain?: [number, number];
 }) {
   const { colors, type } = useTheme();
   const window = useWindowDimensions();
@@ -67,16 +72,19 @@ export function LineChart({
   const ys = allPoints.map((p) => p.y);
   const minX = Math.min(...xs);
   const maxX = Math.max(...xs);
-  let minY = Math.min(...ys);
-  let maxY = Math.max(...ys);
+  let minY = yDomain ? yDomain[0] : Math.min(...ys);
+  let maxY = yDomain ? yDomain[1] : Math.max(...ys);
   if (minY === maxY) {
     minY -= 1;
     maxY += 1;
   }
-  // folga vertical
-  const range = maxY - minY;
-  minY -= range * 0.12;
-  maxY += range * 0.12;
+  // folga vertical — só quando a escala é auto-ajustada. Com domínio fixo
+  // (modo normalizado) o próprio domínio já reserva a folga.
+  if (!yDomain) {
+    const range = maxY - minY;
+    minY -= range * 0.12;
+    maxY += range * 0.12;
+  }
 
   const plotW = width - padLeft - padRight;
   const plotH = height - padTop - padBottom;
