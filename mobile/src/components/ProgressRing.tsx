@@ -36,10 +36,7 @@ export function ProgressRing({
   const labelSize = Math.max(10, Math.round(size * 0.1));
 
   return (
-    <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
-      {/* Rotaciona o SVG inteiro -90° para o anel começar no topo — evita as
-          props rotation/origin do react-native-svg, que geram atributos DOM
-          inválidos na web. */}
+    <View style={{ alignItems: "center" }}>
       <Svg width={size} height={size} style={{ transform: [{ rotate: "-90deg" }] }}>
         <Circle
           cx={size / 2}
@@ -61,21 +58,8 @@ export function ProgressRing({
           strokeLinecap="round"
         />
       </Svg>
-      {/* Overlay ancorado no centro do anel (preenche a box e centraliza) — sem
-          isso o texto escorrega pro canto e tapa o gráfico em anéis pequenos. */}
-      <View
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          alignItems: "center",
-          justifyContent: "center",
-          paddingHorizontal: strokeWidth,
-        }}
-        pointerEvents="none"
-      >
+      {/* Texto embaixo do anel, fora da sobreposição — sem tampação. */}
+      <View style={{ marginTop: 8, alignItems: "center" }}>
         <Text
           style={{
             color: colors.textPrimary,

@@ -33,7 +33,7 @@ function localKey(d: Date): string {
 }
 
 export function DashboardScreen() {
-  const { colors, type, spacing, isDark, toggleDark } = useTheme();
+  const { colors, type, spacing } = useTheme();
   const navigation = useNavigation<any>();
   const { user } = useAuth();
   const { width } = useWindowDimensions();
@@ -141,38 +141,12 @@ export function DashboardScreen() {
       >
         {/* Topo: saudação + toggle de tema + social + perfil */}
         <View style={{ width: contentW, marginBottom: spacing.lg }}>
-          {/* Linha 1: saudação + ações. Fica só o essencial aqui pra nunca
-              disputar espaço com o nome da pessoa em telas estreitas. */}
+          {/* Linha 1: saudação + ações rápidas (social + perfil). Tema escuro
+              agora fica só no Perfil/Aparência. */}
           <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Text style={[type.h1, { color: colors.textPrimary, fontSize: 22, flex: 1 }]} numberOfLines={1}>
+            <Text style={[type.h1, { color: colors.textPrimary, fontSize: 22, flex: 1 }]}>
               {greeting()}, {firstName}
             </Text>
-            {consistency && consistency.current_streak > 0 ? (
-              <TouchableOpacity
-                onPress={() => navigation.navigate("Evolution")}
-                activeOpacity={0.8}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 4,
-                  backgroundColor: colors.secondarySoft,
-                  borderRadius: 999,
-                  paddingVertical: 10,
-                  paddingHorizontal: 11,
-                  marginRight: spacing.sm,
-                }}
-              >
-                <Ionicons name="flame" size={16} color={colors.secondary} />
-                <Text style={[type.caption, { color: colors.secondary, fontWeight: "800" }]}>
-                  {consistency.current_streak}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-            <IconButton
-              icon={isDark ? "sunny" : "moon"}
-              tint={isDark ? colors.warning : colors.moduleSleep}
-              onPress={toggleDark}
-            />
             <IconButton icon="people" tint={colors.moduleSocial} onPress={() => navigation.navigate("Social")} />
             <TouchableOpacity onPress={() => navigation.navigate("Profile")}>
               <Avatar name={user?.display_name ?? "?"} handle={user?.handle ?? "?"} size={44} />
@@ -183,6 +157,69 @@ export function DashboardScreen() {
           <Text style={[type.caption, { color: colors.textSecondary, marginTop: 4 }]} numberOfLines={2}>
             {motivationOfTheDay()}
           </Text>
+        </View>
+
+        {/* Cards de recursos poderosos mas fáceis (o diferencial do app):
+            Constância e Evolução de Treino. */}
+        <View style={{ width: contentW, gap: spacing.md, marginBottom: spacing.md }}>
+          {/* Constância — mostra a sequência + atalho rápido */}
+          {consistency ? (
+            <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate("Evolution")}>
+              <View
+                style={{
+                  backgroundColor: colors.secondary,
+                  borderRadius: 18,
+                  padding: spacing.md,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <View>
+                  <Text style={[type.caption, { color: "rgba(255,255,255,0.8)", marginBottom: 4 }]}>
+                    Sua constância
+                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Text style={[type.h1, { color: "#FFFFFF", fontSize: 28 }]}>
+                      {consistency.current_streak}
+                    </Text>
+                    <Text style={[type.h2, { color: "rgba(255,255,255,0.9)", fontSize: 16 }]}>
+                      dia{consistency.current_streak !== 1 ? "s" : ""} 🔥
+                    </Text>
+                  </View>
+                </View>
+                <Ionicons name="chevron-forward" size={24} color="#FFFFFF" />
+              </View>
+            </TouchableOpacity>
+          ) : null}
+
+          {/* Evolução do Treino — volume semanal */}
+          <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate("Evolution")}>
+            <View
+              style={[
+                {
+                  backgroundColor: colors.moduleTraining + "18",
+                  borderRadius: 18,
+                  padding: spacing.md,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  borderWidth: 1,
+                  borderColor: colors.moduleTraining + "40",
+                },
+              ]}
+            >
+              <View>
+                <Text style={[type.caption, { color: colors.moduleTraining, marginBottom: 2, fontWeight: "600" }]}>
+                  Evolução
+                </Text>
+                <Text style={[type.h2, { color: colors.textPrimary, fontSize: 16 }]}>
+                  Volume de treino e progresso
+                </Text>
+              </View>
+              <Ionicons name="stats-chart" size={20} color={colors.moduleTraining} />
+            </View>
+          </TouchableOpacity>
         </View>
 
         {/* Grid 2×2 — os quadrados crescem pra preencher a altura da tela
