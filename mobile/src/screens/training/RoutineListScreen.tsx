@@ -12,6 +12,7 @@ import {
   type Routine,
 } from "../../api/routines";
 import { startWorkoutSession } from "../../api/workoutSessions";
+import { AiEntryCard } from "../../components/AiEntryCard";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { HelpDot } from "../../components/HelpDot";
@@ -135,30 +136,38 @@ export function RoutineListScreen() {
         contentContainerStyle={{ paddingBottom: spacing.lg }}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
-          volume.length >= 2 ? (
-            <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate("Evolution")}>
-              <Card style={{ marginBottom: spacing.md }}>
-                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
-                  <Ionicons name="stats-chart" size={18} color={colors.secondary} />
-                  <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8, flex: 1, fontSize: 17 }]}>
-                    Volume por treino
-                  </Text>
-                  <Text style={[type.caption, { color: colors.secondary, fontWeight: "700" }]}>
-                    {workoutsThisWeek} esta semana
-                  </Text>
-                  <HelpDot
-                    title="Volume"
-                    text="Peso × repetições somado em cada treino. Ver a linha subir ao longo das semanas é sinal de progresso. Toque para a evolução completa."
+          <>
+            {/* Entrada da IA — o recurso mais poderoso do módulo, em 1 toque */}
+            <AiEntryCard
+              title="Monte seu treino com IA personalizada"
+              subtitle="Diz seu objetivo, dias disponíveis e equipamento — a IA monta pra você"
+              prompt="Monte um treino personalizado pra mim, considerando meu objetivo, meus dias disponíveis e o equipamento que tenho acesso."
+            />
+            {volume.length >= 2 ? (
+              <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate("Evolution")}>
+                <Card style={{ marginBottom: spacing.md }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
+                    <Ionicons name="stats-chart" size={18} color={colors.secondary} />
+                    <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8, flex: 1, fontSize: 17 }]}>
+                      Volume por treino
+                    </Text>
+                    <Text style={[type.caption, { color: colors.secondary, fontWeight: "700" }]}>
+                      {workoutsThisWeek} esta semana
+                    </Text>
+                    <HelpDot
+                      title="Volume"
+                      text="Peso × repetições somado em cada treino. Ver a linha subir ao longo das semanas é sinal de progresso. Toque para a evolução completa."
+                    />
+                  </View>
+                  <LineChart
+                    series={[{ data: volumeSeries, color: colors.secondary, showDots: true }]}
+                    height={130}
+                    formatY={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}t` : `${Math.round(v)}`)}
                   />
-                </View>
-                <LineChart
-                  series={[{ data: volumeSeries, color: colors.secondary, showDots: true }]}
-                  height={130}
-                  formatY={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}t` : `${Math.round(v)}`)}
-                />
-              </Card>
-            </TouchableOpacity>
-          ) : null
+                </Card>
+              </TouchableOpacity>
+            ) : null}
+          </>
         }
         renderItem={({ item }) => {
           const totalSets = item.exercises.reduce((s, e) => s + e.target_sets, 0);

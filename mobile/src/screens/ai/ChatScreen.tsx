@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -29,13 +29,16 @@ const SUGGESTIONS = [
 export function ChatScreen() {
   const { colors, type, spacing, radius, shadow } = useTheme();
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
   const { user, refreshUser } = useAuth();
   const listRef = useRef<FlatList>(null);
 
   const isPro = user?.plan === "pro";
   const [credits, setCredits] = useState(user?.ai_free_credits ?? 0);
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
-  const [input, setInput] = useState("");
+  // Quando aberto a partir de um card embutido (ex: "Monte sua dieta com IA"
+  // na tela de Dieta), o pedido já chega pronto no campo — só falta enviar.
+  const [input, setInput] = useState(() => route.params?.prefill ?? "");
   const [isSending, setIsSending] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
 

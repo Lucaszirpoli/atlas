@@ -7,6 +7,7 @@ import { getNutritionHistory, type NutritionHistory } from "../../api/evolution"
 import { getCurrentGoal, type CalorieGoal } from "../../api/goals";
 import { deleteMealLog, listMealCategories, listMealsForDay, type MealCategory, type MealLog } from "../../api/meals";
 import { getTodayWaterSummary, logWater, type WaterSummary } from "../../api/water";
+import { AiEntryCard } from "../../components/AiEntryCard";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { HelpDot } from "../../components/HelpDot";
@@ -116,6 +117,13 @@ export function DiaryScreen() {
         <HeaderChip icon="body" label="Medidas" onPress={() => navigation.navigate("Measurements")} />
         <HeaderChip icon="flag" label="Meta" onPress={() => navigation.navigate("GoalSettings")} />
       </View>
+
+      {/* Entrada da IA — o recurso mais poderoso do módulo, em 1 toque */}
+      <AiEntryCard
+        title="Monte sua dieta com IA personalizada"
+        subtitle="Diz seu objetivo e preferências — a IA monta pra você"
+        prompt="Monte uma dieta personalizada pra mim, considerando meu objetivo, minhas preferências alimentares e minha rotina."
+      />
 
       {/* Resumo calórico + macros */}
       <Card style={{ marginBottom: spacing.md }}>
