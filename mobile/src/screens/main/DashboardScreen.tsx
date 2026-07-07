@@ -196,20 +196,19 @@ export function DashboardScreen() {
           {/* Evolução do Treino — volume semanal */}
           <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate("Evolution")}>
             <View
-              style={[
-                {
-                  backgroundColor: colors.moduleTraining + "18",
-                  borderRadius: 18,
-                  padding: spacing.md,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  borderWidth: 1,
-                  borderColor: colors.moduleTraining + "40",
-                },
-              ]}
+              style={{
+                backgroundColor: colors.moduleTraining + "18",
+                borderRadius: 18,
+                padding: spacing.md,
+                flexDirection: "row",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                gap: spacing.sm,
+                borderWidth: 1,
+                borderColor: colors.moduleTraining + "40",
+              }}
             >
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={[type.caption, { color: colors.moduleTraining, marginBottom: 2, fontWeight: "600" }]}>
                   Evolução
                 </Text>
@@ -217,7 +216,9 @@ export function DashboardScreen() {
                   Volume de treino e progresso
                 </Text>
               </View>
-              <Ionicons name="stats-chart" size={20} color={colors.moduleTraining} />
+              <View style={{ marginTop: 2 }}>
+                <Ionicons name="stats-chart" size={20} color={colors.moduleTraining} />
+              </View>
             </View>
           </TouchableOpacity>
         </View>
