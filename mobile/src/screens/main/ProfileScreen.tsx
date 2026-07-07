@@ -6,10 +6,10 @@ import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { Avatar } from "../../components/Avatar";
 import { Card } from "../../components/Card";
 import { useAuth } from "../../context/AuthContext";
-import { useTheme } from "../../theme/ThemeProvider";
+import { useTheme, type ThemeMode } from "../../theme/ThemeProvider";
 
 export function ProfileScreen() {
-  const { colors, type, spacing } = useTheme();
+  const { colors, type, spacing, mode, setMode } = useTheme();
   const navigation = useNavigation<any>();
   const { user, signOut } = useAuth();
 
@@ -73,6 +73,64 @@ export function ProfileScreen() {
               <Text style={[type.caption, { color: colors.textOnPrimary, fontWeight: "800" }]}>Assinar</Text>
             </TouchableOpacity>
           ) : null}
+        </View>
+      </Card>
+
+      {/* Aparência: claro / escuro / acompanhar o sistema */}
+      <Card style={{ marginBottom: spacing.lg }}>
+        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.md }}>
+          <Ionicons name="contrast" size={19} color={colors.textSecondary} style={{ marginRight: spacing.sm }} />
+          <Text style={[type.h2, { color: colors.textPrimary, flex: 1 }]}>Aparência</Text>
+        </View>
+        <View
+          style={{
+            flexDirection: "row",
+            backgroundColor: colors.surfaceAlt,
+            borderRadius: 999,
+            padding: 4,
+          }}
+        >
+          {(
+            [
+              { key: "system", label: "Sistema", icon: "phone-portrait" },
+              { key: "light", label: "Claro", icon: "sunny" },
+              { key: "dark", label: "Escuro", icon: "moon" },
+            ] as { key: ThemeMode; label: string; icon: keyof typeof Ionicons.glyphMap }[]
+          ).map((opt) => {
+            const active = mode === opt.key;
+            return (
+              <TouchableOpacity
+                key={opt.key}
+                onPress={() => setMode(opt.key)}
+                activeOpacity={0.8}
+                style={{
+                  flex: 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 5,
+                  paddingVertical: 9,
+                  borderRadius: 999,
+                  backgroundColor: active ? colors.surface : "transparent",
+                  ...(active ? { shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 4, elevation: 1 } : {}),
+                }}
+              >
+                <Ionicons
+                  name={opt.icon}
+                  size={15}
+                  color={active ? colors.primary : colors.textSecondary}
+                />
+                <Text
+                  style={[
+                    type.caption,
+                    { color: active ? colors.textPrimary : colors.textSecondary, fontWeight: active ? "700" : "400" },
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </Card>
 

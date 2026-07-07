@@ -54,12 +54,23 @@ export const lightColors: ColorScheme = {
 
 export const darkColors: ColorScheme = {
   ...lightColors,
+  // Verdes/acentos um pouco mais vivos para brilhar sobre o fundo escuro,
+  // mas ainda escuros o bastante para manter texto branco legível em cima.
+  primary: "#2AA37A",
+  primaryLight: "#37C08D",
   primarySoft: "#17352A",
   secondarySoft: "#3A2418",
+
   bg: "#0E1311",
   surface: "#1B211D",
   surfaceAlt: "#232B26",
   textPrimary: "#F2F4F1",
   textSecondary: "#9AA69F",
   border: "#2A312C",
+
+  success: "#37C08D",
+  info: "#5AA6E0",
+
+  moduleNutrition: "#2FB88A",
+  moduleSleep: "#8091C8",
 };
