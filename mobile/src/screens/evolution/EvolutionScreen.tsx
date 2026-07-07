@@ -160,25 +160,41 @@ export function EvolutionScreen() {
   const activeKeys = useMemo(() => METRICS.map((m) => m.key).filter((k) => active.has(k)), [active]);
   const isMulti = activeKeys.length > 1;
 
+  // "Carrega" o último valor conhecido até hoje: se a pessoa registrou carga
+  // na segunda mas não terça/quarta, o gráfico estende uma linha horizontal
+  // até hoje no mesmo valor — em vez de a linha parar no meio ou a métrica
+  // sumir. Cada métrica pode ter dias faltando sem bagunçar o gráfico; todas
+  // se encaixam na mesma linha do tempo, terminando em "hoje".
+  const nowX = Date.now();
+  function fillToNow(points: ChartPoint[]): ChartPoint[] {
+    if (points.length === 0) return points;
+    const sorted = [...points].sort((a, b) => a.x - b.x);
+    const last = sorted[sorted.length - 1];
+    if (nowX - last.x > 12 * 60 * 60 * 1000) {
+      return [...sorted, { x: nowX, y: last.y }];
+    }
+    return sorted;
+  }
+
   const chartSeries = activeKeys
     .map((key) => {
-      const raw = rawByMetric[key];
-      if (raw.length === 0) return null;
-      const data = isMulti ? normalize(raw) : raw;
-      return { key, data, color: metricColor(colors, key), showDots: !isMulti };
+      const filled = fillToNow(rawByMetric[key]);
+      if (filled.length === 0) return null;
+      const data = isMulti ? normalize(filled) : filled;
+      return { key, data, color: metricColor(colors, key), showDots: !isMulti && data.length <= 12 };
     })
     .filter((s): s is { key: MetricKey; data: ChartPoint[]; color: string; showDots: boolean } => s !== null);
 
   const singleMetric = !isMulti ? activeKeys[0] : null;
   const singleUnit: Record<MetricKey, (v: number) => string> = {
-    peso: (v) => v.toFixed(1),
+    peso: (v) => `${v.toFixed(1)}kg`,
     treino: (v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}t` : `${Math.round(v)}`),
     sono: (v) => `${v.toFixed(1)}h`,
-    dieta: (v) => `${Math.round(v)}`,
+    dieta: (v) => `${(v / 1000).toFixed(1)}k`,
     carga: (v) => `${Math.round(v)}kg`,
   };
 
-  const missingData = activeKeys.filter((k) => rawByMetric[k].length < 2);
+  const missingData = activeKeys.filter((k) => rawByMetric[k].length === 0);
 
   return (
     <ScrollView
@@ -309,58 +325,73 @@ export function EvolutionScreen() {
         </ScrollView>
       ) : null}
 
-      {/* O gráficozão — todas as métricas ligadas, sobrepostas */}
-      <Card>
-        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
-          <Text style={[type.h2, { color: colors.textPrimary, flex: 1 }]}>
-            {activeKeys.length === 0 ? "Selecione uma métrica" : "Sua evolução"}
-          </Text>
-          <HelpDot
-            title="Comparando métricas"
-            text={
-              "Ligue mais de uma métrica pra ver se elas andam juntas — por exemplo, se a caloria sobe um dia e a " +
-              "carga sobe no treino seguinte. Com 2 ou mais ligadas, cada curva é normalizada (0 a 100%) pra caberem " +
-              "juntas no mesmo gráfico, já que peso, kcal e horas de sono têm escalas bem diferentes. Com só uma " +
-              "ligada, os valores reais aparecem no eixo."
-            }
-          />
+      {/* O gráficozão — todas as métricas ligadas, sobrepostas. Card sem
+          padding lateral pra o gráfico usar a largura toda (só o texto tem
+          recuo); assim a linha aproveita a área cinza inteira. */}
+      <Card padded={false} style={{ paddingVertical: spacing.lg }}>
+        <View style={{ paddingHorizontal: spacing.lg }}>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
+            <Text style={[type.h2, { color: colors.textPrimary, flex: 1 }]}>
+              {activeKeys.length === 0 ? "Selecione uma métrica" : "Sua evolução"}
+            </Text>
+            <HelpDot
+              title="Comparando métricas"
+              text={
+                "Ligue mais de uma métrica pra ver se elas andam juntas — por exemplo, se a caloria sobe um dia e a " +
+                "carga sobe no treino seguinte. Com 2 ou mais ligadas, cada curva é normalizada (0 a 100%) pra caberem " +
+                "juntas no mesmo gráfico, já que peso, kcal e horas de sono têm escalas bem diferentes. Com só uma, os " +
+                "valores reais aparecem nos eixos. Se algum dia ficou sem registro, a linha segue reta com o último " +
+                "valor até o próximo registro — nunca some nem quebra."
+              }
+            />
+          </View>
+
+          {/* Legenda — só precisa quando tem mais de uma curva */}
+          {isMulti ? (
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.md, marginBottom: spacing.xs }}>
+              {chartSeries.map((s) => (
+                <View key={s.key} style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                  <View style={{ width: 10, height: 3, borderRadius: 2, backgroundColor: s.color }} />
+                  <Text style={[type.caption, { color: colors.textSecondary }]}>
+                    {METRICS.find((m) => m.key === s.key)?.label}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
         </View>
 
-        {/* Legenda — só precisa quando tem mais de uma curva (com uma só, o
-            título "Peso"/"Sono"/etc já deixa claro o que é) */}
-        {isMulti ? (
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.md, marginBottom: spacing.sm }}>
-            {chartSeries.map((s) => (
-              <View key={s.key} style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: s.color }} />
-                <Text style={[type.caption, { color: colors.textSecondary }]}>
-                  {METRICS.find((m) => m.key === s.key)?.label}
-                </Text>
-              </View>
-            ))}
-          </View>
-        ) : null}
-
         {chartSeries.length > 0 ? (
-          <LineChart
-            height={260}
-            series={chartSeries.map((s) => ({ data: s.data, color: s.color, showDots: s.showDots }))}
-            showYAxis={!isMulti}
-            showMinMax={!isMulti}
-            formatY={singleMetric ? singleUnit[singleMetric] : undefined}
-          />
+          <View style={{ paddingHorizontal: spacing.sm }}>
+            <LineChart
+              height={240}
+              series={chartSeries.map((s) => ({
+                data: s.data,
+                color: s.color,
+                showDots: s.showDots,
+                area: !isMulti,
+              }))}
+              showYAxis={!isMulti}
+              formatY={singleMetric ? singleUnit[singleMetric] : undefined}
+            />
+          </View>
         ) : (
-          <Text style={[type.bodySmall, { color: colors.textSecondary, paddingVertical: spacing.lg, textAlign: "center" }]}>
+          <Text
+            style={[
+              type.bodySmall,
+              { color: colors.textSecondary, paddingVertical: spacing.lg, paddingHorizontal: spacing.lg, textAlign: "center" },
+            ]}
+          >
             {activeKeys.length === 0
               ? "Toque num ícone acima pra ver o gráfico dessa métrica."
-              : "Ainda não há dados suficientes para essa métrica."}
+              : "Ainda não há registros dessa métrica no período."}
           </Text>
         )}
 
         {missingData.length > 0 && chartSeries.length > 0 ? (
-          <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm }]}>
+          <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm, paddingHorizontal: spacing.lg }]}>
             {missingData.map((k) => METRICS.find((m) => m.key === k)?.label).join(", ")}{" "}
-            {missingData.length === 1 ? "ainda não tem" : "ainda não têm"} dados suficientes.
+            {missingData.length === 1 ? "não tem" : "não têm"} registro no período.
           </Text>
         ) : null}
       </Card>
