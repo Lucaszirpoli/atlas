@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useRoute } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
 import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
@@ -30,11 +31,31 @@ function movingAverage(points: WeightPoint[], window = 7): ChartPoint[] {
   });
 }
 
-type ViewMode = "consistency" | "evolution";
+// Tudo em UMA tela só: a pessoa escolhe o que quer ver (Constância, Peso,
+// Volume ou Carga) num seletor no topo e só aquele conteúdo aparece — sem
+// abas escondendo informação, sem "onde é que eu acho isso mesmo".
+type ViewMode = "consistency" | "weight" | "volume" | "load";
+
+const VIEW_OPTIONS: { key: ViewMode; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { key: "consistency", label: "Constância", icon: "flame" },
+  { key: "weight", label: "Peso", icon: "scale" },
+  { key: "volume", label: "Volume", icon: "stats-chart" },
+  { key: "load", label: "Carga", icon: "trending-up" },
+];
+
+function viewColor(colors: ReturnType<typeof useTheme>["colors"], key: ViewMode): string {
+  return {
+    consistency: colors.secondary,
+    weight: colors.primary,
+    volume: colors.secondary,
+    load: colors.moduleTraining,
+  }[key];
+}
 
 export function EvolutionScreen() {
   const { colors, type, spacing } = useTheme();
-  const [viewMode, setViewMode] = useState<ViewMode>("consistency");
+  const route = useRoute<any>();
+  const [viewMode, setViewMode] = useState<ViewMode>(route.params?.initialView ?? "consistency");
 
   const [weight, setWeight] = useState<WeightPoint[]>([]);
   const [volume, setVolume] = useState<VolumePoint[]>([]);
@@ -101,219 +122,201 @@ export function EvolutionScreen() {
       contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
       showsVerticalScrollIndicator={false}
     >
-      {/* Duas barrinhas de toggle no topo: Constância vs Evolução */}
-      <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.lg }}>
-        <TouchableOpacity
-          onPress={() => setViewMode("consistency")}
-          style={{
-            flex: 1,
-            paddingVertical: spacing.sm,
-            paddingHorizontal: spacing.md,
-            borderRadius: 12,
-            backgroundColor: viewMode === "consistency" ? colors.secondary : colors.surface,
-            borderWidth: 1,
-            borderColor: viewMode === "consistency" ? colors.secondary : colors.border,
-            alignItems: "center",
-          }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Ionicons name="flame" size={18} color={viewMode === "consistency" ? colors.textOnPrimary : colors.textPrimary} />
-            <Text
-              style={[
-                type.caption,
-                {
-                  color: viewMode === "consistency" ? colors.textOnPrimary : colors.textPrimary,
-                  fontWeight: "700",
-                },
-              ]}
-            >
-              Constância {consistency?.current_streak ? `${consistency.current_streak}d` : ""}
-            </Text>
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setViewMode("evolution")}
-          style={{
-            flex: 1,
-            paddingVertical: spacing.sm,
-            paddingHorizontal: spacing.md,
-            borderRadius: 12,
-            backgroundColor: viewMode === "evolution" ? colors.moduleTraining : colors.surface,
-            borderWidth: 1,
-            borderColor: viewMode === "evolution" ? colors.moduleTraining : colors.border,
-            alignItems: "center",
-          }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Ionicons name="stats-chart" size={18} color={viewMode === "evolution" ? colors.textOnPrimary : colors.textPrimary} />
-            <Text
-              style={[
-                type.caption,
-                {
-                  color: viewMode === "evolution" ? colors.textOnPrimary : colors.textPrimary,
-                  fontWeight: "700",
-                },
-              ]}
-            >
-              Evolução
-            </Text>
-          </View>
-        </TouchableOpacity>
-      </View>
-
-      {viewMode === "consistency" ? (
-        <ConsistencyCard />
-      ) : (
-        <>
-          {/* PESO */}
-          <Card accent={colors.primary} style={{ marginBottom: spacing.md }}>
-        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.xs }}>
-          <Ionicons name="scale" size={18} color={colors.primary} />
-          <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8, flex: 1 }]}>Peso</Text>
-          <HelpDot
-            title="Média móvel de 7 dias"
-            text={
-              "O peso oscila muito de um dia pro outro (água, comida, intestino). A linha tracejada é a média " +
-              "dos últimos 7 dias — ela mostra a tendência real, sem o sobe-e-desce que costuma dar ansiedade."
-            }
-          />
-        </View>
-        {latestWeight ? (
-          <View style={{ flexDirection: "row", alignItems: "baseline", marginBottom: spacing.sm }}>
-            <Text style={[type.display, { color: colors.textPrimary, fontSize: 34 }]}>{latestWeight}</Text>
-            <Text style={[type.h2, { color: colors.textSecondary }]}> kg</Text>
-            {weight.length >= 2 ? (
-              <Text
-                style={[
-                  type.bodySmall,
-                  { color: weightDelta <= 0 ? colors.success : colors.warning, marginLeft: spacing.sm, fontWeight: "700" },
-                ]}
+      {/* Seletor único — 4 opções, uma tela, sem abas escondendo nada */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.lg }}>
+        <View style={{ flexDirection: "row", gap: spacing.sm }}>
+          {VIEW_OPTIONS.map((opt) => {
+            const active = viewMode === opt.key;
+            const color = viewColor(colors, opt.key);
+            return (
+              <TouchableOpacity
+                key={opt.key}
+                onPress={() => setViewMode(opt.key)}
+                activeOpacity={0.85}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 7,
+                  paddingVertical: 10,
+                  paddingHorizontal: 16,
+                  borderRadius: 999,
+                  backgroundColor: active ? color : colors.surface,
+                  borderWidth: 1,
+                  borderColor: active ? color : colors.border,
+                }}
               >
-                {weightDelta > 0 ? "+" : ""}
-                {weightDelta.toFixed(1)}kg no período
-              </Text>
-            ) : null}
+                <Ionicons name={opt.icon} size={18} color={active ? colors.textOnPrimary : colors.textSecondary} />
+                <Text
+                  style={[
+                    type.caption,
+                    { color: active ? colors.textOnPrimary : colors.textPrimary, fontWeight: "700" },
+                  ]}
+                >
+                  {opt.key === "consistency" && consistency?.current_streak
+                    ? `${opt.label} · ${consistency.current_streak}d 🔥`
+                    : opt.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </ScrollView>
+
+      {viewMode === "consistency" ? <ConsistencyCard /> : null}
+
+      {viewMode === "weight" ? (
+        <Card accent={colors.primary}>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.xs }}>
+            <Ionicons name="scale" size={18} color={colors.primary} />
+            <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8, flex: 1 }]}>Peso</Text>
+            <HelpDot
+              title="Média móvel de 7 dias"
+              text={
+                "O peso oscila muito de um dia pro outro (água, comida, intestino). A linha tracejada é a média " +
+                "dos últimos 7 dias — ela mostra a tendência real, sem o sobe-e-desce que costuma dar ansiedade."
+              }
+            />
           </View>
-        ) : null}
+          {latestWeight ? (
+            <View style={{ flexDirection: "row", alignItems: "baseline", marginBottom: spacing.sm }}>
+              <Text style={[type.display, { color: colors.textPrimary, fontSize: 34 }]}>{latestWeight}</Text>
+              <Text style={[type.h2, { color: colors.textSecondary }]}> kg</Text>
+              {weight.length >= 2 ? (
+                <Text
+                  style={[
+                    type.bodySmall,
+                    { color: weightDelta <= 0 ? colors.success : colors.warning, marginLeft: spacing.sm, fontWeight: "700" },
+                  ]}
+                >
+                  {weightDelta > 0 ? "+" : ""}
+                  {weightDelta.toFixed(1)}kg no período
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
 
-        {weight.length >= 2 ? (
-          <LineChart
-            series={[
-              { data: weightSeries, color: colors.border, showDots: true },
-              { data: weightAvg, color: colors.primary, dashed: true },
-            ]}
-            formatY={(v) => v.toFixed(1)}
-          />
-        ) : (
-          <Text style={[type.bodySmall, { color: colors.textSecondary, marginVertical: spacing.sm }]}>
-            Registre seu peso ao menos 2 vezes para ver o gráfico de tendência.
-          </Text>
-        )}
+          {weight.length >= 2 ? (
+            <LineChart
+              series={[
+                { data: weightSeries, color: colors.primary, showDots: true, area: true },
+                { data: weightAvg, color: colors.primary, dashed: true },
+              ]}
+              formatY={(v) => v.toFixed(1)}
+              showMinMax
+            />
+          ) : (
+            <Text style={[type.bodySmall, { color: colors.textSecondary, marginVertical: spacing.sm }]}>
+              Registre seu peso ao menos 2 vezes para ver o gráfico de tendência.
+            </Text>
+          )}
 
-        <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm, alignItems: "center" }}>
-          <TextInput
-            value={newWeight}
-            onChangeText={(v) => setNewWeight(v.replace(/[^0-9.,]/g, ""))}
-            keyboardType="decimal-pad"
-            placeholder="Novo peso (kg)"
-            placeholderTextColor={colors.textSecondary}
-            style={[
-              type.body,
-              {
-                flex: 1,
-                color: colors.textPrimary,
-                backgroundColor: colors.surfaceAlt,
-                borderRadius: 14,
-                height: 48,
-                paddingHorizontal: spacing.md,
-                textAlign: "center",
-              },
-            ]}
-          />
-          <Button title="Registrar" onPress={handleSaveWeight} loading={isSaving} />
-        </View>
-      </Card>
+          <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm, alignItems: "center" }}>
+            <TextInput
+              value={newWeight}
+              onChangeText={(v) => setNewWeight(v.replace(/[^0-9.,]/g, ""))}
+              keyboardType="decimal-pad"
+              placeholder="Novo peso (kg)"
+              placeholderTextColor={colors.textSecondary}
+              style={[
+                type.body,
+                {
+                  flex: 1,
+                  color: colors.textPrimary,
+                  backgroundColor: colors.surfaceAlt,
+                  borderRadius: 14,
+                  height: 48,
+                  paddingHorizontal: spacing.md,
+                  textAlign: "center",
+                },
+              ]}
+            />
+            <Button title="Registrar" onPress={handleSaveWeight} loading={isSaving} />
+          </View>
+        </Card>
+      ) : null}
 
-      {/* VOLUME DE TREINO */}
-      <Card accent={colors.secondary} style={{ marginBottom: spacing.md }}>
-        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
-          <Ionicons name="stats-chart" size={18} color={colors.secondary} />
-          <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8, flex: 1 }]}>Volume de treino</Text>
-          <HelpDot
-            title="Volume total"
-            text={
-              "Volume = peso × repetições, somado de todas as séries de um treino. É um bom indicador de quanto " +
-              "trabalho você fez. Subir o volume ao longo das semanas costuma andar junto com ganho de força e músculo."
-            }
-          />
-        </View>
-        {volume.length >= 2 ? (
-          <LineChart
-            series={[{ data: volumeSeries, color: colors.secondary, showDots: true }]}
-            formatY={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}t` : `${Math.round(v)}`)}
-          />
-        ) : (
-          <Text style={[type.bodySmall, { color: colors.textSecondary, paddingVertical: spacing.sm }]}>
-            Conclua ao menos 2 treinos para ver a evolução do volume.
-          </Text>
-        )}
-      </Card>
+      {viewMode === "volume" ? (
+        <Card accent={colors.secondary}>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
+            <Ionicons name="stats-chart" size={18} color={colors.secondary} />
+            <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8, flex: 1 }]}>Volume de treino</Text>
+            <HelpDot
+              title="Volume total"
+              text={
+                "Volume = peso × repetições, somado de todas as séries de um treino. É um bom indicador de quanto " +
+                "trabalho você fez. Subir o volume ao longo das semanas costuma andar junto com ganho de força e músculo."
+              }
+            />
+          </View>
+          {volume.length >= 2 ? (
+            <LineChart
+              series={[{ data: volumeSeries, color: colors.secondary, showDots: true, area: true }]}
+              formatY={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}t` : `${Math.round(v)}`)}
+              showMinMax
+            />
+          ) : (
+            <Text style={[type.bodySmall, { color: colors.textSecondary, paddingVertical: spacing.sm }]}>
+              Conclua ao menos 2 treinos para ver a evolução do volume.
+            </Text>
+          )}
+        </Card>
+      ) : null}
 
-      {/* PROGRESSÃO POR EXERCÍCIO */}
-      <Card>
-        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
-          <Ionicons name="trending-up" size={18} color={colors.moduleTraining} />
-          <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8 }]}>Carga por exercício</Text>
-        </View>
-        {exercises.length === 0 ? (
-          <Text style={[type.bodySmall, { color: colors.textSecondary, paddingVertical: spacing.sm }]}>
-            Registre treinos para acompanhar a evolução de carga de cada exercício.
-          </Text>
-        ) : (
-          <>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.sm }}>
-              <View style={{ flexDirection: "row", gap: spacing.xs }}>
-                {exercises.map((ex) => {
-                  const active = selectedExercise?.id === ex.id;
-                  return (
-                    <TouchableOpacity
-                      key={ex.id}
-                      onPress={() => setSelectedExercise(ex)}
-                      style={{
-                        borderRadius: 999,
-                        paddingVertical: 8,
-                        paddingHorizontal: 14,
-                        backgroundColor: active ? colors.moduleTraining : colors.surfaceAlt,
-                      }}
-                    >
-                      <Text
-                        style={[
-                          type.caption,
-                          { color: active ? colors.textOnPrimary : colors.textPrimary, fontWeight: active ? "700" : "500" },
-                        ]}
+      {viewMode === "load" ? (
+        <Card accent={colors.moduleTraining}>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
+            <Ionicons name="trending-up" size={18} color={colors.moduleTraining} />
+            <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8 }]}>Carga por exercício</Text>
+          </View>
+          {exercises.length === 0 ? (
+            <Text style={[type.bodySmall, { color: colors.textSecondary, paddingVertical: spacing.sm }]}>
+              Registre treinos para acompanhar a evolução de carga de cada exercício.
+            </Text>
+          ) : (
+            <>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.sm }}>
+                <View style={{ flexDirection: "row", gap: spacing.xs }}>
+                  {exercises.map((ex) => {
+                    const active = selectedExercise?.id === ex.id;
+                    return (
+                      <TouchableOpacity
+                        key={ex.id}
+                        onPress={() => setSelectedExercise(ex)}
+                        style={{
+                          borderRadius: 999,
+                          paddingVertical: 8,
+                          paddingHorizontal: 14,
+                          backgroundColor: active ? colors.moduleTraining : colors.surfaceAlt,
+                        }}
                       >
-                        {ex.name}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </ScrollView>
-            {progSeries.length >= 2 ? (
-              <LineChart
-                series={[{ data: progSeries, color: colors.moduleTraining, showDots: true }]}
-                formatY={(v) => `${Math.round(v)}kg`}
-              />
-            ) : (
-              <Text style={[type.bodySmall, { color: colors.textSecondary, paddingVertical: spacing.sm }]}>
-                Faça esse exercício em ao menos 2 treinos para ver o gráfico.
-              </Text>
-            )}
-          </>
-        )}
-      </Card>
-        </>
-      )}
+                        <Text
+                          style={[
+                            type.caption,
+                            { color: active ? colors.textOnPrimary : colors.textPrimary, fontWeight: active ? "700" : "500" },
+                          ]}
+                        >
+                          {ex.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+              {progSeries.length >= 2 ? (
+                <LineChart
+                  series={[{ data: progSeries, color: colors.moduleTraining, showDots: true, area: true }]}
+                  formatY={(v) => `${Math.round(v)}kg`}
+                  showMinMax
+                />
+              ) : (
+                <Text style={[type.bodySmall, { color: colors.textSecondary, paddingVertical: spacing.sm }]}>
+                  Faça esse exercício em ao menos 2 treinos para ver o gráfico.
+                </Text>
+              )}
+            </>
+          )}
+        </Card>
+      ) : null}
     </ScrollView>
   );
 }
@@ -356,10 +359,10 @@ function ConsistencyCard() {
   }, []);
 
   return (
-    <Card accent={filterColor} style={{ marginBottom: spacing.md }}>
+    <Card accent={filterColor}>
       <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
         <Ionicons name="flame" size={18} color={colors.secondary} />
-        <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8, flex: 1 }]}>Constância</Text>
+        <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8, flex: 1 }]}>Média da constância</Text>
         <HelpDot
           title="Como isso é calculado"
           text={

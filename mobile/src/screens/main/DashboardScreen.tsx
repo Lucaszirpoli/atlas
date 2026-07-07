@@ -159,66 +159,58 @@ export function DashboardScreen() {
           </Text>
         </View>
 
-        {/* Cards de recursos poderosos mas fáceis (o diferencial do app):
-            Constância e Evolução de Treino. */}
-        <View style={{ width: contentW, gap: spacing.md, marginBottom: spacing.md }}>
-          {/* Constância — mostra a sequência + atalho rápido */}
+        {/* Duas barrinhas finas — recursos poderosos mas fáceis de achar
+            (o diferencial do app): Constância e Evolução total. Cada uma
+            abre a Evolution já na aba certa. */}
+        <View style={{ width: contentW, gap: spacing.sm, marginBottom: spacing.md }}>
+          {/* Constância — barrinha fina com o streak atual */}
           {consistency ? (
-            <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate("Evolution")}>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => navigation.navigate("Evolution", { initialView: "consistency" })}
+            >
               <View
                 style={{
                   backgroundColor: colors.secondary,
-                  borderRadius: 18,
-                  padding: spacing.md,
+                  borderRadius: 14,
+                  paddingVertical: 10,
+                  paddingHorizontal: spacing.md,
                   flexDirection: "row",
                   alignItems: "center",
-                  justifyContent: "space-between",
                 }}
               >
-                <View>
-                  <Text style={[type.caption, { color: "rgba(255,255,255,0.8)", marginBottom: 4 }]}>
-                    Sua constância
-                  </Text>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                    <Text style={[type.h1, { color: "#FFFFFF", fontSize: 28 }]}>
-                      {consistency.current_streak}
-                    </Text>
-                    <Text style={[type.h2, { color: "rgba(255,255,255,0.9)", fontSize: 16 }]}>
-                      dia{consistency.current_streak !== 1 ? "s" : ""} 🔥
-                    </Text>
-                  </View>
-                </View>
-                <Ionicons name="chevron-forward" size={24} color="#FFFFFF" />
+                <Ionicons name="flame" size={26} color="#FFFFFF" style={{ marginRight: spacing.sm }} />
+                <Text style={[type.body, { color: "#FFFFFF", flex: 1, fontWeight: "700" }]}>
+                  Média da constância: {consistency.current_streak} dia
+                  {consistency.current_streak !== 1 ? "s" : ""}
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
               </View>
             </TouchableOpacity>
           ) : null}
 
-          {/* Evolução do Treino — volume semanal */}
-          <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate("Evolution")}>
+          {/* Evolução total — barrinha fina, atalho pro peso/volume/carga */}
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate("Evolution", { initialView: "volume" })}
+          >
             <View
               style={{
                 backgroundColor: colors.moduleTraining + "18",
-                borderRadius: 18,
-                padding: spacing.md,
+                borderRadius: 14,
+                paddingVertical: 10,
+                paddingHorizontal: spacing.md,
                 flexDirection: "row",
-                alignItems: "flex-start",
-                justifyContent: "space-between",
-                gap: spacing.sm,
+                alignItems: "center",
                 borderWidth: 1,
                 borderColor: colors.moduleTraining + "40",
               }}
             >
-              <View style={{ flex: 1 }}>
-                <Text style={[type.caption, { color: colors.moduleTraining, marginBottom: 2, fontWeight: "600" }]}>
-                  Evolução
-                </Text>
-                <Text style={[type.h2, { color: colors.textPrimary, fontSize: 16 }]}>
-                  Volume de treino e progresso
-                </Text>
-              </View>
-              <View style={{ marginTop: 2 }}>
-                <Ionicons name="stats-chart" size={20} color={colors.moduleTraining} />
-              </View>
+              <Ionicons name="stats-chart" size={26} color={colors.moduleTraining} style={{ marginRight: spacing.sm }} />
+              <Text style={[type.body, { color: colors.textPrimary, flex: 1, fontWeight: "700" }]}>
+                Veja sua evolução total
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.moduleTraining} />
             </View>
           </TouchableOpacity>
         </View>
@@ -263,7 +255,7 @@ export function DashboardScreen() {
                     backgroundColor: colors.info + "18",
                   }}
                 >
-                  <Text style={[type.caption, { color: colors.info, fontWeight: "800" }]}>+{ml}</Text>
+                  <Text style={[type.caption, { color: colors.info, fontWeight: "800", fontSize: 11 }]}>+{ml}</Text>
                 </TouchableOpacity>
               ))}
             </View>
