@@ -28,21 +28,26 @@ export function LineChart({
   yLabelCount = 4,
   formatY = (v: number) => String(Math.round(v)),
   showMinMax = false,
+  showYAxis = true,
 }: {
   series: Series[];
   height?: number;
   yLabelCount?: number;
   formatY?: (v: number) => string;
   showMinMax?: boolean;
+  /** Some quando tem mais de uma métrica sobreposta no mesmo gráfico — cada
+   * uma pode ter uma escala/unidade diferente, então o eixo numérico deixaria
+   * de fazer sentido (o gráfico normaliza tudo em 0-1 pra comparar formato). */
+  showYAxis?: boolean;
 }) {
   const { colors, type } = useTheme();
   const [width, setWidth] = React.useState(0);
   const gradientId = React.useId().replace(/:/g, "");
 
-  const padLeft = 38;
+  const padLeft = showYAxis ? 38 : 12;
   const padRight = 12;
   const padTop = 12;
-  const padBottom = 22;
+  const padBottom = showYAxis ? 22 : 12;
 
   const allPoints = series.flatMap((s) => s.data);
   if (allPoints.length === 0 || width === 0) {
@@ -96,15 +101,19 @@ export function LineChart({
           )}
         </Defs>
 
-        {/* linhas de grade horizontais + rótulos Y */}
-        {yTicks.map((ty, i) => (
-          <React.Fragment key={i}>
-            <SvgLine x1={padLeft} y1={sy(ty)} x2={width - padRight} y2={sy(ty)} stroke={colors.border} strokeWidth={1} />
-            <SvgText x={padLeft - 6} y={sy(ty) + 3} fontSize={9} fill={colors.textSecondary} textAnchor="end">
-              {formatY(ty)}
-            </SvgText>
-          </React.Fragment>
-        ))}
+        {/* linhas de grade horizontais + rótulos Y — só com uma métrica só
+            (com mais de uma, cada série pode ter uma unidade diferente, o
+            eixo numérico deixaria de fazer sentido) */}
+        {showYAxis
+          ? yTicks.map((ty, i) => (
+              <React.Fragment key={i}>
+                <SvgLine x1={padLeft} y1={sy(ty)} x2={width - padRight} y2={sy(ty)} stroke={colors.border} strokeWidth={1} />
+                <SvgText x={padLeft - 6} y={sy(ty) + 3} fontSize={9} fill={colors.textSecondary} textAnchor="end">
+                  {formatY(ty)}
+                </SvgText>
+              </React.Fragment>
+            ))
+          : null}
 
         {series.map((s, si) => {
           if (s.data.length === 0) return null;

@@ -167,7 +167,7 @@ export function DashboardScreen() {
           {consistency ? (
             <TouchableOpacity
               activeOpacity={0.85}
-              onPress={() => navigation.navigate("Evolution", { initialView: "consistency" })}
+              onPress={() => navigation.navigate("Evolution", { initialMetrics: ["treino", "sono", "dieta"] })}
             >
               <View
                 style={{
@@ -192,7 +192,7 @@ export function DashboardScreen() {
           {/* Evolução total — barrinha fina, atalho pro peso/volume/carga */}
           <TouchableOpacity
             activeOpacity={0.85}
-            onPress={() => navigation.navigate("Evolution", { initialView: "volume" })}
+            onPress={() => navigation.navigate("Evolution", { initialMetrics: ["peso"] })}
           >
             <View
               style={{
