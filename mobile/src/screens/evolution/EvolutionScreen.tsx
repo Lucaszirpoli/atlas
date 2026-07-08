@@ -64,25 +64,17 @@ function metricColor(colors: ReturnType<typeof useTheme>["colors"], key: MetricK
   }[key];
 }
 
-// Normaliza pra sobrepor métricas de escalas diferentes SEM que uma variação
-// pequena vire um pico gigante. Em vez de esticar o min-max de cada série pra
-// altura toda (o que amplificava qualquer mudancinha — ex: dieta 3300->3400,
-// só +3%, estourava pro topo), centramos cada métrica na SUA MÉDIA e usamos
-// uma sensibilidade FIXA: ±NORM_BAND (30%) em torno da média ocupa a altura
-// toda. Assim um dia com +3% de kcal aparece como um degrau de ~3%, e a
-// métrica que de fato oscilou mais (em %) é a que se move mais — comparação
-// justa entre dieta, carga, etc. Clampa em [0,1]; o gráfico usa domínio fixo
-// [0,1] pra não reesticar isso de volta.
-const NORM_BAND = 0.3;
-function normalize(points: ChartPoint[]): ChartPoint[] {
+// Sobreposição estilo mercado financeiro: cada métrica vira "% de variação
+// desde o início do período" — todas as curvas PARTEM do mesmo ponto (0%) e
+// dividem UMA escala só, então +5% significa a mesma coisa pra dieta, carga
+// ou sono, e dá pra ler direto quem subiu/caiu mais. Bônus: como % é uma
+// unidade comum a todas, o eixo Y volta a fazer sentido no modo comparação
+// (ex: -5%, 0%, +10%) em vez de sumir.
+function toPercentChange(points: ChartPoint[]): ChartPoint[] {
   if (points.length === 0) return points;
-  const ys = points.map((p) => p.y);
-  const mean = ys.reduce((a, b) => a + b, 0) / ys.length;
-  if (mean === 0) return points.map((p) => ({ ...p, y: 0.5 }));
-  return points.map((p) => {
-    const rel = (p.y / mean - 1) / (2 * NORM_BAND);
-    return { ...p, y: Math.max(0, Math.min(1, 0.5 + rel)) };
-  });
+  const base = points[0].y;
+  if (base === 0) return points.map((p) => ({ ...p, y: 0 }));
+  return points.map((p) => ({ ...p, y: (p.y / base - 1) * 100 }));
 }
 
 export function EvolutionScreen() {
@@ -204,7 +196,7 @@ export function EvolutionScreen() {
     .map((key) => {
       const filled = fillToNow(rawByMetric[key]);
       if (filled.length === 0) return null;
-      const data = isMulti ? normalize(filled) : filled;
+      const data = isMulti ? toPercentChange(filled) : filled;
       return { key, data, color: metricColor(colors, key), showDots: !isMulti && data.length <= 12 };
     })
     .filter((s): s is { key: MetricKey; data: ChartPoint[]; color: string; showDots: boolean } => s !== null);
@@ -362,12 +354,11 @@ export function EvolutionScreen() {
               title="Comparando métricas"
               text={
                 "Ligue mais de uma métrica pra ver se elas andam juntas — por exemplo, se a caloria sobe um dia e a " +
-                "carga sobe no treino seguinte. Com 2 ou mais ligadas, cada curva mostra o quanto variou em relação à " +
-                "sua própria média, na mesma sensibilidade — uma mudança pequena (ex: 3% a mais de caloria) aparece " +
-                "como um degrau pequeno, não como um pico. Assim dá pra comparar os movimentos de métricas de escalas " +
-                "bem diferentes (kcal, kg, horas) de forma justa. Com só uma métrica, os valores reais aparecem nos " +
-                "eixos. Se algum dia ficou sem registro, a linha segue reta com o último valor até o próximo — nunca " +
-                "some nem quebra."
+                "carga sobe no treino seguinte. Com 2 ou mais ligadas, funciona como comparação de ações no mercado " +
+                "financeiro: todas as curvas partem de 0% e o gráfico mostra a variação percentual de cada uma desde " +
+                "o início do período, numa escala única — +5% significa a mesma coisa pra dieta, carga ou sono. Com " +
+                "só uma métrica, os valores reais aparecem nos eixos. Se algum dia ficou sem registro, a linha segue " +
+                "reta com o último valor até o próximo — nunca some nem quebra."
               }
             />
           </View>
@@ -376,7 +367,7 @@ export function EvolutionScreen() {
             {singleMetric
               ? METRIC_DESC[singleMetric]
               : activeKeys.length > 1
-                ? "Cada curva mostra o quanto variou em relação à sua média — compare os movimentos."
+                ? "Variação % desde o início do período — todas partem de 0% na mesma escala."
                 : "Toque nos ícones pra escolher o que ver."}
           </Text>
 
@@ -405,9 +396,13 @@ export function EvolutionScreen() {
                 showDots: s.showDots,
                 area: !isMulti,
               }))}
-              showYAxis={!isMulti}
-              yDomain={isMulti ? [0, 1] : undefined}
-              formatY={singleMetric ? singleUnit[singleMetric] : undefined}
+              showYAxis
+              highlightZero={isMulti}
+              formatY={
+                singleMetric
+                  ? singleUnit[singleMetric]
+                  : (v) => `${v > 0 ? "+" : ""}${Math.round(v)}%`
+              }
             />
           </View>
         ) : (

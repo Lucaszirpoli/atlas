@@ -32,6 +32,7 @@ export function LineChart({
   showYAxis = true,
   showXAxis = true,
   yDomain,
+  highlightZero = false,
 }: {
   series: Series[];
   height?: number;
@@ -47,6 +48,9 @@ export function LineChart({
    * escala aos dados — essencial no modo normalizado, senão o auto-ajuste
    * reesticaria a variação de volta pra altura toda e o "pico" voltaria. */
   yDomain?: [number, number];
+  /** Linha de referência tracejada em y=0 (se 0 estiver no domínio) — âncora
+   * visual do modo "variação % desde o início", onde todas partem de 0%. */
+  highlightZero?: boolean;
 }) {
   const { colors, type } = useTheme();
   const window = useWindowDimensions();
@@ -132,6 +136,20 @@ export function LineChart({
               </React.Fragment>
             ))
           : null}
+
+        {/* Linha de referência em 0 (modo variação %): âncora de "partiu daqui" */}
+        {highlightZero && minY < 0 && maxY > 0 ? (
+          <SvgLine
+            x1={padLeft}
+            y1={sy(0)}
+            x2={width - padRight}
+            y2={sy(0)}
+            stroke={colors.textSecondary}
+            strokeWidth={1}
+            strokeDasharray="4 4"
+            opacity={0.6}
+          />
+        ) : null}
 
         {/* Rótulos X (datas) */}
         {showXAxis
