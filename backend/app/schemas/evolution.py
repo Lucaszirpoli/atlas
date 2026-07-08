@@ -43,6 +43,16 @@ class NutritionHistoryResponse(BaseModel):
     days_within_goal: int
 
 
+class StrengthGroup(BaseModel):
+    group: str  # "superiores" | "inferiores" | "core"
+    avg_pct_change: float
+    exercises_count: int
+
+
+class StrengthByGroupResponse(BaseModel):
+    groups: list[StrengthGroup]
+
+
 class ConsistencyDay(BaseModel):
     date: str
     trained: bool

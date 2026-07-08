@@ -27,6 +27,7 @@ from app.schemas.evolution import (
     ExerciseProgressionResponse,
     NutritionDay,
     NutritionHistoryResponse,
+    StrengthByGroupResponse,
     VolumePoint,
     WeightPoint,
 )
@@ -124,6 +125,81 @@ def exercise_progression(
     return {
         "exercise_name": exercise.name if exercise else "",
         "points": points,
+    }
+
+
+# Classificação simples de grupo muscular primário -> superiores/inferiores/
+# core, para a análise automática ("sua carga subiu X% nos superiores").
+_UPPER = {"chest", "back", "shoulders", "biceps", "triceps", "forearms", "traps"}
+_LOWER = {"quads", "hamstrings", "glutes", "calves"}
+
+
+@router.get("/strength", response_model=StrengthByGroupResponse)
+def strength_by_group(
+    days: int = 30,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Variação média da carga (maior peso por sessão) no período, agregada
+    por grupo de exercícios (superiores/inferiores/core). Cada exercício
+    entra com a variação % entre sua primeira e última sessão na janela;
+    exercícios com uma sessão só ficam de fora (não têm variação)."""
+    days = max(7, min(days, 90))
+    since = datetime.now(timezone.utc) - timedelta(days=days - 1)
+    since = since.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    rows = db.execute(
+        select(
+            WorkoutSetLog.exercise_id,
+            WorkoutSession.started_at,
+            func.max(WorkoutSetLog.weight_kg),
+            Exercise.primary_muscle_group,
+        )
+        .join(WorkoutSession, WorkoutSession.id == WorkoutSetLog.session_id)
+        .join(Exercise, Exercise.id == WorkoutSetLog.exercise_id)
+        .where(
+            WorkoutSession.user_id == current_user.id,
+            WorkoutSession.started_at >= since,
+        )
+        .group_by(
+            WorkoutSetLog.exercise_id,
+            WorkoutSession.id,
+            WorkoutSession.started_at,
+            Exercise.primary_muscle_group,
+        )
+        .order_by(WorkoutSession.started_at)
+    ).all()
+
+    # por exercício: carga da primeira e da última sessão da janela
+    per_exercise: dict[int, dict] = {}
+    for exercise_id, _started_at, max_weight, muscle_group in rows:
+        if not max_weight or max_weight <= 0:
+            continue
+        group = muscle_group.value if hasattr(muscle_group, "value") else str(muscle_group)
+        rec = per_exercise.setdefault(
+            exercise_id, {"group": group, "first": float(max_weight), "last": float(max_weight), "sessions": 0}
+        )
+        rec["last"] = float(max_weight)  # rows já vêm em ordem cronológica
+        rec["sessions"] += 1
+
+    buckets: dict[str, list[float]] = {"superiores": [], "inferiores": [], "core": []}
+    for rec in per_exercise.values():
+        if rec["sessions"] < 2 or rec["first"] <= 0:
+            continue
+        pct = (rec["last"] / rec["first"] - 1) * 100
+        if rec["group"] in _UPPER:
+            buckets["superiores"].append(pct)
+        elif rec["group"] in _LOWER:
+            buckets["inferiores"].append(pct)
+        elif rec["group"] == "abs":
+            buckets["core"].append(pct)
+
+    return {
+        "groups": [
+            {"group": name, "avg_pct_change": sum(v) / len(v), "exercises_count": len(v)}
+            for name, v in buckets.items()
+            if v
+        ]
     }
 
 

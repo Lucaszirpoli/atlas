@@ -7,11 +7,13 @@ import {
   getExerciseProgression,
   getExercisesWithHistory,
   getNutritionHistory,
+  getStrengthByGroup,
   getVolumeEvolution,
   getWeightEvolution,
   type ExerciseOption,
   type ExerciseProgressionPoint,
   type NutritionDay,
+  type StrengthGroup,
   type VolumePoint,
   type WeightPoint,
 } from "../../api/evolution";
@@ -104,8 +106,7 @@ function buildInsights(args: {
   kcal: { day: string; kcal: number }[];
   vol: { day: string; volume: number }[]; // volume da sessão de treino
   weightPts: ChartPoint[]; // ordem cronológica
-  carga: ChartPoint[]; // progressão do exercício selecionado
-  cargaName: string | null;
+  strength: StrengthGroup[]; // variação de carga por grupo muscular
 }): Insight[] {
   const out: Insight[] = [];
   const kcalMap = new Map(args.kcal.map((d) => [d.day, d.kcal]));
@@ -133,25 +134,26 @@ function buildInsights(args: {
     return best;
   }
 
+  // Frases sempre no formato "média do período" — comparam a média dos dias
+  // com a condição vs a média dos dias sem ela, nunca um dia específico
+  // (falar "no dia seguinte" confundia: o leitor perguntava "que dia?").
   const sonoKcal = sleepEffect(kcalMap);
   if (sonoKcal) {
-    const prefix = sonoKcal.shifted ? "No dia seguinte a dormir menos de 7h" : "Nos dias em que dormiu menos de 7h";
     out.push({
       icon: "moon",
-      text: `${prefix}, você comeu em média ${Math.round(Math.abs(sonoKcal.diff))}% ${
+      text: `Nos dias em que você dormiu menos de 7h, comeu em média ${Math.round(Math.abs(sonoKcal.diff))}% ${
         sonoKcal.diff > 0 ? "a mais" : "a menos"
-      } (${Math.round(sonoKcal.a)} vs ${Math.round(sonoKcal.b)} kcal).`,
+      } do que nos dias de sono bom (média de ${Math.round(sonoKcal.a)} vs ${Math.round(sonoKcal.b)} kcal).`,
     });
   }
 
   const sonoVol = sleepEffect(volMap);
   if (sonoVol) {
-    const prefix = sonoVol.shifted ? "No treino do dia seguinte a dormir menos de 7h" : "Nos treinos de dias com menos de 7h de sono";
     out.push({
       icon: "barbell",
-      text: `${prefix}, seu volume foi em média ${Math.round(Math.abs(sonoVol.diff))}% ${
-        sonoVol.diff > 0 ? "maior" : "menor"
-      } (${fmtVol(sonoVol.a)} vs ${fmtVol(sonoVol.b)}).`,
+      text: `Nos dias em que você dormiu menos de 7h, seu treino rendeu em média ${Math.round(Math.abs(sonoVol.diff))}% ${
+        sonoVol.diff > 0 ? "mais" : "menos"
+      } volume do que nos dias de sono bom (média de ${fmtVol(sonoVol.a)} vs ${fmtVol(sonoVol.b)}).`,
     });
   }
 
@@ -172,9 +174,9 @@ function buildInsights(args: {
       if (Math.abs(diff) >= 4) {
         out.push({
           icon: "restaurant",
-          text: `Nos treinos após dias comendo acima de ~${Math.round(median)} kcal, seu volume foi em média ${Math.round(
+          text: `Quando você comeu acima da sua média (~${Math.round(median)} kcal), o treino seguinte rendeu em média ${Math.round(
             Math.abs(diff)
-          )}% ${diff > 0 ? "maior" : "menor"} (${fmtVol(avg(hi))} vs ${fmtVol(avg(lo))}).`,
+          )}% ${diff > 0 ? "mais" : "menos"} volume (${fmtVol(avg(hi))} vs ${fmtVol(avg(lo))}).`,
         });
       }
     }
@@ -196,17 +198,25 @@ function buildInsights(args: {
     }
   }
 
-  if (args.carga.length >= 2 && args.cargaName) {
-    const first = args.carga[0].y;
-    const last = args.carga[args.carga.length - 1].y;
-    if (first > 0 && Math.abs(last - first) >= 0.5) {
-      out.push({
-        icon: "barbell",
-        text: `No ${args.cargaName}, sua carga foi de ${Math.round(first)}kg para ${Math.round(last)}kg (${
-          last >= first ? "+" : ""
-        }${Math.round((last / first - 1) * 100)}%).`,
-      });
-    }
+  // Carga por grupo muscular — visão geral em vez de um exercício só
+  // ("por que esse exercício?"): média da variação % de todos os exercícios
+  // do grupo no período (calculada no backend, /evolution/strength).
+  const groupLabel: Record<string, string> = {
+    superiores: "exercícios de superiores",
+    inferiores: "exercícios de inferiores",
+    core: "exercícios de core",
+  };
+  const strengthParts = args.strength
+    .filter((g) => Math.abs(g.avg_pct_change) >= 1)
+    .map(
+      (g) =>
+        `${g.avg_pct_change >= 0 ? "+" : ""}${Math.round(g.avg_pct_change)}% nos ${groupLabel[g.group] ?? g.group}`
+    );
+  if (strengthParts.length > 0) {
+    out.push({
+      icon: "trending-up",
+      text: `Sua carga variou em média ${strengthParts.join(" e ")} no período.`,
+    });
   }
 
   if (args.weightPts.length >= 2) {
@@ -251,6 +261,7 @@ export function EvolutionScreen() {
   const [exercises, setExercises] = useState<ExerciseOption[]>([]);
   const [selectedExercise, setSelectedExercise] = useState<ExerciseOption | null>(null);
   const [progression, setProgression] = useState<ExerciseProgressionPoint[]>([]);
+  const [strength, setStrength] = useState<StrengthGroup[]>([]);
   const [newWeight, setNewWeight] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -281,6 +292,11 @@ export function EvolutionScreen() {
       getExerciseProgression(selectedExercise.id).then((r) => setProgression(r.points));
     }
   }, [selectedExercise]);
+
+  // Variação de carga por grupo muscular (pra análise) — depende da janela
+  useEffect(() => {
+    getStrengthByGroup(rangeDays).then((r) => setStrength(r.groups));
+  }, [rangeDays]);
 
   async function handleSaveWeight() {
     const value = Number(newWeight.replace(",", "."));
@@ -385,9 +401,6 @@ export function EvolutionScreen() {
     const weightPts = weight
       .map((p) => ({ x: new Date(p.date).getTime(), y: p.weight_kg }))
       .filter((p) => p.x >= cutoff);
-    const cargaPts = progression
-      .map((p) => ({ x: new Date(p.date).getTime(), y: p.max_weight_kg }))
-      .filter((p) => p.x >= cutoff);
     const hasAnyData = sleepDays.length + kcalDays.length + volDays.length + weightPts.length > 0;
     return {
       hasAnyData,
@@ -396,11 +409,10 @@ export function EvolutionScreen() {
         kcal: kcalDays,
         vol: volDays,
         weightPts,
-        carga: cargaPts,
-        cargaName: selectedExercise?.name ?? null,
+        strength,
       }),
     };
-  }, [sleepLogs, nutritionDays, volume, weight, progression, selectedExercise, cutoff]);
+  }, [sleepLogs, nutritionDays, volume, weight, strength, cutoff]);
 
   return (
     <ScrollView

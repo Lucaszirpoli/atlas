@@ -40,6 +40,17 @@ export async function getNutritionHistory(days = 14): Promise<NutritionHistory> 
   return data;
 }
 
+export type StrengthGroup = {
+  group: "superiores" | "inferiores" | "core";
+  avg_pct_change: number;
+  exercises_count: number;
+};
+
+export async function getStrengthByGroup(days = 30): Promise<{ groups: StrengthGroup[] }> {
+  const { data } = await api.get<{ groups: StrengthGroup[] }>("/evolution/strength", { params: { days } });
+  return data;
+}
+
 export type ConsistencyDay = {
   date: string;
   trained: boolean;

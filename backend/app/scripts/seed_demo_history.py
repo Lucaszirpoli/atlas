@@ -31,11 +31,13 @@ DAYS = 30
 random.seed(7)
 
 # exercise_id -> (peso inicial kg, incremento por sessão kg)
+# Mistura superiores (supino máquina, remada) e inferiores (agachamento
+# livre, leg press) pra análise por grupo muscular ter os dois lados.
 EXERCISES = [
-    (609, 40.0, 0.5),
-    (611, 34.0, 0.5),
-    (589, 30.0, 0.5),
-    (592, 15.0, 0.25),
+    (609, 40.0, 0.5),  # supino máquina (chest)
+    (589, 30.0, 0.5),  # remada polia (back)
+    (78, 60.0, 1.0),  # agachamento livre com barra (quads)
+    (87, 120.0, 2.0),  # leg press 45 (quads)
 ]
 
 
