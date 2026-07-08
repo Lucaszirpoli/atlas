@@ -43,7 +43,8 @@ export function AiHubScreen() {
   const [days, setDays] = useState<number | null>(null);
   const [result, setResult] = useState<GenerateTrainingResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [savingIndex, setSavingIndex] = useState<number | null>(null);
+  const [savedIndices, setSavedIndices] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     getTrainingMethods()
@@ -54,6 +55,7 @@ export function AiHubScreen() {
   async function handleGenerate(method: TrainingMethod, d: number) {
     setLoading(true);
     setResult(null);
+    setSavedIndices(new Set());
     try {
       const r = await generateTraining({ method_key: method.key, available_days: d });
       setResult(r);
@@ -64,9 +66,12 @@ export function AiHubScreen() {
     }
   }
 
-  async function handleSaveSession(session: GenerateTrainingResult["plan"]["sessions"][number]) {
+  async function handleSaveSession(
+    session: GenerateTrainingResult["plan"]["sessions"][number],
+    sessionIndex: number
+  ) {
     if (!result) return;
-    setSaving(true);
+    setSavingIndex(sessionIndex);
     try {
       const exercises = session.slots
         .filter((s) => s.exercise_id != null)
@@ -85,11 +90,17 @@ export function AiHubScreen() {
         name: `${result.plan.method_name} — ${session.focus}`,
         exercises,
       });
-      Alert.alert("Rotina salva!", `"${session.focus}" foi adicionada às suas rotinas de treino.`);
+      setSavedIndices((prev) => new Set(prev).add(sessionIndex));
     } catch (err: any) {
-      Alert.alert("Não consegui salvar", err?.response?.data?.detail ?? "Tente novamente.");
+      if (err?.response?.status === 409) {
+        // Limite de rotinas ativas atingido (3 Free / 7 Pro) — o backend já
+        // devolve uma mensagem amigável explicando o limite e o plano atual.
+        Alert.alert("Limite de rotinas atingido", err.response.data?.detail ?? "Arquive uma rotina para criar outra.");
+      } else {
+        Alert.alert("Não consegui salvar", err?.response?.data?.detail ?? "Tente novamente.");
+      }
     } finally {
-      setSaving(false);
+      setSavingIndex(null);
     }
   }
 
@@ -164,9 +175,17 @@ export function AiHubScreen() {
                   <Text style={[type.caption, { color: colors.textSecondary }]}>{session.phase_name}</Text>
                 ) : null}
               </View>
-              <TouchableOpacity onPress={() => handleSaveSession(session)} disabled={saving}>
-                <Ionicons name="add-circle" size={26} color={colors.primary} />
-              </TouchableOpacity>
+              {savingIndex === si ? (
+                <ActivityIndicator color={colors.primary} />
+              ) : savedIndices.has(si) ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  <Ionicons name="checkmark-circle" size={26} color={colors.success} />
+                </View>
+              ) : (
+                <TouchableOpacity onPress={() => handleSaveSession(session, si)} disabled={savingIndex != null}>
+                  <Ionicons name="add-circle" size={26} color={colors.primary} />
+                </TouchableOpacity>
+              )}
             </View>
             {session.slots.map((slot, i) => (
               <View
