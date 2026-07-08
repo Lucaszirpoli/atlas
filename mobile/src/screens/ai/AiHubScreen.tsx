@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import {
   generateTraining,
@@ -12,6 +12,7 @@ import {
 import { createRoutine } from "../../api/routines";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
+import { InfoDialog } from "../../components/InfoDialog";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
 
@@ -45,6 +46,7 @@ export function AiHubScreen() {
   const [loading, setLoading] = useState(false);
   const [savingIndex, setSavingIndex] = useState<number | null>(null);
   const [savedIndices, setSavedIndices] = useState<Set<number>>(new Set());
+  const [info, setInfo] = useState<{ title: string; message: string } | null>(null);
 
   useEffect(() => {
     getTrainingMethods()
@@ -60,7 +62,7 @@ export function AiHubScreen() {
       const r = await generateTraining({ method_key: method.key, available_days: d });
       setResult(r);
     } catch (err: any) {
-      Alert.alert("Não consegui gerar", err?.response?.data?.detail ?? "Tente novamente.");
+      setInfo({ title: "Não consegui gerar", message: err?.response?.data?.detail ?? "Tente novamente." });
     } finally {
       setLoading(false);
     }
@@ -95,9 +97,12 @@ export function AiHubScreen() {
       if (err?.response?.status === 409) {
         // Limite de rotinas ativas atingido (3 Free / 7 Pro) — o backend já
         // devolve uma mensagem amigável explicando o limite e o plano atual.
-        Alert.alert("Limite de rotinas atingido", err.response.data?.detail ?? "Arquive uma rotina para criar outra.");
+        setInfo({
+          title: "Limite de rotinas atingido",
+          message: err.response.data?.detail ?? "Arquive uma rotina para criar outra.",
+        });
       } else {
-        Alert.alert("Não consegui salvar", err?.response?.data?.detail ?? "Tente novamente.");
+        setInfo({ title: "Não consegui salvar", message: err?.response?.data?.detail ?? "Tente novamente." });
       }
     } finally {
       setSavingIndex(null);
@@ -245,6 +250,12 @@ export function AiHubScreen() {
             </Text>
           ) : null}
         </Card>
+        <InfoDialog
+          visible={info != null}
+          onClose={() => setInfo(null)}
+          title={info?.title ?? ""}
+          message={info?.message}
+        />
       </ScrollView>
     );
   }
@@ -290,6 +301,12 @@ export function AiHubScreen() {
           ))}
         </View>
         {loading ? <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.xl }} size="large" /> : null}
+        <InfoDialog
+          visible={info != null}
+          onClose={() => setInfo(null)}
+          title={info?.title ?? ""}
+          message={info?.message}
+        />
       </ScrollView>
     );
   }
