@@ -26,7 +26,7 @@ class WorkoutSessionRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    routine_id: int
+    routine_id: int | None  # None quando a rotina de origem foi excluída
     started_at: datetime
     completed_at: datetime | None
 
@@ -67,7 +67,7 @@ class WorkoutSessionDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    routine_id: int
+    routine_id: int | None  # None quando a rotina de origem foi excluída
     started_at: datetime
     completed_at: datetime | None
     sets: list[WorkoutSetLogRead]

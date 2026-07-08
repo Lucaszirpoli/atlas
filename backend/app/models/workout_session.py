@@ -34,7 +34,10 @@ class WorkoutSession(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
-    routine_id: Mapped[int] = mapped_column(ForeignKey("routines.id"))
+    # SET NULL (não CASCADE): excluir a rotina não pode apagar o histórico de
+    # treinos já registrados (append-only) — a sessão continua existindo, só
+    # perde a referência à rotina-molde que não existe mais.
+    routine_id: Mapped[int | None] = mapped_column(ForeignKey("routines.id", ondelete="SET NULL"), nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

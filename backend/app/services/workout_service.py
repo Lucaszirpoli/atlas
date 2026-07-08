@@ -56,7 +56,7 @@ def compute_session_volume(session: WorkoutSession) -> float:
 
 
 def get_previous_completed_session(
-    db: Session, user_id: int, routine_id: int, before_session_id: int
+    db: Session, user_id: int, routine_id: int | None, before_session_id: int
 ) -> WorkoutSession | None:
     return db.execute(
         select(WorkoutSession)
