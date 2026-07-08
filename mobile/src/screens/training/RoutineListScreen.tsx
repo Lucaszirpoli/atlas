@@ -140,8 +140,8 @@ export function RoutineListScreen() {
             {/* Entrada da IA — o recurso mais poderoso do módulo, em 1 toque */}
             <AiEntryCard
               title="Monte seu treino com IA personalizada"
-              subtitle="Diz seu objetivo, dias disponíveis e equipamento — a IA monta pra você"
-              prompt="Monte um treino personalizado pra mim, considerando meu objetivo, meus dias disponíveis e o equipamento que tenho acesso."
+              subtitle="Escolha uma metodologia consagrada — a IA monta fiel ao método"
+              destination={{ screen: "AiHub" }}
             />
             {volume.length >= 2 ? (
               <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate("Evolution")}>

@@ -4,6 +4,7 @@ import React from "react";
 import { ActivityIndicator, View } from "react-native";
 
 import { useAuth } from "../context/AuthContext";
+import { AiHubScreen } from "../screens/ai/AiHubScreen";
 import { ChatScreen } from "../screens/ai/ChatScreen";
 import { EvolutionScreen } from "../screens/evolution/EvolutionScreen";
 import { DashboardScreen } from "../screens/main/DashboardScreen";
@@ -44,6 +45,7 @@ function AppStack() {
       <Stack.Screen name="Water" component={WaterScreen} options={{ headerShown: true, title: "Água" }} />
       <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: true, title: "Perfil" }} />
       <Stack.Screen name="Evolution" component={EvolutionScreen} options={{ headerShown: true, title: "Evolução" }} />
+      <Stack.Screen name="AiHub" component={AiHubScreen} options={{ headerShown: true, title: "Treino com IA" }} />
       <Stack.Screen name="Chat" component={ChatScreen} options={{ presentation: "modal" }} />
     </Stack.Navigator>
   );

@@ -18,11 +18,14 @@ export function AiEntryCard({
   title,
   subtitle,
   prompt,
+  destination,
 }: {
   title: string;
   subtitle: string;
   /** Mensagem que já chega preenchida no chat, pronta pra enviar/editar. */
-  prompt: string;
+  prompt?: string;
+  /** Destino alternativo (ex: o Hub de treino) em vez do chat. */
+  destination?: { screen: string; params?: any };
 }) {
   const { colors, type, spacing, radius, shadow } = useTheme();
   const { user } = useAuth();
@@ -32,6 +35,10 @@ export function AiEntryCard({
   const credits = user?.ai_free_credits ?? 0;
 
   function handlePress() {
+    if (destination) {
+      navigation.navigate(destination.screen, destination.params);
+      return;
+    }
     if (!isPro && credits <= 0) {
       Alert.alert(
         "Assistente de IA — Pro",
