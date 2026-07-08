@@ -77,6 +77,164 @@ function toPercentChange(points: ChartPoint[]): ChartPoint[] {
   return points.map((p) => ({ ...p, y: (p.y / base - 1) * 100 }));
 }
 
+// ---------------------------------------------------------------------------
+// Análise automática — 100% calculada dos registros reais do período, sem
+// nada inventado. Cada observação só entra se tiver amostra suficiente
+// (>= 2 dias de cada lado da comparação) E diferença relevante (>= 4%);
+// senão, fica de fora — melhor não dizer nada do que dizer algo fraco.
+// Tom sempre informativo, nunca de culpa (espec. 3.7): "volume foi menor",
+// nunca "falhou". Correlação não é causa — o HelpDot avisa isso.
+// ---------------------------------------------------------------------------
+
+type Insight = { icon: keyof typeof Ionicons.glyphMap; text: string };
+
+function dayKeyOf(iso: string): string {
+  return new Date(iso).toISOString().slice(0, 10);
+}
+function shiftDay(key: string, n: number): string {
+  const d = new Date(`${key}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+const avg = (ns: number[]) => ns.reduce((a, b) => a + b, 0) / ns.length;
+const fmtVol = (v: number) => (v >= 1000 ? `${(v / 1000).toFixed(1)}t` : `${Math.round(v)}kg`);
+
+function buildInsights(args: {
+  sleep: { day: string; hours: number }[]; // day = dia em que acordou
+  kcal: { day: string; kcal: number }[];
+  vol: { day: string; volume: number }[]; // volume da sessão de treino
+  weightPts: ChartPoint[]; // ordem cronológica
+  carga: ChartPoint[]; // progressão do exercício selecionado
+  cargaName: string | null;
+}): Insight[] {
+  const out: Insight[] = [];
+  const kcalMap = new Map(args.kcal.map((d) => [d.day, d.kcal]));
+  const volMap = new Map(args.vol.map((d) => [d.day, d.volume]));
+  const shortNights = args.sleep.filter((s) => s.hours < 7);
+  const goodNights = args.sleep.filter((s) => s.hours >= 7);
+
+  // Compara a média de uma métrica nos dias ligados a noites curtas (<7h) vs
+  // noites boas. Testa tanto o dia do acordar quanto o dia seguinte (o efeito
+  // de dormir mal às vezes só aparece depois) e usa o mais forte que passar
+  // nos critérios de amostra/diferença.
+  function sleepEffect(map: Map<string, number>) {
+    let best: { diff: number; a: number; b: number; shifted: boolean } | null = null;
+    for (const shift of [0, 1]) {
+      const after = shortNights.map((s) => map.get(shiftDay(s.day, shift))).filter((v): v is number => v != null);
+      const base = goodNights.map((s) => map.get(shiftDay(s.day, shift))).filter((v): v is number => v != null);
+      if (after.length < 2 || base.length < 2) continue;
+      const a = avg(after);
+      const b = avg(base);
+      if (b === 0) continue;
+      const diff = (a / b - 1) * 100;
+      if (Math.abs(diff) < 4) continue;
+      if (!best || Math.abs(diff) > Math.abs(best.diff)) best = { diff, a, b, shifted: shift === 1 };
+    }
+    return best;
+  }
+
+  const sonoKcal = sleepEffect(kcalMap);
+  if (sonoKcal) {
+    const prefix = sonoKcal.shifted ? "No dia seguinte a dormir menos de 7h" : "Nos dias em que dormiu menos de 7h";
+    out.push({
+      icon: "moon",
+      text: `${prefix}, você comeu em média ${Math.round(Math.abs(sonoKcal.diff))}% ${
+        sonoKcal.diff > 0 ? "a mais" : "a menos"
+      } (${Math.round(sonoKcal.a)} vs ${Math.round(sonoKcal.b)} kcal).`,
+    });
+  }
+
+  const sonoVol = sleepEffect(volMap);
+  if (sonoVol) {
+    const prefix = sonoVol.shifted ? "No treino do dia seguinte a dormir menos de 7h" : "Nos treinos de dias com menos de 7h de sono";
+    out.push({
+      icon: "barbell",
+      text: `${prefix}, seu volume foi em média ${Math.round(Math.abs(sonoVol.diff))}% ${
+        sonoVol.diff > 0 ? "maior" : "menor"
+      } (${fmtVol(sonoVol.a)} vs ${fmtVol(sonoVol.b)}).`,
+    });
+  }
+
+  // Caloria do dia anterior → volume do treino: separa os treinos entre
+  // "véspera acima da mediana de kcal" e "abaixo" e compara as médias.
+  const kcalVals = args.kcal.map((d) => d.kcal).sort((x, y) => x - y);
+  if (kcalVals.length >= 4) {
+    const median = kcalVals[Math.floor(kcalVals.length / 2)];
+    const hi: number[] = [];
+    const lo: number[] = [];
+    for (const v of args.vol) {
+      const prev = kcalMap.get(shiftDay(v.day, -1));
+      if (prev == null) continue;
+      (prev > median ? hi : lo).push(v.volume);
+    }
+    if (hi.length >= 2 && lo.length >= 2) {
+      const diff = (avg(hi) / avg(lo) - 1) * 100;
+      if (Math.abs(diff) >= 4) {
+        out.push({
+          icon: "restaurant",
+          text: `Nos treinos após dias comendo acima de ~${Math.round(median)} kcal, seu volume foi em média ${Math.round(
+            Math.abs(diff)
+          )}% ${diff > 0 ? "maior" : "menor"} (${fmtVol(avg(hi))} vs ${fmtVol(avg(lo))}).`,
+        });
+      }
+    }
+  }
+
+  // Tendências simples no período (primeira metade vs segunda, início vs fim)
+  if (args.vol.length >= 4) {
+    const half = Math.floor(args.vol.length / 2);
+    const first = avg(args.vol.slice(0, half).map((v) => v.volume));
+    const second = avg(args.vol.slice(half).map((v) => v.volume));
+    const diff = (second / first - 1) * 100;
+    if (Math.abs(diff) >= 3) {
+      out.push({
+        icon: diff > 0 ? "trending-up" : "trending-down",
+        text: `Seu volume de treino ${diff > 0 ? "subiu" : "caiu"} ~${Math.round(Math.abs(diff))}% ao longo do período (média de ${fmtVol(
+          first
+        )} → ${fmtVol(second)} por treino).`,
+      });
+    }
+  }
+
+  if (args.carga.length >= 2 && args.cargaName) {
+    const first = args.carga[0].y;
+    const last = args.carga[args.carga.length - 1].y;
+    if (first > 0 && Math.abs(last - first) >= 0.5) {
+      out.push({
+        icon: "barbell",
+        text: `No ${args.cargaName}, sua carga foi de ${Math.round(first)}kg para ${Math.round(last)}kg (${
+          last >= first ? "+" : ""
+        }${Math.round((last / first - 1) * 100)}%).`,
+      });
+    }
+  }
+
+  if (args.weightPts.length >= 2) {
+    const first = args.weightPts[0].y;
+    const last = args.weightPts[args.weightPts.length - 1].y;
+    const delta = last - first;
+    out.push({
+      icon: "scale",
+      text:
+        Math.abs(delta) >= 0.3
+          ? `Seu peso ${delta < 0 ? "caiu" : "subiu"} ${Math.abs(delta).toFixed(1)}kg no período (${first.toFixed(1)} → ${last.toFixed(1)}kg).`
+          : `Seu peso ficou estável no período (${first.toFixed(1)} → ${last.toFixed(1)}kg).`,
+    });
+  }
+
+  if (args.sleep.length >= 3) {
+    const m = avg(args.sleep.map((s) => s.hours));
+    out.push({
+      icon: "moon",
+      text: `Média de sono: ${m.toFixed(1)}h por noite${
+        shortNights.length > 0 ? ` — ${shortNights.length} ${shortNights.length === 1 ? "noite" : "noites"} abaixo de 7h` : ""
+      }.`,
+    });
+  }
+
+  return out.slice(0, 5);
+}
+
 export function EvolutionScreen() {
   const { colors, type, spacing } = useTheme();
   const route = useRoute<any>();
@@ -211,6 +369,38 @@ export function EvolutionScreen() {
   };
 
   const missingData = activeKeys.filter((k) => rawByMetric[k].length === 0);
+
+  // Análise automática do período — recalculada quando os dados ou a janela
+  // (7/15/30d) mudam. Tudo derivado dos registros reais; ver buildInsights.
+  const analysis = useMemo(() => {
+    const sleepDays = sleepLogs
+      .filter((l) => new Date(l.wake_at).getTime() >= cutoff)
+      .map((l) => ({ day: dayKeyOf(l.wake_at), hours: l.duration_minutes / 60 }));
+    const kcalDays = nutritionDays
+      .filter((d) => d.kcal > 0 && new Date(d.date).getTime() >= cutoff)
+      .map((d) => ({ day: d.date, kcal: d.kcal }));
+    const volDays = volume
+      .filter((v) => new Date(v.date).getTime() >= cutoff)
+      .map((v) => ({ day: dayKeyOf(v.date), volume: v.volume_kg }));
+    const weightPts = weight
+      .map((p) => ({ x: new Date(p.date).getTime(), y: p.weight_kg }))
+      .filter((p) => p.x >= cutoff);
+    const cargaPts = progression
+      .map((p) => ({ x: new Date(p.date).getTime(), y: p.max_weight_kg }))
+      .filter((p) => p.x >= cutoff);
+    const hasAnyData = sleepDays.length + kcalDays.length + volDays.length + weightPts.length > 0;
+    return {
+      hasAnyData,
+      insights: buildInsights({
+        sleep: sleepDays,
+        kcal: kcalDays,
+        vol: volDays,
+        weightPts,
+        carga: cargaPts,
+        cargaName: selectedExercise?.name ?? null,
+      }),
+    };
+  }, [sleepLogs, nutritionDays, volume, weight, progression, selectedExercise, cutoff]);
 
   return (
     <ScrollView
@@ -425,6 +615,48 @@ export function EvolutionScreen() {
           </Text>
         ) : null}
       </Card>
+
+      {/* Análise automática — observações calculadas dos registros reais do
+          período. Nada de texto inventado: cada linha vem de uma comparação
+          estatística que passou nos critérios de amostra/diferença. */}
+      {analysis.hasAnyData ? (
+        <Card style={{ marginTop: spacing.md }}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Ionicons name="analytics" size={18} color={colors.secondary} />
+            <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8, fontSize: 16, flex: 1 }]}>
+              Análise do período
+            </Text>
+            <HelpDot
+              title="Análise automática"
+              text={
+                "Essas observações são calculadas direto dos seus registros reais no período selecionado — nada é " +
+                "inventado. Uma relação só aparece se tiver dias suficientes de amostra dos dois lados da comparação " +
+                "e uma diferença relevante; senão ela fica de fora. E lembre: correlação não é causa — use como pista " +
+                "pra se observar, não como veredito."
+              }
+            />
+          </View>
+          <Text style={[type.caption, { color: colors.textSecondary, marginTop: 2, marginBottom: spacing.sm }]}>
+            Calculada dos seus registros dos últimos {rangeDays} dias.
+          </Text>
+          {analysis.insights.length > 0 ? (
+            analysis.insights.map((ins, i) => (
+              <View
+                key={i}
+                style={{ flexDirection: "row", gap: spacing.sm, marginTop: i === 0 ? 0 : spacing.sm, alignItems: "flex-start" }}
+              >
+                <Ionicons name={ins.icon} size={15} color={colors.textSecondary} style={{ marginTop: 2 }} />
+                <Text style={[type.bodySmall, { color: colors.textPrimary, flex: 1 }]}>{ins.text}</Text>
+              </View>
+            ))
+          ) : (
+            <Text style={[type.bodySmall, { color: colors.textSecondary }]}>
+              Ainda não encontrei relações claras nesse período — continue registrando treino, sono e dieta que a
+              análise vai ficando mais rica.
+            </Text>
+          )}
+        </Card>
+      ) : null}
 
       {/* Registrar peso — sempre disponível aqui, é o único lugar do app pra
           isso (diferente de sono/água que têm tela própria). */}
