@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import ARRAY, JSON, Boolean, DateTime, Enum, ForeignKey, String, Text, func
+from sqlalchemy import ARRAY, JSON, Boolean, DateTime, Enum, ForeignKey, String, Text, event, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -61,10 +61,24 @@ class Exercise(Base):
     execution_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     video_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
+    # Composto (multiarticular) vs isolado — base da proporção intra-sessão
+    # dos métodos (Kuba 40/60 etc.). Preenchido pelos listeners abaixo.
+    is_compound: Mapped[bool] = mapped_column(Boolean, default=True)
+
     is_custom: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
+    )
+
+
+@event.listens_for(Exercise, "before_insert")
+@event.listens_for(Exercise, "before_update")
+def _populate_is_compound(_mapper, _connection, target: "Exercise") -> None:
+    from app.services.exercise_classify import classify_is_compound
+
+    target.is_compound = classify_is_compound(
+        target.name, target.secondary_muscle_groups, target.equipment
     )
