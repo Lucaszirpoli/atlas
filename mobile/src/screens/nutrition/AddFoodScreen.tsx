@@ -17,6 +17,7 @@ import {
   createCustomFood,
   listFavoriteFoods,
   removeFavoriteFood,
+  searchFoodBrands,
   searchFoods,
   type Food,
 } from "../../api/foods";
@@ -36,6 +37,7 @@ export function AddFoodScreen() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Food[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isSearchingBrands, setIsSearchingBrands] = useState(false);
   const [selectedFood, setSelectedFood] = useState<Food | null>(null);
   const [quantityG, setQuantityG] = useState("100");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -116,20 +118,47 @@ export function AddFoodScreen() {
     }
   }, [barcodeResult]);
 
+  // Busca em duas fases: (1) local sem acento, instantânea, aparece na hora;
+  // (2) marcas do Open Food Facts (mais lenta, rede) encaixadas ao chegar,
+  // sem duplicar o que já veio no local. `cancelled` evita que uma busca
+  // antiga sobrescreva uma mais nova (race ao digitar rápido).
   useEffect(() => {
-    if (query.trim().length < 2) {
+    const q = query.trim();
+    if (q.length < 2) {
       setResults([]);
+      setIsSearching(false);
+      setIsSearchingBrands(false);
       return;
     }
+    let cancelled = false;
     setIsSearching(true);
     const timeout = setTimeout(async () => {
       try {
-        setResults(await searchFoods(query.trim()));
+        const local = await searchFoods(q);
+        if (cancelled) return;
+        setResults(local);
       } finally {
-        setIsSearching(false);
+        if (!cancelled) setIsSearching(false);
       }
-    }, 350);
-    return () => clearTimeout(timeout);
+      // Fase 2: marcas ao vivo, encaixadas depois (sem bloquear a fase 1).
+      setIsSearchingBrands(true);
+      try {
+        const brands = await searchFoodBrands(q);
+        if (cancelled) return;
+        setResults((prev) => {
+          const seen = new Set(prev.map((f) => f.id));
+          return [...prev, ...brands.filter((b) => !seen.has(b.id))];
+        });
+      } catch {
+        // silencioso — se as marcas falharem, o local já está na tela
+      } finally {
+        if (!cancelled) setIsSearchingBrands(false);
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
   }, [query]);
 
   async function handleConfirm() {
@@ -333,28 +362,48 @@ export function AddFoodScreen() {
           </Pressable>
         )}
         ListFooterComponent={
-          query.trim().length >= 2 && !isSearching ? (
-            <TouchableOpacity
-              onPress={openCustom}
-              activeOpacity={0.7}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-                borderWidth: 2,
-                borderStyle: "dashed",
-                borderColor: colors.primary + "66",
-                borderRadius: radius.card,
-                paddingVertical: spacing.md,
-                marginTop: spacing.sm,
-              }}
-            >
-              <Ionicons name="add-circle" size={20} color={colors.primary} />
-              <Text style={[type.bodySmall, { color: colors.primary, fontWeight: "700" }]} numberOfLines={1}>
-                Não achou? Cadastrar "{query.trim()}"
-              </Text>
-            </TouchableOpacity>
+          query.trim().length >= 2 ? (
+            <>
+              {isSearchingBrands ? (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    paddingVertical: spacing.sm,
+                  }}
+                >
+                  <ActivityIndicator size="small" color={colors.textSecondary} />
+                  <Text style={[type.caption, { color: colors.textSecondary }]}>
+                    Buscando marcas...
+                  </Text>
+                </View>
+              ) : null}
+              {!isSearching && !isSearchingBrands ? (
+                <TouchableOpacity
+                  onPress={openCustom}
+                  activeOpacity={0.7}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    borderWidth: 2,
+                    borderStyle: "dashed",
+                    borderColor: colors.primary + "66",
+                    borderRadius: radius.card,
+                    paddingVertical: spacing.md,
+                    marginTop: spacing.sm,
+                  }}
+                >
+                  <Ionicons name="add-circle" size={20} color={colors.primary} />
+                  <Text style={[type.bodySmall, { color: colors.primary, fontWeight: "700" }]} numberOfLines={1}>
+                    Não achou? Cadastrar "{query.trim()}"
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </>
           ) : null
         }
       />

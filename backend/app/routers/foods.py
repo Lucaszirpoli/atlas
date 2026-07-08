@@ -15,9 +15,21 @@ router = APIRouter(prefix="/foods", tags=["foods"])
 
 @router.get("/search", response_model=list[FoodRead])
 def search_foods(q: str, db: Session = Depends(get_db)) -> list[Food]:
+    """Busca local (rápida, sem acento) — retorna na hora enquanto a pessoa
+    digita. As marcas de outros países vêm por /search/brands em separado."""
     if len(q.strip()) < 2:
         return []
-    return food_service.search_with_open_food_facts_fallback(db, q.strip())
+    return food_service.search_local(db, q.strip())
+
+
+@router.get("/search/brands", response_model=list[FoodRead])
+def search_food_brands(q: str, db: Session = Depends(get_db)) -> list[Food]:
+    """Busca ao vivo de marcas no Open Food Facts (cacheia o que voltar). É
+    mais lenta (rede), então o app chama depois da busca local e encaixa os
+    resultados conforme chegam."""
+    if len(q.strip()) < 2:
+        return []
+    return food_service.search_brands_live(db, q.strip())
 
 
 @router.get("/barcode/{barcode}", response_model=FoodRead)

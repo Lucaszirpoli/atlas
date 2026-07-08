@@ -1,10 +1,11 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, String, UniqueConstraint, event, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
+from app.core.text import normalize_search_text
 
 
 class FoodSource(str, enum.Enum):
@@ -28,6 +29,10 @@ class Food(Base):
     name: Mapped[str] = mapped_column(String(200), index=True)
     brand: Mapped[str | None] = mapped_column(String(150), nullable=True)
 
+    # Nome + marca sem acento/maiúsculas — alvo da busca pra "pao" achar "Pão".
+    # Preenchido automaticamente pelos listeners abaixo; nunca setar à mão.
+    search_text: Mapped[str] = mapped_column(String(400), default="", index=True)
+
     # Valores nutricionais por 100g/100ml, base do cálculo de qualquer porção.
     kcal_per_100g: Mapped[float] = mapped_column(Float)
     protein_g_per_100g: Mapped[float] = mapped_column(Float)
@@ -46,3 +51,11 @@ class Food(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+@event.listens_for(Food, "before_insert")
+@event.listens_for(Food, "before_update")
+def _populate_search_text(_mapper, _connection, target: Food) -> None:
+    """Mantém search_text sempre em sincronia com name/brand — um lugar só,
+    impossível esquecer em algum ponto de inserção (seed, OFF, custom)."""
+    target.search_text = normalize_search_text(target.name, target.brand)

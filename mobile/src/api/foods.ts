@@ -22,6 +22,13 @@ export async function searchFoods(query: string): Promise<Food[]> {
   return data;
 }
 
+/** Busca de marcas ao vivo (Open Food Facts) — mais lenta, chamada em separado
+ * pra não travar a digitação. O app mostra o local na hora e encaixa isto. */
+export async function searchFoodBrands(query: string): Promise<Food[]> {
+  const { data } = await api.get<Food[]>("/foods/search/brands", { params: { q: query } });
+  return data;
+}
+
 export async function getFoodByBarcode(barcode: string): Promise<Food | null> {
   try {
     const { data } = await api.get<Food>(`/foods/barcode/${barcode}`);

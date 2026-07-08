@@ -1,42 +1,62 @@
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.core.text import normalize_search_text
 from app.models.food import Food, FoodSource
 from app.services import open_food_facts
 
 
 def search_local(db: Session, query: str, limit: int = 30) -> list[Food]:
-    stmt = (
-        select(Food)
-        .where(or_(Food.name.ilike(f"%{query}%"), Food.brand.ilike(f"%{query}%")))
-        .order_by((Food.source == FoodSource.TACO).desc())
-        .limit(limit)
-    )
+    """Busca no banco local (TACO + produtos OFF já cacheados). Casa sem acento
+    e sem maiúsculas via a coluna search_text ("pao" acha "Pão"). Cada palavra
+    da busca precisa aparecer (AND), então "pao integral" filtra os dois."""
+    norm = normalize_search_text(query)
+    terms = [t for t in norm.split() if t]
+    stmt = select(Food)
+    for term in terms:
+        stmt = stmt.where(Food.search_text.like(f"%{term}%"))
+    # TACO (alimentos genéricos, base brasileira) primeiro, depois marcas.
+    stmt = stmt.order_by((Food.source == FoodSource.TACO).desc(), Food.name).limit(limit)
     return list(db.execute(stmt).scalars())
 
 
-def search_with_open_food_facts_fallback(db: Session, query: str, limit: int = 30) -> list[Food]:
-    """Busca local primeiro (TACO + produtos já cacheados). Se vier pouco
-    resultado, complementa com uma busca ao vivo no Open Food Facts, cacheando
-    o que voltar novo — próximas buscas iguais já saem 100% do banco local."""
-    local_results = search_local(db, query, limit)
-    if len(local_results) >= limit:
-        return local_results
-
+def search_brands_live(db: Session, query: str, limit: int = 30) -> list[Food]:
+    """Consulta o Open Food Facts ao vivo e cacheia os produtos novos — traz
+    marcas (brasileiras e de outros países) que ainda não estão no banco.
+    Chamada em separado da busca local pra não travar a digitação: o app
+    mostra o local na hora e encaixa as marcas quando isto retorna."""
     try:
         remote_products = open_food_facts.search_by_name(query, page_size=limit)
     except Exception:
-        return local_results
+        return []
 
-    known_external_ids = {f.external_id for f in local_results if f.external_id}
-    cached: list[Food] = []
+    # Evita duplicar o que já está local (mesmo código de barras/external_id).
+    existing_ids = {
+        f.external_id
+        for f in db.execute(
+            select(Food).where(Food.source == FoodSource.OPEN_FOOD_FACTS)
+        ).scalars()
+        if f.external_id
+    }
+    out: list[Food] = []
+    seen: set[str] = set()
     for product in remote_products:
-        if not product["external_id"] or product["external_id"] in known_external_ids:
+        ext = product.get("external_id")
+        if not ext or ext in seen:
             continue
-        cached.append(_upsert_open_food_facts_product(db, product))
-
+        seen.add(ext)
+        if ext in existing_ids:
+            existing = db.execute(
+                select(Food).where(
+                    Food.source == FoodSource.OPEN_FOOD_FACTS, Food.external_id == ext
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                out.append(existing)
+            continue
+        out.append(_upsert_open_food_facts_product(db, product))
     db.commit()
-    return local_results + cached
+    return out
 
 
 def get_by_barcode(db: Session, barcode: str) -> Food | None:
