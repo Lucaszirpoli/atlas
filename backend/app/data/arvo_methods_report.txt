@@ -1,0 +1,844 @@
+Relatório analítico sobre as dez metodologias de
+treino da Arvo
+Sumário executivo
+A página comparativa da Arvo reúne dez métodos com perfis muito diferentes: dois minimalistas e
+intensos de baixa frequência e baixo volume, como DC Training e Mentzer HIT; três orientados a
+hipertrofia de fisiculturismo por alto estresse metabólico e variação de estímulo, como FST-7, Mountain
+Dog e Y3T; dois sistemas de hipertrofia guiados por volume e autorregulação, como Método Kuba e RP
+Training; e três métodos com centro de gravidade em força, como Wendler 5/3/1, Juggernaut e 
+Westside Conjugate. A melhor escolha não é “o método mais famoso”, mas o que melhor combina
+com objetivo, experiência, tolerância à fadiga, disponibilidade semanal e equipamento. 
+Do ponto de vista de evidência geral, a literatura sustenta que mais volume semanal tende a
+aumentar a hipertrofia até certo ponto, com retornos decrescentes; que a frequência por músculo
+é menos determinante quando o volume semanal é equalizado; que treinar até a falha pode ser
+útil em praticantes treinados, mas não é pré-requisito universal; e que cargas mais altas
+favorecem ganhos máximos de força, enquanto hipertrofia pode ocorrer em várias faixas de
+carga quando o esforço é suficiente. Isso explica por que Kuba e RP insistem em gestão de volume,
+por que Mentzer e DC trocam volume por intensidade, e por que 5/3/1, Juggernaut e Westside
+privilegiam percentuais, practice com barra e progressão estrutural. 
+Para o aplicativo, a implicação principal é que não basta ter uma biblioteca de “treinos”: é preciso
+modelar motores de progressão diferentes por método, com timers, regras de deload, lógica de
+rotação de exercícios, registro de RIR/RPE/repetições, e dashboards específicos por sistema. Em outras
+palavras, o produto deve ser um orquestrador de metodologias, não apenas um player de listas de
+exercícios. Isso já aparece na própria forma como a Arvo diz implementar cada método. 
+Versão profissional pronta para encaminhar ao time de desenvolvimento: o app deve oferecer
+onboarding com seleção do método, avaliação inicial de experiência/objetivo/equipamento/
+recuperação, cálculo automático de cargas ou faixas-alvo, execução assistida com timers e prompts
+específicos, coleta estruturada de dados por série e por sessão, regras automáticas de progressão e de
+deload, e uma camada analítica que compare desempenho intra-bloco e entre blocos. O sistema
+também deve armazenar histórico completo de exercícios, cargas, RIR/RPE, tempos de descanso,
+aderência, dores, readiness, marcadores antropométricos e eventos de treino, para que cada método
+possa ser reproduzido com fidelidade. Essa direção é coerente tanto com os guias da Arvo quanto com
+princípios consolidados de prescrição e progressão em treino resistido. 
+Quadro comparativo
+A tabela abaixo consolida a página comparativa da Arvo e os guias completos de cada método. Onde o
+guia é menos específico, a classificação foi padronizada em termos práticos para produto. 
+1
+2
+3
+4
+1
+1
+Método Propósito
+principal
+Bloco/
+ciclo
+típico
+Equipamento-
+chave
+Intensidade
+dominante
+Público mais
+indicado
+DC
+Training
+Hipertrofia
+rápida com
+baixa
+frequência
+Blast 6–
+12 sem +
+cruise 10–
+14 dias
+Máquinas,
+barra, halteres,
+estação para
+alongamento
+Muito alta,
+rest-pause e
+widowmaker
+Intermediários/
+avançados com
+pouco tempo
+Mentzer
+HIT
+Hipertrofia/
+força com
+volume
+mínimo
+6–8 sem +
+1 sem
+offload
+Preferência por
+máquinas e
+básico seguro
+Ultra-alta,
+até/ além da
+falha
+Hardgainers,
+minimalistas,
+mais
+experientes
+Método
+Kuba
+Hipertrofia
+baseada em
+qualidade e
+volume
+controlado
+6 sem +
+deload
+Máquinas/
+cabos/halteres
++ alguns
+compostos
+Moderada-
+alta, 0–1 RIR
+Iniciantes a
+avançados que
+aceitam
+disciplina
+técnica
+FST-7
+Pump,
+plenitude e
+detalhe
+muscular
+8 sem
+com
+deload na
+8ª
+Máquinas e
+cabos para
+finalizador
+Alta
+densidade
+metabólica
+Intermediários/
+avançados de
+fisiculturismo
+Mountain
+Dog
+Hipertrofia
+multifásica e
+amigável às
+articulações
+Blocos
+com
+rotação a
+cada 3–4
+sem
+Máquinas,
+cabos,
+correntes,
+bandas,
+halteres
+Mista:
+ativação,
+potência,
+pump,
+stretch
+Intermediários/
+avançados com
+boa
+infraestrutura
+Y3T
+Variação
+semanal para
+quebrar
+adaptação
+Ciclos de
+3 sem;
+rotação a
+cada 9
+sem
+Barra,
+máquinas,
+cabos
+Ondulatória:
+pesada,
+híbrida,
+infernal
+Intermediários
+em platô e
+fisiculturistas
+RP Training
+Hipertrofia
+orientada por
+MEV/MAV/
+MRV
+4–6 sem +
+deload
+Misto, com
+compostos
+como base
+Progressiva
+por sets e RIR
+Usuários “data-
+driven” com boa
+aderência
+Wendler
+5/3/1
+Força
+sustentável
+de longo
+prazo
+Ciclos de
+4 sem
+Barra, rack,
+banco, anilhas
+Percentuais +
+AMRAP final
+Iniciantes
+avançando para
+intermediários
+Juggernaut
+Força com
+periodização
+em blocos
+16+ sem
+em ondas
+10s/8s/
+5s/3s
+Barra, rack,
+banco,
+acessórios
+Ondas por
+TM + AMRAP
+Intermediários/
+avançados de
+força
+2
+Método Propósito
+principal
+Bloco/
+ciclo
+típico
+Equipamento-
+chave
+Intensidade
+dominante
+Público mais
+indicado
+Westside
+Conjugate
+Força
+máxima,
+velocidade e
+pontos fracos
+Contínuo
+com
+rotações
+de 1–3
+sem
+Rack, banco,
+barras
+especiais,
+bandas,
+correntes,
+trenó
+ME + DE +
+repetition
+effort
+Powerlifters
+avançados
+Premissas clínicas, métricas e arquitetura comum do produto
+Independentemente do método, a camada clínica mínima do app deve incluir triagem pré-participação,
+rastreio de dores/sintomas, histórico de lesões, nível de experiência, disponibilidade semanal e
+equipamento. Diretrizes da OMS recomendam fortalecimento muscular envolvendo grandes grupos
+pelo menos duas vezes por semana para adultos, e diretrizes brasileiras reforçam individualização de
+carga, técnica correta, faixas de repetições e avaliação inicial para reduzir risco. A ACSM também
+mantém a triagem pré-participação como processo relevante para identificar quem pode precisar de
+avaliação adicional antes de iniciar exercício mais intenso. 
+Como camada de mensuração comum, o app deve registrar: carga absoluta; repetições realizadas; RIR
+ou RPE quando aplicável; tempo de descanso; tempo por repetição quando o método exigir; volume
+por músculo por semana; e1RM para métodos de força; qualidade de pump, dor articular e soreness
+para métodos de hipertrofia; aderência semanal; readiness; e evolução antropométrica por peso
+corporal, perímetros e fotos. Isso é coerente com a forma como RP , Kuba, FST-7, DC e Y3T dependem de
+feedback objetivo para ajustar volume, intensidade e progressão. 
+A camada de produto também deve separar regras compartilhadas de regras específicas por
+método. Regras compartilhadas: biblioteca de exercícios, calendários, timers, notificações, histórico,
+perfil de equipamento, motor de deload, dashboard e analytics. Regras específicas: contagem de
+respirações no DC; cadência 4-0-2-0 no Mentzer; cadência 3-1-1-1 e radar de volume no Kuba; timer 30–
+45 s com hidratação no FST-7; fases 1–4 no Mountain Dog; calendário cíclico 1–2–3 no Y3T; aumento de
+um set por músculo no RP; cálculo do Training Max no 5/3/1 e no Juggernaut; e rotação de ME/DE no
+Westside. 
+5
+6
+7
+3
+O fluxo acima é o mínimo viável para suportar todos os dez métodos com boa fidelidade operacional.
+Nos métodos de força, o motor de progressão precisa priorizar TM, e1RM e PRs; nos métodos de
+hipertrofia, deve priorizar volume por músculo, proximidade da falha, qualidade do estímulo e
+capacidade de recuperação. 
+Fichas completas dos dez métodos
+DC Training
+Guia original.DC Training (Doggcrapp): Guia Completo do Método de Dante Trudel da Arvo. 
+Objetivo e racional. O DC combina baixa frequência, rest-pause, alongamento extremo e progressão
+obrigatória em diário para produzir hipertrofia e força com poucas séries, assumindo que o
+crescimento depende de um estímulo muito intenso seguido de recuperação ampla. O método
+organiza o treinamento em fases de blast de 6–12 semanas e cruise de 10–14 dias. 
+Protocolo. O núcleo é uma “mega-série” rest-pause: escolher carga para ~7–10 repetições, ir até a falha,
+descansar 10–15 respirações, repetir até nova falha, descansar novamente e fazer uma terceira mini-
+série. Para quadríceps, o guia substitui o rest-pause pela widowmaker de 20 repetições com carga de
+10–12RM, admitindo pausas respiratórias após a repetição 10–12. O exemplo de divisão A/B usa uma
+série de trabalho por exercício, alongamentos com carga de 60–90 s após cada grupamento e rotação
+A–descanso–B–descanso, treinando cada músculo aproximadamente a cada 4–5 dias. 
+Equipamento e setup. O método pede barra, halteres, máquinas e uma estação segura para
+alongamentos extremos. Como o guia recomenda rack pulls, pullups com peso, presses e leg press, o
+Onboarding
+Selecionar
+objetivo
+Selecionar
+metodologia
+Informar
+experiência,
+equipamento
+e
+disponibilidade
+Triagem
+de
+segurança
+e
+restrições
+Gerar
+bloco
+inicial
+Execução
+assistida
+por
+sessão
+Registro
+de
+séries,
+RIR/RPE,
+carga,
+descanso
+Feedback
+pós-sessão
+Motor
+de
+progressão
+Dashboard
+semanal
+e
+deload
+8
+9
+10
+11
+4
+setup ideal é academia completa. O guia não especifica ordem obrigatória de aquecimento; opção
+razoável é 2–4 séries de aproximação nos compostos antes da série efetiva. 
+Público, contraindicações e métricas. O guia posiciona DC para intermediários e avançados, pessoas
+com pouco tempo e boa tolerância a desconforto; não é ideal para iniciantes, para quem tem
+problemas articulares relevantes, ou para quem não consegue respeitar descanso. Métricas prioritárias:
+carga total do rest-pause, reps somadas por série, duração do alongamento, adesão a blast/cruise, dor
+articular e variação do e1RM por exercício. 
+Programação, erros e app. Exemplo de 4 semanas: semanas 1–4 em blast introdutório com divisão A/B
+em dias alternados e meta de superar diário a cada sessão; exemplo de 12 semanas: blast 1–8, cruise 9–
+10, blast 11–12, pois o guia exige cruise após blocos mais longos. Regra de progressão: bater o diário
+com mais reps totais ou mais carga; se estagnar , trocar variação e/ou entrar em cruise. Erros comuns:
+descansar pouco entre mini-séries, alongar sem segurança, usar volume extra “por fora” e tentar fazer
+DC sem registrar números. Para o app, telas específicas: execução rest-pause com contador de
+respirações; timer de alongamento 60–90 s; tela de diário com “beat last log”; alerta de estagnação; e
+wizard de cruise. Campos: carga, reps por mini-série, duração do stretch, dor articular , fadiga. Eventos: 
+dc_restpause_started, dc_stretch_completed, dc_log_beaten, dc_cruise_triggered.
+Permissões recomendadas: notificações e áudio em segundo plano; câmera e Health Connect são
+opcionais. Fontes prioritárias: guia da Arvo; como base geral de segurança e progressão, ACSM e
+diretrizes brasileiras de exercício resistido. Onde o guia não especifica aquecimento e semana 1–4
+formal, a estrutura proposta aqui é uma sugestão operacional conservadora. 
+Mentzer HIT
+Guia original.Mike Mentzer HIT Training: App de IA e Guia Completo Heavy Duty da Arvo. 
+Objetivo e racional. O Heavy Duty parte da tese de que 1–2 séries “all out” por exercício, levadas até a
+falha e além dela, fornecem estímulo suficiente sem o custo de fadiga de treinos volumosos. O guia
+descreve sessões de 20–30 minutos, recuperação de 4–7 dias para o mesmo músculo e progressão por
+aumento de carga ou de intensidade, nunca por adicionar séries. 
+Protocolo. Tempo de execução: 4-0-2-0, com excêntrica de 4 s e concêntrica forte. O guia descreve
+divisão clássica de 3 dias, com um ataque semanal por músculo, ou versão full body de 2 dias para
+usuários muito avançados que precisam de ainda mais recuperação. Técnicas principais: repetições
+forçadas, negativas de 8–10 s com 105–110% de 1RM e seguras estáticas em máquinas ou com travas. A
+lógica de progressão é clara: quando alcançar o topo da faixa com forma rigorosa, subir 5–10%; se não
+superar o treino anterior , descansar mais. 
+Equipamento e setup. O guia prioriza relação estímulo-fadiga alta, com cerca de 90% compostos e
+10% isolamento para pré-exaustão, mas enfatiza máquinas e pareamentos seguros para além-falha. O
+setup ideal envolve máquinas convergentes, leg press, puxadas, remadas e ao menos um parceiro de
+treino para forçadas e negativas. O guia não especifica progressões percentuais fixas por exercício;
+opção razoável é usar double progression dentro da faixa-alvo antes de subir carga. 
+Público, contraindicações e métricas. O guia descreve o método como bom para hardgainers e
+pessoas com pouco tempo, mas não apropriado para iniciantes que ainda constroem base. Em termos
+práticos, eu acrescentaria cautela especial para dor articular ativa, histórico recente de lesão tendínea,
+hipertensão não controlada ou sintomas cardiovasculares sem triagem, porque o método depende de
+12
+13
+14
+15
+16
+17
+18
+5
+esforço muito alto e técnicas além da falha. Métricas: carga, reps, falha atingida ou não, técnica
+adicional usada, tempo excêntrico, prontidão, e necessidade de dias extras de descanso. 
+Programação, erros e app. Exemplo de 4 semanas: 3 dias por semana, divisão peito/costas, pernas,
+ombros/braços, mantendo 1 série de trabalho por exercício; exemplo de 12 semanas: semanas 1–6 de
+progressão, semana 7 de descarga total sem treino, semanas 8–12 novo bloco, refletindo a
+recomendação do guia de uma semana inteira off a cada 6–8 semanas. Erros comuns: subir volume por
+ansiedade, falhar em respeitar 4 s na excêntrica, usar negativas demais, e interpretar estagnação como
+sinal para treinar mais. No app, este método pede telas de cadência com countdown 4-0-2-0, seleção
+assistida de técnica de intensidade, registro de parceiro, prompts de pré-exaustão e lógica de “descanso
+extra recomendado”. Campos: exercício, carga, reps, técnica extra, tempo, fadiga, descanso entre
+sessões. Eventos: mentzer_failure_reached, mentzer_negative_logged, 
+mentzer_extra_rest_recommended, mentzer_deload_week_started. Permissões: notificações,
+áudio, e talvez vibração; nenhuma permissão física adicional é obrigatória. Fontes prioritárias: guia da
+Arvo; ACSM para progressão; triagem pré-participação da ACSM/Brasil para segurança. Onde o guia não
+detalha intervalos de aquecimento e o número máximo de exercícios por sessão, isso permanece não
+especificado; uma sugestão prudente é 3–5 exercícios principais por sessão. 
+Método Kuba
+Guia original.Método Kuba: Guia Completo para Hipertrofia Focada em Qualidade da Arvo. 
+Objetivo e racional. O método de Kuba Cielen é uma abordagem de hipertrofia centrada em 
+qualidade de repetição, boa relação estímulo-fadiga, exercício em posição alongada e marcos de
+volume MEV/MAV/MRV. O guia descreve 2 séries de trabalho por exercício, cadência obrigatória
+3-1-1-1, descanso autorregulado e progressão estruturada em mesociclo de 6 semanas. 
+Protocolo. Cada exercício recebe 2–3 aquecimentos graduais e depois 2 séries de trabalho em RIR 0–1.
+A cadência é 3 s na excêntrica, 1 s de pausa embaixo, 1 s na concêntrica e 1 s no topo. O mesociclo do
+guia tem semanas 1–4 de acumulação, semanas 5–6 de intensificação e semana 7 de deload com 50%
+do volume e RIR 3–4. O método também sugere progressão “repetições primeiro, carga depois”,
+prioriza 40% compostos e 60% isolamentos e usa técnicas como myo-reps, drop sets e rest-pause na
+fase de intensificação. 
+Equipamento e setup. O guia favorece máquinas, cabos, halteres e exercícios de alta relação estímulo-
+fadiga, como remadas em máquina, extensões de pernas e crucifixos em cabo, ao mesmo tempo que
+limita movimentos de baixo S:F, como terra pesado e agachamento pesado, especialmente nas
+semanas finais. O setup pode ser de academia comercial comum. 
+Público, contraindicações e métricas. O próprio FAQ do guia diz que o método é excelente inclusive
+para iniciantes, porque a cadência e o volume moderado ajudam a construir técnica; o método estima
+frequência de aproximadamente duas vezes por semana por músculo em rotação 3-on, 1-off.
+Acompanhamentos mais importantes: sets semanais por músculo, RIR, tempo médio por repetição,
+cumprimento da cadência, proximidade de MEV/MAV/MRV e progresso em repetições antes da carga. 
+Programação, erros e app. Exemplo de 4 semanas: semanas 1–3 acumulando sets por músculo do
+MEV ao MAV, semana 4 mantendo volume e consolidando técnica; exemplo de 12 semanas: ciclo 1
+semanas 1–6, deload 7, ciclo 2 semanas 8–12 com nova acumulação e intensificação. Regra de
+progressão: bater o topo da faixa por duas sessões, então subir carga; se sinais de fadiga coincidirem
+19
+20
+21
+22
+23
+24
+25
+6
+com proximidade do MRV, deload. Erros comuns: correr a excêntrica, tratar o descanso autorregulado
+como descanso aleatório, usar muitos compostos de baixo S:F e antecipar técnicas avançadas. No app,
+além da base comum, Kuba exige metrônomo visual/sonoro 3-1-1-1, radar de volume por músculo, tela
+de landmarks MEV/MAV/MRV e lógica de “reps first”. Campos: grupos musculares, volume direto por
+músculo, RIR, tempo por série, exercício em posição alongada sim/não. Eventos: 
+kuba_tempo_failed, kuba_mrv_alert, kuba_rep_target_hit, 
+kuba_intensification_started. Fontes prioritárias: guia da Arvo; como suporte, revisões sobre
+volume semanal, frequência e progressão em treino resistido. Onde o guia não especifica um template
+semanal único fechado, a periodização sugerida aqui é uma tradução operacional do mesociclo do
+próprio guia. 
+FST-7
+Guia original.FST-7: Guia Completo de Fascial Stretch Training da Arvo. 
+Objetivo e racional. O FST-7 de Hany Rambod é uma estratégia de hipertrofia cujo diferencial é um
+finalizador de 7 séries de 8–12 repetições com 30–45 s de descanso, tentando maximizar pump e
+plenitude muscular . O guia reconhece que a evidência direta sobre “alongamento de fáscia” é limitada,
+mas ancora o método em alto estresse metabólico e longa história prática em fisiculturismo de elite. 
+Protocolo. O guia prescreve: composto pesado 3–4×6–8; composto secundário 3×8–12; isolamento 2–
+3×10–12; e finalizador FST-7 7×8–12 com 30–45 s de descanso. O finalizador deve ser em máquina ou
+cabo, nunca em compostos pesados. Entre séries, o guia exige água e pose/contração. A periodização é
+clara: semanas 1–4 constroem capacidade começando com 5–6 séries; semanas 5–7 usam 7 séries,
+descansos mínimos e progressão agressiva; semana 8 remove FST-7 e reduz volume e carga. 
+Equipamento e setup. O método depende de máquinas e cabos: pec deck, crossover , extensora,
+flexora, remadas e curls em cabo são exemplos explícitos. Também pede cronômetro confiável, garrafa
+de água na estação e espaço para posar/contrair . O guia sugere 5 dias clássicos ou PPL com uso seletivo
+do finalizador . 
+Público, contraindicações e métricas. O perfil mais coerente é intermediário/avançado de hipertrofia.
+Para iniciantes, o método é menos interessante porque o próprio guia o descreve como “inerentemente
+exigente”. Contraindicações práticas: recuperação ruim, treino em academia com pouca infraestrutura,
+ou dor articular importante em posições de isolamento congestionado. Métricas: pump 1–10, queda de
+reps ao longo das 7 séries, aderência ao descanso de 30–45 s, hidratação cumprida ou não, e
+recuperação do músculo grande em 5–7 dias. 
+Programação, erros e app. Exemplo de 4 semanas: semana 1 com 5 séries; semana 2 com 6; semanas
+3–4 com 7; exemplo de 12 semanas: bloco 1 semanas 1–8, bloco 2 semanas 9–12 recomeçando na
+capacidade e voltando ao pico. Erros comuns: usar carga alta demais logo na primeira série, fazer FST-7
+em agachamento/supino/terra, sair da estação, pular água e transformar o método em cardio sem
+controle. No app, FST-7 pede UI de circuito fixo com 7 tiles, timer automático 30–45 s, check-in de
+hidratação entre séries, campo de pump score, e seleção restrita de exercícios compatíveis. Eventos: 
+fst7_series_completed, fst7_hydration_confirmed, fst7_pump_logged, 
+fst7_overrest_alert. Fontes prioritárias: guia da Arvo; para suporte fisiológico, diretrizes gerais e
+revisões sobre volume e hipertrofia. Onde o guia não fixa percentual de carga, o critério operacional
+adequado é manter 10–12 reps na série 1 e nunca cair bruscamente abaixo de 8 antes da série 7. 
+26
+27
+28
+29
+30
+31
+32
+7
+Mountain Dog
+Guia original.Mountain Dog Training: Guia Completo do Método John Meadows da Arvo. 
+Objetivo e racional. O Mountain Dog organiza a sessão em quatro fases: pré-ativação, trabalho
+explosivo, pump supramax e alongamento com carga. A ideia é combinar fluxo sanguíneo e conexão
+mente-músculo, potência com resistência acomodativa, estresse metabólico elevado e estímulo em
+posição alongada. 
+Protocolo. A visão geral do guia é bastante específica: fase 1 com 2–3 séries de 8–12 reps, 40–50% de
+1RM, RIR 4 e descanso de 45–60 s; fase 2 com 3–6 séries de 3–6 reps, 70–85% de 1RM com correntes/
+bandas, RIR 2 e descanso de 3–4 min; fase 3 com 3–5 séries de 8–15 reps, 50–70% de 1RM, 0 RIR ou
+além, 30–60 s de descanso; e fase 4 com 1–2 sustentações de 30–60 s no alongamento com carga. O
+exemplo de peito mostra bem a lógica do método. 
+Equipamento e setup. Mountain Dog é um dos métodos com maior exigência de infraestrutura. O guia
+afirma que correntes e bandas são fundamentais na fase 2, embora ofereça alternativa com pausas e
+variações de tempo quando indisponíveis. O setup ideal tem máquinas, cabos, banco, halteres,
+correntes, bandas e espaço para segurança em alongamento com carga. Há uma regra de segurança
+central: nunca usar bandas e correntes na fase 3, quando a fadiga é alta. 
+Público, contraindicações e métricas. O método conversa melhor com hipertrofia avançada em
+ambiente de academia completa. Contraindicações práticas: técnica fraca em barra, indisponibilidade
+de máquinas/cabos, ou incapacidade de distinguir fase de potência de fase de exaustão. Métricas úteis:
+carga e velocidade percebida na fase 2, número e tipo de técnicas de intensidade na fase 3, duração
+mantida na fase 4, rotação de exercícios a cada 3–4 semanas e sintomas articulares. 
+Programação, erros e app. Exemplo de 4 semanas: semanas 1–3 mantendo padrão de 4 fases e
+semana 4 rotacionando exercícios; exemplo de 12 semanas: blocos 1–4, 5–8 e 9–12 com rotação a cada
+3–4 semanas. Erros comuns: tratar a fase 1 como aquecimento vazio, “moer” reps lentas na fase 2, usar
+resistência acomodativa durante pump supramax e abandonar o alongamento com carga. No app,
+Mountain Dog exige uma tela de sessão em quatro etapas fixas, biblioteca de exercícios por fase,
+calculadora de bandas/correntes para lockout e timer de 30–60 s para stretch. Eventos: 
+mountaindog_phase_started, mountaindog_accommodating_resistance_set, 
+mountaindog_stretch_hold_completed, mountaindog_rotation_applied. Fontes prioritárias:
+guia da Arvo; como suporte metodológico geral, literatura sobre carga, velocidade e treino resistido.
+Onde o guia não define deload formal fechado, a opção mais razoável é inserir uma semana de volume
+reduzido após 8–12 semanas ou quando a fase 2 perder velocidade e a fase 3 piorar a recuperação. 
+Y3T
+Guia original.Y3T Training: Guia Completo do Método Yoda 3 Training de Neil Hill da Arvo. 
+Objetivo e racional. O Y3T usa rotação semanal de estímulo para atingir tensão mecânica, dano
+muscular e estresse metabólico ao longo de três semanas: semana pesada, semana híbrida e semana
+infernal. O racional do guia é prevenir acomodação mudando o tipo de estresse antes que o corpo
+estabilize demais. 
+Protocolo. Semana 1: 6–8 reps, 1 RIR, 3–4 min de descanso, tempo 2-0-1-0, 100% compostos. Semana 2:
+8–12 reps, 1 RIR nos compostos e 0 nos isolados, 90–120 s, tempo 2-1-1-1, mistura de compostos e
+33
+34
+35
+36
+37
+38
+39
+40
+8
+isolados. Semana 3: 15–30+ reps, 0 RIR e além com drop sets, rest-pause, bi-sets e 21s, descanso de 30–
+60 s, tempo 2-2-1-2, com 80% de isolados e prioridade absoluta à segurança em fadiga extrema. O guia
+mostra como o mesmo treino de peito muda radicalmente entre as três semanas. 
+Equipamento e setup. O método usa barra na semana 1, setup misto na semana 2, e máquinas/cabos
+na semana 3. Para a semana infernal, o próprio guia proíbe na prática o uso de compostos pesados
+como agachamento, terra e supino sob fadiga extrema. Isso implica que o app precisa bloquear
+sugestões inseguras nessa semana. 
+Público, contraindicações e métricas. O perfil ideal é intermediário em platô ou fisiculturista que
+precisa de variedade organizada. Não é o melhor ponto de entrada para novatos absolutos. Métricas-
+chave: performance comparada “semana com mesma semana”, densidade de treino na semana 3, reps
+totais na semana infernal, variação de carga na semana 1 e 2, e rotação de exercícios a cada 9 semanas.
+Programação, erros e app. Exemplo de 4 semanas: ciclo 1 nas semanas 1–3 e reinício da semana 1 na
+semana 4; exemplo de 12 semanas: quatro ciclos de 3 semanas, com deload conservador por volta da
+semana 10 se necessário, alinhado ao guia que sugere deload a cada 9–12 semanas. Regras de
+progressão: semana 1 progride quando se bate 8 reps em todas as séries; semana 2 quando se bate 12
+reps ou se adiciona 1 série; semana 3 por densidade, reps totais e drops. Erros comuns: comparar
+semana 1 com semana 3, usar compostos pesados na semana infernal, e adicionar trabalho extra na
+semana 3. No app, Y3T pede um calendário cíclico 1–2–3, presets semanais de tempo/descanso/RIR,
+biblioteca segura para semana infernal e painel de comparação “ciclo contra ciclo”. Eventos: 
+y3t_cycle_week_started, y3t_hell_week_intensity_used, 
+y3t_cycle_comparison_improved, y3t_rotation_week_9. Fontes prioritárias: guia da Arvo;
+como suporte de progressão, ACSM e revisões sobre diferentes faixas de carga para força e hipertrofia.
+Onde o guia não impõe template semanal universal, o modelo aqui usa a rotação de três semanas
+como eixo e adapta a frequência à agenda do usuário. 
+RP Training
+Guia original.RP Training: Volume Landmarks, Mesocycles & Evidence-Based Hypertrophy da Arvo. 
+Objetivo e racional. O RP é menos um “treino fechado” e mais um framework para hipertrofia
+orientada por volume landmarks e autorregulação. O guia descreve MEV como mínimo efetivo, MAV
+como faixa mais adaptativa e MRV como teto recuperável; a regra é começar em MEV, subir sets
+semanalmente em direção ao MAV/MRV e fazer deload quando sinais de recuperação piorarem. 
+Protocolo. O guia propõe mesociclos de 4–6 semanas de acumulação seguidos de 1 semana
+obrigatória de deload. A progressão é aditiva: acrescentar um set por músculo por semana, e não
+mais repetições ou mais exercícios de forma arbitrária. A proximidade da falha progride de RIR 3 até 0–
+1 ao longo do bloco. O sistema pede rastrear desempenho, soreness, pump e sensação articular a cada
+sessão, usando dois ou mais sinais degradados como gatilho de deload. 
+Equipamento e setup. O guia não fixa máquinas versus barras, apenas indica 3–4 exercícios por
+músculo na semana, com compostos como base do volume e isoladores para complementar . Em
+produto, isso favorece flexibilidade alta de biblioteca, desde que o motor conte corretamente volume
+direto por músculo. 
+41
+42
+43
+44
+45
+46
+47
+48
+9
+Público, contraindicações e métricas. O próprio guia diz que iniciantes podem aprender os conceitos,
+mas normalmente não precisam do sistema completo; ele faz mais sentido para intermediários e
+avançados com boa aderência e disposição para medir . Métricas: sets diretos por músculo, RIR por
+exercício, readiness, dor/soreness, pump e tendência de performance. 
+Programação, erros e app. Exemplo de 4 semanas: semanas 1–4 de rampa de volume do MEV até a
+proximidade do MRV; exemplo de 12 semanas: bloco 1 semanas 1–4 + deload 5, bloco 2 semanas 6–9 +
+deload 10, bloco 3 semanas 11–12 iniciando nova acumulação. Erros comuns: subir volume rápido
+demais, usar landmarks fixos sem recalibrar , mentir no RIR, e confundir fadiga local com necessidade
+de mudar o método inteiro. No app, RP pede dashboard por músculo, gráfico MEV/MAV/MRV, auto-
+check de quatro sinais de recuperação, recomendador de set addition e deload automático de 7 dias.
+Eventos: rp_set_added, rp_mrv_reached, rp_deload_started, 
+rp_recovery_signal_degraded. Fontes prioritárias: guia da Arvo; revisões sobre volume semanal,
+frequência e treino próximo da falha. Onde o guia omite numeração de sets por músculo, isso é
+deliberadamente individualizado; o app deve trabalhar com faixas personalizadas, não tabelas rígidas
+universais. 
+Wendler 5/3/1
+Guia original.Wendler 5/3/1: Guia Completo de Treino de Força Progressivo da Arvo. 
+Objetivo e racional. O 5/3/1 é um programa de força baseado em percentuais e centrado em quatro
+movimentos com barra: agachamento, supino, terra e desenvolvimento. Seu princípio é simples: usar 
+Training Max de 90% do 1RM real, trabalhar em ciclos de 4 semanas e progredir devagar , preservando
+técnica e capacidade de continuar ganhando ao longo de meses e anos. 
+Protocolo. Semana 1: 65×5, 75×5, 85×5+; semana 2: 70×3, 80×3, 90×3+; semana 3: 75×5, 85×3, 95×1+;
+semana 4: deload 40×5, 50×5, 60×5. O “+” é AMRAP com técnica limpa. A divisão clássica é 4 dias, um lift
+principal por dia. Após o principal, o guia recomenda 50–100 repetições totais de empurrar , puxar e
+unilateral/core. A versão BBB adiciona 5×10 a 50–60% do TM no mesmo lift. 
+Equipamento e setup. O método pede rack, banco, barra, anilhas e acessórios simples. É um dos
+métodos mais fáceis de escalar para home gym ou academia básica. O guia permite treinar 3–4 dias por
+semana, continuando a sequência se perder um dia. 
+Público, contraindicações e métricas. O 5/3/1 é particularmente bom para quem sai da progressão
+linear e quer estrutura sustentável. Métricas prioritárias: TM, reps AMRAP da última série, e1RM
+estimado, aderência aos deloads, tonelagem simples do lift principal e volume auxiliar . Em pessoas com
+sintomas ou risco clínico elevado, continua valendo triagem antes de intensificar esforço. 
+Programação, erros e app. Exemplo de 4 semanas: um ciclo completo clássico; exemplo de 12
+semanas: três ciclos sucessivos, com +5 kg no TM de agachamento/terra e +2,5 kg no de supino/
+desenvolvimento após cada ciclo. Erros comuns segundo o guia: começar pesado demais, ego-lifting
+nas AMRAP , pular o deload, “hackear” o programa cedo demais e adicionar acessório demais. No app,
+5/3/1 pede calculadora de TM, gerador automático das séries percentuais semanais, registro de AMRAP
+com e1RM, controles dos templates BBB/FSL/Triumvirate e calendário de ciclos. Eventos: 
+531_tm_calculated, 531_amrap_logged, 531_pr_detected, 531_cycle_advanced. Fontes
+prioritárias: guia da Arvo; ACSM para progressão geral. Onde o guia não especifica qual variante deve
+ser default, a melhor escolha de produto é o template clássico com opção de BBB. 
+49
+50
+51
+52
+53
+54
+55
+56
+10
+Método Juggernaut
+Guia original.Método Juggernaut — Guia Chad Wesley Smith da Arvo. 
+Objetivo e racional. O Juggernaut é um programa de força em blocos de no mínimo 16 semanas, com
+quatro ondas progressivas — 10s, 8s, 5s e 3s — feitas sobre um Training Max de 90% do 1RM real. A
+lógica é construir capacidade de trabalho primeiro e especificidade depois, fechando cada onda com
+uma semana de realização em AMRAP e um deload obrigatório. 
+Protocolo. Cada onda dura 4 semanas. A semana 1 é de acumulação com mais volume e menos
+intensidade; a semana 2 é de intensificação com menos séries e mais carga; a semana 3 é de realização
+com top set AMRAP; a semana 4 é deload. As faixas gerais do guia são: onda 10s ~60–72,5% do TM; 8s
+~65–77,5%; 5s ~72,5–85%; 3s ~80–92,5%. O template clássico é de 4 dias com foco em supino,
+agachamento, desenvolvimento e terra, cercados por acessórios em estilo fisiculturismo. 
+Equipamento e setup. Requer setup de força clássico com barra, rack, banco e espaço para acessórios.
+O guia permite redução para 3 dias combinando inferiores ou expansão para 5 dias com sessão
+hipertrófica dedicada. 
+Público, contraindicações e métricas. O guia é explícito: ideal para intermediários/avançados,
+powerlifters raw, strongman e atletas que travaram em progressão linear ou 5/3/1; não ideal para
+iniciantes reais, fisiculturistas puros nem para quem não quer se comprometer com blocos longos.
+Métricas: TM, reps AMRAP da semana de realização, e1RM por lift, aderência ao deload e volume
+acessório. 
+Programação, erros e app. Exemplo de 4 semanas: uma onda 10s completa com deload. Exemplo de
+12 semanas: ondas 10s, 8s e 5s completas; em 16 semanas, incluiria 3s. Regra de progressão: completar
+a AMRAP da realização com margem para subir TM no fim do ciclo; o guia sugere aumentos de 2,5–5 kg
+em superiores e 5–7,5 kg em inferiores após as quatro ondas. Erros comuns: usar 1RM superestimado,
+pular deloads, negligenciar acessórios e transformar volume de acumulação em grind desnecessário.
+No app, Juggernaut pede wizard de TM, calendário de ondas, módulo de AMRAP por realização,
+relatório de prontidão entre semanas e troca de onda automática. Eventos: 
+juggernaut_wave_started, juggernaut_realization_amrap, juggernaut_deload_due, 
+juggernaut_tm_updated. Fontes prioritárias: guia da Arvo; ACSM e princípios gerais de força para
+suporte. Onde o guia não detalha percentuais de cada sessão de cada lift dentro da onda, isso
+permanece parcialmente não especificado no artigo-resumo; a implementação deve tratar os
+percentuais exatos como regra parametrizada de backend. 
+Westside Conjugate
+Guia original.Método Westside Conjugate: Guia Completo do Sistema de Powerlifting de Louie Simmons da
+Arvo. 
+Objetivo e racional. O Westside combina, na mesma semana, max effort, dynamic effort e repetition
+effort, usando rotação frequente de exercícios para evitar acomodação. A base teórica do guia é a “lei
+da acomodação” atribuída a Verkhoshansky, incorporada por Louie Simmons ao powerlifting. 
+Protocolo. O guia estrutura o método em quatro sessões semanais, duas de ME e duas de DE, com 72 h
+entre sessões semelhantes. Nos dias ME, sobe-se até 1–3RM em variações de agachamento, supino ou
+terra; nos dias DE, usa-se 50–60% com bandas ou correntes movidas o mais rápido possível. O app da
+57
+58
+59
+60
+61
+62
+63
+64
+11
+Arvo menciona os templates 10×2 e 9×3 para DE. Após o lift principal, entram 3–5 acessórios de 10–20
+repetições mirando pontos fracos. O guia não traz um microtemplate diário completo além desse
+esqueleto; a sequência operacional recomendável é ME lower , ME upper , DE lower , DE upper . 
+Equipamento e setup. Este é o método com maior exigência de infraestrutura: rack, banco, barras ou
+variações especiais, bandas, correntes e, idealmente, trenó/prowler para GPP . O próprio FAQ reconhece
+que ele pode ser simplificado sem bandas/correntes, mas com perda relevante de características
+centrais. 
+Público, contraindicações e métricas. O guia é claro: não é para iniciantes; faz mais sentido para
+atletas intermediários/avançados que já estagnaram em progressão linear . Métricas: 1–3RM nas
+variações ME, velocidade percebida ou efetiva nas séries DE, categorias de ponto fraco, volume
+acessório e aderência ao GPP . 
+Programação, erros e app. Exemplo de 4 semanas: semanas 1–3 com rotação de variações ME a cada
+1–3 semanas e semana 4 mantendo DE e acessórios com pequeno alívio se houver fadiga; exemplo de
+12 semanas: quatro minirotações de 3 semanas, ajustando pontos fracos. Erros comuns: repetir sempre
+os mesmos ME lifts, transformar DE em sessão lenta, abandonar GPP e usar acessórios sem propósito.
+No app, Westside pede separação explícita de dias ME/DE, cadastro de ponto fraco dominante,
+calculadora de tensão acomodativa, biblioteca de variações especiais e bloco opcional de GPP . Eventos: 
+westside_me_variation_rotated, westside_de_speed_completed, 
+westside_weakpoint_changed, westside_gpp_logged. Fontes prioritárias: guia da Arvo; como
+suporte, princípios de progressão em força e segurança pré-participação. Onde o guia não fixa uma
+progressão percentual diária detalhada para cada DE day, isso fica como não especificado no artigo e
+deve ser parametrizado no produto. 
+Cronogramas de exemplo e regras globais de progressão
+O gráfico abaixo não substitui as fichas por método; ele resume como os blocos cabem em um
+horizonte de 12 semanas. Nos casos em que o guia prevê ciclos maiores que 12 semanas, o
+cronograma foi adaptado como exemplo de produto, não como reconstrução literal do livro original. 
+65
+66
+67
+68
+69
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+DC Blast
+Mentzer Bloco 1
+Kuba Acumulação
+RP Meso 1
+FST-7 Capacidade
+Y3T Ciclo 1
+Mountain Dog Rot. 1
+5/3/1 Ciclo 1
+Juggernaut 10s
+Westside Rot. 1
+Y3T Ciclo 2
+Westside Rot. 2
+Kuba Intensificação
+RP Deload
+FST-7 Pico
+Mountain Dog Rot. 2
+5/3/1 Ciclo 2
+Juggernaut 8s
+RP Meso 2
+Mentzer Offload
+Kuba Deload
+Y3T Ciclo 3
+Westside Rot. 3
+Mentzer Bloco 2
+Kuba Novo bloco
+FST-7 Deload
+DC Cruise
+FST-7 Novo pico
+Mountain Dog Rot. 3
+5/3/1 Ciclo 3
+Juggernaut 5s
+RP Deload
+Y3T Deload
+Westside Rot. 4
+DC Blast curto
+RP Meso 3 parcial
+Y3T Ciclo 4 parcial
+Hipertrofiabaixafrequência
+Hipertrofiaguiadaporvolume
+Pumpevariação
+Força
+Programas-exemplo em 12 semanas
+12
+Como regra transversal de progressão para o produto, há quatro famílias. Nos métodos de baixo
+volume e alta intensidade (DC, Mentzer), progride-se por mais reps totais ou mais carga, e a primeira
+correção quando há queda de performance é mais descanso, não mais séries. Nos métodos de 
+hipertrofia orientada por volume (Kuba, RP), progride-se por sets e/ou reps respeitando RIR e
+landmarks. Nos métodos de variação metabólica (FST-7, Y3T, Mountain Dog), progride-se muito por
+densidade, qualidade do pump, escolha de exercício e complexidade técnica. Nos métodos de força
+com barra (5/3/1, Juggernaut, Westside), progride-se por TM, AMRAP , variações técnicas e consistência
+estrutural. 
+Referências prioritárias
+As fontes primárias devem ser , por método, os dez guias da Arvo: DC Training; Mike Mentzer HIT; Método
+Kuba; FST-7; Mountain Dog; Y3T; RP Training; Wendler 5/3/1; Método Juggernaut; e Westside Conjugate. Para
+a visão sinótica, usar também a página comparativa “Metodologias de Treino Avançadas: 10 Sistemas
+Comprovados Comparados”. 
+Como fontes secundárias prioritárias para regras gerais de segurança e prescrição, este relatório
+prioriza a OMS para recomendações de atividade física e fortalecimento muscular; a Diretriz Brasileira
+de Reabilitação Cardiovascular para individualização de carga, técnica, faixas de repetições e frequência
+mínima de treino resistido; e a ACSM para modelos de progressão e triagem pré-participação. 
+Como fontes secundárias de evidência de programação, priorizei meta-análises e revisões sobre
+dose-resposta de volume, frequência, proximidade da falha e cargas em hipertrofia e força, porque elas
+ajudam a preencher partes que os guias não detalham. Em síntese: o volume semanal tem relação
+dose-resposta com hipertrofia; a frequência, quando o volume é igualado, tende a importar menos
+para hipertrofia; a proximidade da falha pode ter efeito útil em praticantes treinados, mas não é
+mandatório em todos os casos; e cargas altas maximizam força, embora hipertrofia seja possível em
+diferentes zonas de carga com esforço adequado. 
+Quando algum detalhe operacional apareceu não especificado no guia — principalmente aquecimento
+detalhado, percentuais exatos em certas ondas resumidas, ou templates semanais completamente
+fechados — eu mantive isso explícito e ofereci apenas opções razoáveis e conservadoras de
+implementação, sempre compatíveis com o rational do método e com a literatura geral de treino
+resistido. 
+10 Metodologias de Treino Comparadas: Kuba, HIT, FST-7, RP , 5/3/1, Westside | Arvo
+https://arvo.guru/pt-BR/resources/methods
+Dose-response relationship between weekly resistance ...
+https://pubmed.ncbi.nlm.nih.gov/27433992/?utm_source=chatgpt.com
+https://arvo.guru/pt-BR/resources/methods/dc-training
+https://arvo.guru/pt-BR/resources/methods/dc-training
+Physical activity 
+https://www.who.int/initiatives/behealthy/physical-activity
+https://arvo.guru/pt-BR/resources/methods/kuba-method
+https://arvo.guru/pt-BR/resources/methods/kuba-method
+Wendler 5/3/1: Guia Completo de Treino de Forca Progressivo (2026) | Arvo
+https://arvo.guru/pt-BR/resources/methods/wendler-531
+70
+1
+71
+72
+73
+1
+2 72
+3 4 7 9 10 11 12 13 14 69 70 73
+5 71
+6 21 22 23 24 25 26
+8 51 52 53 54 55 56
+13
+Mike Mentzer HIT Training: App de IA e Guia Completo Heavy Duty (2026) | Arvo
+https://arvo.guru/pt-BR/resources/methods/mentzer-hit
+FST-7: Guia Completo de Fascial Stretch Training (2026) | Hany Rambod | Arvo
+https://arvo.guru/pt-BR/resources/methods/fst-7
+Mountain Dog Training: Guia Completo do Metodo John Meadows (2026) | Arvo
+https://arvo.guru/pt-BR/resources/methods/mountain-dog
+Y3T Training: Guia Completo do Metodo Yoda 3 Training de Neil Hill (2026) | Arvo
+https://arvo.guru/pt-BR/resources/methods/y3t
+RP Training — Guia Volume Landmarks e Mesociclos | Arvo
+https://arvo.guru/pt-BR/resources/methods/rp-training
+Metodo Juggernaut — Guia Chad Wesley Smith | Arvo
+https://arvo.guru/pt-BR/resources/methods/juggernaut-method
+Metodo Westside Conjugate — Guia Louie Simmons | Arvo
+https://arvo.guru/pt-BR/resources/methods/westside-conjugate
+15 16 17 18 19 20
+27 28 29 30 31 32
+33 34 35 36 37 38
+39 40 41 42 43 44
+45 46 47 48 49 50
+57 58 59 60 61 62
+63 64 65 66 67 68
+14
