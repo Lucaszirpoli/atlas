@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation, useRoute } from "@react-navigation/native";
-import React, { useEffect, useState } from "react";
+import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
+import React, { useCallback, useEffect, useState } from "react";
 import { Alert, Image, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 import { getRoutine, type Routine } from "../../api/routines";
@@ -15,6 +15,7 @@ import { Card } from "../../components/Card";
 import { HelpDot } from "../../components/HelpDot";
 import { OptionButton } from "../../components/OptionButton";
 import { RestTimerOverlay } from "../../components/RestTimerOverlay";
+import { useActiveWorkout } from "../../context/ActiveWorkoutContext";
 import { useTheme } from "../../theme/ThemeProvider";
 
 const SET_TYPE_LABELS: Record<SetType, string> = {
@@ -66,7 +67,17 @@ type SetRow = {
 export function WorkoutExecutionScreen() {
   const { colors, type, spacing, radius } = useTheme();
   const navigation = useNavigation<any>();
+  const { endWorkout, setOnWorkoutScreen } = useActiveWorkout();
   const route = useRoute<any>();
+
+  // Enquanto esta tela está em foco, o indicador flutuante some (a pessoa já
+  // está no treino); ao sair (minimizar), ele reaparece nas outras telas.
+  useFocusEffect(
+    useCallback(() => {
+      setOnWorkoutScreen(true);
+      return () => setOnWorkoutScreen(false);
+    }, [setOnWorkoutScreen])
+  );
   const { sessionId, routineId, prefill } = route.params as {
     sessionId: number;
     routineId: number;
@@ -159,6 +170,7 @@ export function WorkoutExecutionScreen() {
     setIsCompleting(true);
     try {
       const summary = await completeWorkoutSession(sessionId);
+      endWorkout(); // não está mais "em andamento" — some o indicador flutuante
       navigation.replace("WorkoutSummary", { summary });
     } finally {
       setIsCompleting(false);

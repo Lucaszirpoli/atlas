@@ -5,6 +5,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect } from "react";
 
+import { ActiveWorkoutProvider } from "./src/context/ActiveWorkoutContext";
 import { AuthProvider } from "./src/context/AuthContext";
 import { RootNavigator } from "./src/navigation/RootNavigator";
 import { ThemeProvider } from "./src/theme/ThemeProvider";
@@ -34,8 +35,10 @@ export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <RootNavigator />
-        <StatusBar style="auto" />
+        <ActiveWorkoutProvider>
+          <RootNavigator />
+          <StatusBar style="auto" />
+        </ActiveWorkoutProvider>
       </AuthProvider>
     </ThemeProvider>
   );

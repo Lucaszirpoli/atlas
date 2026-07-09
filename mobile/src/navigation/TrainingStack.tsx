@@ -42,7 +42,11 @@ export function TrainingStack() {
       <Stack.Screen
         name="WorkoutExecution"
         component={WorkoutExecutionScreen}
-        options={{ title: "Treinando", headerBackVisible: false }}
+        // Voltar fica VISÍVEL: a pessoa pode "minimizar" o treino e sair da
+        // aba — o indicador flutuante de "treino em andamento" (RootNavigator)
+        // aparece nas outras telas e traz ela de volta num toque, sem perder
+        // o progresso (a tela continua montada em segundo plano).
+        options={{ title: "Treinando", headerBackTitle: "Minimizar" }}
       />
       <Stack.Screen
         name="WorkoutSummary"
