@@ -4,14 +4,10 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 import {
-  getExerciseProgression,
-  getExercisesWithHistory,
   getNutritionHistory,
   getStrengthByGroup,
   getVolumeEvolution,
   getWeightEvolution,
-  type ExerciseOption,
-  type ExerciseProgressionPoint,
   type NutritionDay,
   type StrengthGroup,
   type VolumePoint,
@@ -31,7 +27,7 @@ import { useTheme } from "../../theme/ThemeProvider";
 // abrir uma aba por vez. Com só 1 métrica ligada, mostra o eixo com os
 // valores reais; com 2+, cada uma tem unidade diferente (kg, horas, kcal),
 // então o eixo some e o gráfico normaliza tudo pra comparar só o formato.
-type MetricKey = "peso" | "treino" | "sono" | "dieta" | "carga";
+type MetricKey = "peso" | "treino" | "sono" | "dieta";
 
 // "treino" é o VOLUME da sessão (peso × reps somado de todas as séries) — por
 // isso o rótulo é "Volume", não "Treino" (que dava a entender frequência).
@@ -40,7 +36,6 @@ const METRICS: { key: MetricKey; label: string; icon: keyof typeof Ionicons.glyp
   { key: "treino", label: "Volume", icon: "barbell" },
   { key: "sono", label: "Sono", icon: "moon" },
   { key: "dieta", label: "Dieta", icon: "restaurant" },
-  { key: "carga", label: "Carga", icon: "trending-up" },
 ];
 
 // Uma linha explicando o que cada métrica é e em que unidade — aparece de
@@ -50,7 +45,6 @@ const METRIC_DESC: Record<MetricKey, string> = {
   treino: "Peso total levantado no treino (peso × reps de todas as séries), em kg/toneladas.",
   sono: "Horas dormidas por noite.",
   dieta: "Calorias consumidas por dia (kcal).",
-  carga: "Maior peso levantado no exercício escolhido, em kg.",
 };
 
 const RANGE_OPTIONS = [7, 15, 30] as const;
@@ -62,7 +56,6 @@ function metricColor(colors: ReturnType<typeof useTheme>["colors"], key: MetricK
     treino: colors.moduleTraining,
     sono: colors.moduleSleep,
     dieta: colors.moduleNutrition,
-    carga: colors.secondary,
   }[key];
 }
 
@@ -258,42 +251,30 @@ export function EvolutionScreen() {
   const [volume, setVolume] = useState<VolumePoint[]>([]);
   const [sleepLogs, setSleepLogs] = useState<SleepLog[]>([]);
   const [nutritionDays, setNutritionDays] = useState<NutritionDay[]>([]);
-  const [exercises, setExercises] = useState<ExerciseOption[]>([]);
-  const [selectedExercise, setSelectedExercise] = useState<ExerciseOption | null>(null);
-  const [progression, setProgression] = useState<ExerciseProgressionPoint[]>([]);
   const [strength, setStrength] = useState<StrengthGroup[]>([]);
   const [newWeight, setNewWeight] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   async function loadAll() {
-    const [w, v, s, n, ex] = await Promise.all([
+    const [w, v, s, n] = await Promise.all([
       getWeightEvolution(),
       getVolumeEvolution(),
       listSleepLogs(),
       getNutritionHistory(30),
-      getExercisesWithHistory(),
     ]);
     setWeight(w);
     setVolume(v);
     setSleepLogs(s);
     setNutritionDays(n.days);
-    setExercises(ex);
-    if (ex.length > 0 && !selectedExercise) {
-      setSelectedExercise(ex[0]);
-    }
   }
 
   useEffect(() => {
     loadAll();
   }, []);
 
-  useEffect(() => {
-    if (selectedExercise) {
-      getExerciseProgression(selectedExercise.id).then((r) => setProgression(r.points));
-    }
-  }, [selectedExercise]);
-
-  // Variação de carga por grupo muscular (pra análise) — depende da janela
+  // Variação de carga por grupo muscular (pra análise automática) — depende
+  // da janela. É calculada por grupo (superiores/inferiores), sem a pessoa
+  // precisar escolher exercício por exercício.
   useEffect(() => {
     getStrengthByGroup(rangeDays).then((r) => setStrength(r.groups));
   }, [rangeDays]);
@@ -344,7 +325,6 @@ export function EvolutionScreen() {
       .filter((d) => d.kcal > 0)
       .map((d) => ({ x: new Date(d.date).getTime(), y: d.kcal }))
       .filter(inRange),
-    carga: progression.map((p) => ({ x: new Date(p.date).getTime(), y: p.max_weight_kg })).filter(inRange),
   };
 
   const activeKeys = useMemo(() => METRICS.map((m) => m.key).filter((k) => active.has(k)), [active]);
@@ -381,7 +361,6 @@ export function EvolutionScreen() {
     treino: (v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}t` : `${Math.round(v)}`),
     sono: (v) => `${v.toFixed(1)}h`,
     dieta: (v) => `${(v / 1000).toFixed(1)}k`,
-    carga: (v) => `${Math.round(v)}kg`,
   };
 
   const missingData = activeKeys.filter((k) => rawByMetric[k].length === 0);
@@ -511,38 +490,6 @@ export function EvolutionScreen() {
         })}
       </View>
 
-      {/* Seletor de exercício — só aparece quando "Carga" está ligada */}
-      {active.has("carga") && exercises.length > 0 ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.md }}>
-          <View style={{ flexDirection: "row", gap: spacing.xs }}>
-            {exercises.map((ex) => {
-              const isSel = selectedExercise?.id === ex.id;
-              return (
-                <TouchableOpacity
-                  key={ex.id}
-                  onPress={() => setSelectedExercise(ex)}
-                  style={{
-                    borderRadius: 999,
-                    paddingVertical: 8,
-                    paddingHorizontal: 14,
-                    backgroundColor: isSel ? colors.secondary : colors.surfaceAlt,
-                  }}
-                >
-                  <Text
-                    style={[
-                      type.caption,
-                      { color: isSel ? colors.textOnPrimary : colors.textPrimary, fontWeight: isSel ? "700" : "500" },
-                    ]}
-                  >
-                    {ex.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </ScrollView>
-      ) : null}
-
       {/* O gráficozão — todas as métricas ligadas, sobrepostas. Card sem
           padding lateral pra o gráfico usar a largura toda (só o texto tem
           recuo); assim a linha aproveita a área cinza inteira. */}
@@ -555,12 +502,12 @@ export function EvolutionScreen() {
             <HelpDot
               title="Comparando métricas"
               text={
-                "Ligue mais de uma métrica pra ver se elas andam juntas — por exemplo, se a caloria sobe um dia e a " +
-                "carga sobe no treino seguinte. Com 2 ou mais ligadas, funciona como comparação de ações no mercado " +
-                "financeiro: todas as curvas partem de 0% e o gráfico mostra a variação percentual de cada uma desde " +
-                "o início do período, numa escala única — +5% significa a mesma coisa pra dieta, carga ou sono. Com " +
-                "só uma métrica, os valores reais aparecem nos eixos. Se algum dia ficou sem registro, a linha segue " +
-                "reta com o último valor até o próximo — nunca some nem quebra."
+                "Ligue mais de uma métrica pra ver se elas andam juntas — por exemplo, se a caloria sobe um dia e o " +
+                "volume do treino sobe no dia seguinte. Com 2 ou mais ligadas, funciona como comparação de ações no " +
+                "mercado financeiro: todas as curvas partem de 0% e o gráfico mostra a variação percentual de cada uma " +
+                "desde o início do período, numa escala única — +5% significa a mesma coisa pra dieta, volume ou sono. " +
+                "Com só uma métrica, os valores reais aparecem nos eixos. Se algum dia ficou sem registro, a linha " +
+                "segue reta com o último valor até o próximo — nunca some nem quebra."
               }
             />
           </View>
