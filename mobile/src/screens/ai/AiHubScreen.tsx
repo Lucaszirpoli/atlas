@@ -9,7 +9,7 @@ import {
   type GenerateTrainingResult,
   type TrainingMethod,
 } from "../../api/ai";
-import { createRoutine } from "../../api/routines";
+import { createRoutine, listRoutines } from "../../api/routines";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { InfoDialog } from "../../components/InfoDialog";
@@ -34,6 +34,30 @@ function repsRange(s: string): [number, number | null] {
   return [nums[0], nums[1]];
 }
 
+type Session = GenerateTrainingResult["plan"]["sessions"][number];
+
+// Nome da rotina de uma sessão — é a "identidade" que usamos pra dedup: se já
+// existe uma rotina com esse nome, o treino daquele dia já está salvo.
+function routineNameFor(methodName: string, session: Session): string {
+  return `${methodName} — ${session.day_label} · ${session.focus}`;
+}
+
+function slotsToExercises(session: Session) {
+  return session.slots
+    .filter((s) => s.exercise_id != null)
+    .map((s) => {
+      const [rmin, rmax] = repsRange(s.reps);
+      return {
+        exercise_id: s.exercise_id as number,
+        target_sets: firstInt(s.sets, 3),
+        target_reps_min: rmin,
+        target_reps_max: rmax,
+        rest_seconds: firstInt(s.rest_seconds ?? "", 90),
+        notes: s.note ?? null,
+      };
+    });
+}
+
 export function AiHubScreen() {
   const { colors, type, spacing } = useTheme();
   const navigation = useNavigation<any>();
@@ -44,8 +68,10 @@ export function AiHubScreen() {
   const [days, setDays] = useState<number | null>(null);
   const [result, setResult] = useState<GenerateTrainingResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [savingIndex, setSavingIndex] = useState<number | null>(null);
+  // Índices das sessões que já estão salvas nas rotinas do usuário (✓).
   const [savedIndices, setSavedIndices] = useState<Set<number>>(new Set());
+  // Resumo do que foi salvo automaticamente ao gerar o plano.
+  const [saveSummary, setSaveSummary] = useState<{ created: number; existing: number } | null>(null);
   const [info, setInfo] = useState<{ title: string; message: string } | null>(null);
 
   useEffect(() => {
@@ -54,13 +80,19 @@ export function AiHubScreen() {
       .catch(() => {});
   }, []);
 
+  // Ao escolher o método + os dias, o treino COMPLETO já vai pras rotinas do
+  // usuário automaticamente. Dedup por nome: se ele já tinha salvado esse
+  // método antes e só excluiu o treino de algum dia, só o(s) dia(s) que
+  // faltam são recriados — os que já existem não duplicam.
   async function handleGenerate(method: TrainingMethod, d: number) {
     setLoading(true);
     setResult(null);
     setSavedIndices(new Set());
+    setSaveSummary(null);
     try {
       const r = await generateTraining({ method_key: method.key, available_days: d });
       setResult(r);
+      await autoSavePlan(r);
     } catch (err: any) {
       setInfo({ title: "Não consegui gerar", message: err?.response?.data?.detail ?? "Tente novamente." });
     } finally {
@@ -68,44 +100,29 @@ export function AiHubScreen() {
     }
   }
 
-  async function handleSaveSession(
-    session: GenerateTrainingResult["plan"]["sessions"][number],
-    sessionIndex: number
-  ) {
-    if (!result) return;
-    setSavingIndex(sessionIndex);
+  async function autoSavePlan(r: GenerateTrainingResult) {
     try {
-      const exercises = session.slots
-        .filter((s) => s.exercise_id != null)
-        .map((s) => {
-          const [rmin, rmax] = repsRange(s.reps);
-          return {
-            exercise_id: s.exercise_id as number,
-            target_sets: firstInt(s.sets, 3),
-            target_reps_min: rmin,
-            target_reps_max: rmax,
-            rest_seconds: firstInt(s.rest_seconds ?? "", 90),
-            notes: s.note ?? null,
-          };
-        });
-      await createRoutine({
-        name: `${result.plan.method_name} — ${session.focus}`,
-        exercises,
-      });
-      setSavedIndices((prev) => new Set(prev).add(sessionIndex));
-    } catch (err: any) {
-      if (err?.response?.status === 409) {
-        // Limite de rotinas ativas atingido (3 Free / 7 Pro) — o backend já
-        // devolve uma mensagem amigável explicando o limite e o plano atual.
-        setInfo({
-          title: "Limite de rotinas atingido",
-          message: err.response.data?.detail ?? "Arquive uma rotina para criar outra.",
-        });
-      } else {
-        setInfo({ title: "Não consegui salvar", message: err?.response?.data?.detail ?? "Tente novamente." });
+      const existing = await listRoutines();
+      const existingNames = new Set(existing.map((x) => x.name));
+      const saved = new Set<number>();
+      let created = 0;
+      let already = 0;
+      for (let i = 0; i < r.plan.sessions.length; i++) {
+        const session = r.plan.sessions[i];
+        const name = routineNameFor(r.plan.method_name, session);
+        if (existingNames.has(name)) {
+          already += 1;
+          saved.add(i);
+          continue;
+        }
+        await createRoutine({ name, exercises: slotsToExercises(session) });
+        created += 1;
+        saved.add(i);
       }
-    } finally {
-      setSavingIndex(null);
+      setSavedIndices(saved);
+      setSaveSummary({ created, existing: already });
+    } catch (err: any) {
+      setInfo({ title: "Não consegui salvar os treinos", message: err?.response?.data?.detail ?? "Tente novamente." });
     }
   }
 
@@ -152,6 +169,31 @@ export function AiHubScreen() {
           </Text>
         </View>
 
+        {/* Resumo do salvamento automático — o treino completo já foi pras
+            rotinas do usuário (dedup por dia). */}
+        {saveSummary ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              backgroundColor: colors.secondary + "1A",
+              borderRadius: 12,
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+              marginTop: spacing.sm,
+            }}
+          >
+            <Ionicons name="albums" size={16} color={colors.secondary} />
+            <Text style={[type.caption, { color: colors.textPrimary, flex: 1 }]}>
+              {saveSummary.created > 0
+                ? `${saveSummary.created} ${saveSummary.created === 1 ? "treino adicionado" : "treinos adicionados"} às suas rotinas` +
+                  (saveSummary.existing > 0 ? ` · ${saveSummary.existing} já ${saveSummary.existing === 1 ? "estava salvo" : "estavam salvos"}` : "")
+                : "Todos os treinos deste método já estavam nas suas rotinas."}
+            </Text>
+          </View>
+        ) : null}
+
         {result.intro ? (
           <Card style={{ marginTop: spacing.md }}>
             <Text style={[type.body, { color: colors.textPrimary }]}>{result.intro}</Text>
@@ -180,17 +222,12 @@ export function AiHubScreen() {
                   <Text style={[type.caption, { color: colors.textSecondary }]}>{session.phase_name}</Text>
                 ) : null}
               </View>
-              {savingIndex === si ? (
-                <ActivityIndicator color={colors.primary} />
-              ) : savedIndices.has(si) ? (
+              {savedIndices.has(si) ? (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                  <Ionicons name="checkmark-circle" size={26} color={colors.success} />
+                  <Ionicons name="checkmark-circle" size={20} color={colors.success} />
+                  <Text style={[type.caption, { color: colors.success, fontWeight: "700" }]}>na sua rotina</Text>
                 </View>
-              ) : (
-                <TouchableOpacity onPress={() => handleSaveSession(session, si)} disabled={savingIndex != null}>
-                  <Ionicons name="add-circle" size={26} color={colors.primary} />
-                </TouchableOpacity>
-              )}
+              ) : null}
             </View>
             {session.slots.map((slot, i) => (
               <View
