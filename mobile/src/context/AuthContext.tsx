@@ -27,6 +27,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function loadFromStoredToken() {
     const token = await AsyncStorage.getItem(TOKEN_STORAGE_KEY);
     if (!token) {
+      // Login automático SÓ em desenvolvimento (__DEV__ some sozinho em
+      // builds de produção — nunca vai pra loja assim). Poupa relogar toda
+      // hora enquanto o app ainda não foi lançado. Se falhar (backend fora
+      // do ar, usuário de dev não existe), cai normalmente na tela de login.
+      if (__DEV__) {
+        try {
+          const { access_token } = await authApi.login({
+            email: "lucas@appfit.com",
+            password: "senha12345",
+          });
+          await AsyncStorage.setItem(TOKEN_STORAGE_KEY, access_token);
+          const currentUser = await authApi.fetchCurrentUser();
+          setUser(currentUser);
+          setIsLoading(false);
+          return;
+        } catch {
+          // segue pro fluxo normal (tela de login)
+        }
+      }
       setIsLoading(false);
       return;
     }
