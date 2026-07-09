@@ -12,19 +12,18 @@ import {
 } from "../../api/routines";
 import { startWorkoutSession } from "../../api/workoutSessions";
 import { ActionSheet, type ActionSheetOption } from "../../components/ActionSheet";
-import { AiEntryCard } from "../../components/AiEntryCard";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { useActiveWorkout } from "../../context/ActiveWorkoutContext";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
-
-const ROUTINE_LIMIT = { free: 3, pro: 7 };
 
 export function RoutineListScreen() {
   const { colors, type, spacing, radius } = useTheme();
   const navigation = useNavigation<any>();
   const { user } = useAuth();
+  const { startWorkout } = useActiveWorkout();
 
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [optionsRoutine, setOptionsRoutine] = useState<Routine | null>(null);
@@ -39,6 +38,7 @@ export function RoutineListScreen() {
   async function handleStart(routine: Routine) {
     try {
       const { session, prefill } = await startWorkoutSession(routine.id);
+      startWorkout({ sessionId: session.id, routineId: routine.id, routineName: routine.name, prefill });
       navigation.navigate("WorkoutExecution", {
         sessionId: session.id,
         routineId: routine.id,
@@ -86,9 +86,6 @@ export function RoutineListScreen() {
       ]
     : [];
 
-  const limit = user?.plan === "pro" ? ROUTINE_LIMIT.pro : ROUTINE_LIMIT.free;
-  const atLimit = routines.length >= limit;
-
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.lg }}>
       {/* Header interno */}
@@ -102,8 +99,8 @@ export function RoutineListScreen() {
               paddingHorizontal: 12,
             }}
           >
-            <Text style={[type.caption, { color: atLimit ? colors.secondary : colors.textSecondary, fontWeight: "700" }]}>
-              {routines.length}/{limit} rotinas
+            <Text style={[type.caption, { color: colors.textSecondary, fontWeight: "700" }]}>
+              {routines.length} {routines.length === 1 ? "rotina" : "rotinas"}
             </Text>
           </View>
         </View>
@@ -128,12 +125,34 @@ export function RoutineListScreen() {
         contentContainerStyle={{ paddingBottom: spacing.lg }}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
-          // Entrada da IA — o recurso mais poderoso do módulo, em 1 toque
-          <AiEntryCard
-            title="Monte seu treino com IA personalizada"
-            subtitle="Escolha uma metodologia consagrada — a IA monta fiel ao método"
-            destination={{ screen: "AiHub" }}
-          />
+          // Entrada compacta pro gerador por metodologia (não é IA — é montagem
+          // fiel ao método consagrado, por isso o texto não fala em "IA").
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate("AiHub")}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: colors.surface,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: radius.card,
+              paddingVertical: spacing.sm,
+              paddingHorizontal: spacing.md,
+              marginBottom: spacing.md,
+            }}
+          >
+            <Ionicons name="book-outline" size={18} color={colors.secondary} />
+            <View style={{ flex: 1, marginLeft: spacing.sm }}>
+              <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "700" }]}>
+                Montar treino por metodologia
+              </Text>
+              <Text style={[type.caption, { color: colors.textSecondary }]} numberOfLines={1}>
+                Mentzer, FST-7, 5/3/1… fiel ao método
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+          </TouchableOpacity>
         }
         renderItem={({ item }) => {
           const totalSets = item.exercises.reduce((s, e) => s + e.target_sets, 0);
@@ -180,12 +199,7 @@ export function RoutineListScreen() {
         }
       />
 
-      <Button
-        title={atLimit ? `Limite de ${limit} rotinas atingido` : "Nova rotina"}
-        icon={atLimit ? undefined : "+"}
-        onPress={() => navigation.navigate("RoutineBuilder", {})}
-        disabled={atLimit}
-      />
+      <Button title="Nova rotina" icon="+" onPress={() => navigation.navigate("RoutineBuilder", {})} />
 
       <ActionSheet
         visible={optionsRoutine != null}

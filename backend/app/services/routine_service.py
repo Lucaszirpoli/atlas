@@ -4,9 +4,12 @@ from sqlalchemy.orm import Session
 from app.models.routine import Routine
 from app.models.user import Plan
 
-ACTIVE_ROUTINE_LIMITS: dict[Plan, int] = {
-    Plan.FREE: 3,
-    Plan.PRO: 7,
+# Rotinas ativas são ILIMITADAS em ambos os planos (decisão do produto,
+# 2026-07-08): o produto manual é 100% livre e a monetização fica só na IA
+# (Pro). `None` = sem teto. Mantido como dict pra compat com quem lê daqui.
+ACTIVE_ROUTINE_LIMITS: dict[Plan, int | None] = {
+    Plan.FREE: None,
+    Plan.PRO: None,
 }
 
 
@@ -19,4 +22,7 @@ def count_active_routines(db: Session, user_id: int) -> int:
 
 
 def can_create_active_routine(db: Session, user_id: int, plan: Plan) -> bool:
-    return count_active_routines(db, user_id) < ACTIVE_ROUTINE_LIMITS[plan]
+    limit = ACTIVE_ROUTINE_LIMITS[plan]
+    if limit is None:
+        return True
+    return count_active_routines(db, user_id) < limit
