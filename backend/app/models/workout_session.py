@@ -10,6 +10,7 @@ from app.core.db import Base
 class SetType(str, enum.Enum):
     WARMUP = "warmup"
     STRAIGHT = "straight"  # série válida (padrão)
+    FEEDER = "feeder"  # preparatória — série leve entre o aquecimento e a série valendo
     DROP_SET = "drop_set"
     REST_PAUSE = "rest_pause"
     MYO_REPS = "myo_reps"

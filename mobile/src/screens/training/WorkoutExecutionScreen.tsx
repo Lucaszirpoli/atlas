@@ -20,6 +20,7 @@ import { useTheme } from "../../theme/ThemeProvider";
 const SET_TYPE_LABELS: Record<SetType, string> = {
   warmup: "Aquecimento",
   straight: "Válida",
+  feeder: "Preparatória",
   drop_set: "Drop-set",
   rest_pause: "Rest-pause",
   myo_reps: "Myo-reps",
@@ -35,6 +36,21 @@ const SET_TYPE_LABELS: Record<SetType, string> = {
   circuit: "Circuito",
 };
 const SET_TYPE_ORDER = Object.keys(SET_TYPE_LABELS) as SetType[];
+
+// Badge da série: toque cicla entre os 4 tipos "rápidos" (normal → A → P → F).
+// As demais técnicas (drop-set, superset etc.) continuam só no "mais opções".
+const QUICK_TYPE_CYCLE: SetType[] = ["straight", "warmup", "feeder", "to_failure"];
+const QUICK_TYPE_LETTER: Partial<Record<SetType, string>> = {
+  warmup: "A",
+  feeder: "P",
+  to_failure: "F",
+};
+function nextQuickType(current: SetType): SetType {
+  const idx = QUICK_TYPE_CYCLE.indexOf(current);
+  return QUICK_TYPE_CYCLE[(idx + 1) % QUICK_TYPE_CYCLE.length] ?? "warmup";
+}
+
+const RIR_OPTIONS = [4, 3, 2, 1, 0];
 
 type SetRow = {
   weight: string;
@@ -192,116 +208,168 @@ export function WorkoutExecutionScreen() {
           <Meta icon="checkmark-done" text={`${completedCount}/${sets.length} feitas`} />
         </View>
 
-        {sets.map((row, idx) => (
-          <Card
-            key={idx}
-            padded={false}
-            style={{
-              marginBottom: spacing.sm,
-              borderWidth: 1.5,
-              borderColor: row.completed ? colors.secondary : "transparent",
-            }}
-          >
-            <View style={{ padding: spacing.md }}>
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.sm }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-                  <View
+        {/* Cabeçalho da tabela — Série / Anterior / kg / Reps / ✓ */}
+        <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.sm, marginBottom: spacing.xs }}>
+          <Text style={[type.caption, { color: colors.textSecondary, width: 34 }]}>Série</Text>
+          <Text style={[type.caption, { color: colors.textSecondary, flex: 1 }]}>Anterior</Text>
+          <Text style={[type.caption, { color: colors.textSecondary, width: 56, textAlign: "center" }]}>kg</Text>
+          <Text style={[type.caption, { color: colors.textSecondary, width: 56, textAlign: "center", marginLeft: 6 }]}>Reps</Text>
+          <View style={{ width: 44, marginLeft: spacing.xs }} />
+        </View>
+
+        {sets.map((row, idx) => {
+          const letter = QUICK_TYPE_LETTER[row.setType];
+          const badgeColor = row.setType === "to_failure" ? colors.danger : letter ? colors.warning : undefined;
+          return (
+            <Card
+              key={idx}
+              padded={false}
+              style={{
+                marginBottom: spacing.sm,
+                borderWidth: 1.5,
+                borderColor: row.completed ? colors.secondary : "transparent",
+              }}
+            >
+              <View style={{ padding: spacing.sm }}>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  {/* Badge da série — toque cicla normal → A (aquecimento) →
+                      P (preparatória) → F (falha) → normal. */}
+                  <TouchableOpacity
+                    onPress={() => updateSet(idx, { setType: nextQuickType(row.setType) })}
+                    hitSlop={6}
                     style={{
-                      width: 26,
-                      height: 26,
-                      borderRadius: 13,
-                      backgroundColor: row.completed ? colors.secondary : colors.surfaceAlt,
+                      width: 30,
+                      height: 30,
+                      borderRadius: 15,
+                      backgroundColor: badgeColor ? badgeColor + "26" : colors.surfaceAlt,
                       alignItems: "center",
                       justifyContent: "center",
                     }}
                   >
-                    <Text style={[type.caption, { color: row.completed ? colors.textOnPrimary : colors.textSecondary, fontWeight: "800" }]}>
-                      {idx + 1}
+                    <Text style={[type.caption, { color: badgeColor ?? colors.textSecondary, fontWeight: "800" }]}>
+                      {letter ?? idx + 1}
                     </Text>
-                  </View>
-                  {row.previous ? (
-                    <Text style={[type.caption, { color: colors.textSecondary }]}>
-                      anterior: {row.previous.weight_kg}kg × {row.previous.reps}
-                    </Text>
-                  ) : (
-                    <Text style={[type.caption, { color: colors.textSecondary }]}>primeira vez</Text>
-                  )}
-                </View>
-                <TouchableOpacity onPress={() => updateSet(idx, { showMore: !row.showMore })} hitSlop={10}>
-                  <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
-                </TouchableOpacity>
-              </View>
+                  </TouchableOpacity>
 
-              <View style={{ flexDirection: "row", alignItems: "flex-end", gap: spacing.sm }}>
-                <SetInput label="kg" value={row.weight} onChangeText={(v) => updateSet(idx, { weight: v })} />
-                <Text style={[type.h2, { color: colors.textSecondary, marginBottom: 12 }]}>×</Text>
-                <SetInput label="reps" value={row.reps} onChangeText={(v) => updateSet(idx, { reps: v })} />
-                <View style={{ flex: 1 }} />
+                  <View style={{ flex: 1, marginLeft: spacing.sm }}>
+                    {row.previous ? (
+                      <Text style={[type.caption, { color: colors.textSecondary }]} numberOfLines={1}>
+                        {row.previous.weight_kg}kg × {row.previous.reps}
+                      </Text>
+                    ) : (
+                      <Text style={[type.caption, { color: colors.textSecondary }]}>primeira vez</Text>
+                    )}
+                  </View>
+
+                  <SetInput compact value={row.weight} onChangeText={(v) => updateSet(idx, { weight: v })} />
+                  <Text style={[type.body, { color: colors.textSecondary, marginHorizontal: 4 }]}>×</Text>
+                  <SetInput compact value={row.reps} onChangeText={(v) => updateSet(idx, { reps: v })} />
+
+                  <TouchableOpacity
+                    onPress={() => handleConfirmSet(idx)}
+                    activeOpacity={0.8}
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 20,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: row.completed ? colors.secondary : colors.surfaceAlt,
+                      borderWidth: row.completed ? 0 : 1.5,
+                      borderColor: colors.border,
+                      marginLeft: spacing.xs,
+                    }}
+                  >
+                    <Ionicons name="checkmark" size={22} color={row.completed ? colors.textOnPrimary : colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* RIR — sempre visível, quick-select (espec.: exceção à regra
+                    de "esconder atrás de mais opções", decidida com o usuário). */}
+                <View style={{ flexDirection: "row", alignItems: "center", marginTop: spacing.xs, marginLeft: 38 }}>
+                  <Text style={[type.caption, { color: colors.textSecondary, marginRight: 6 }]}>RIR</Text>
+                  {RIR_OPTIONS.map((n) => {
+                    const selected = row.rir === String(n);
+                    return (
+                      <TouchableOpacity
+                        key={n}
+                        onPress={() => updateSet(idx, { rir: selected ? "" : String(n) })}
+                        style={{
+                          width: 26,
+                          height: 26,
+                          borderRadius: 13,
+                          marginRight: 5,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: selected ? colors.primary : colors.surfaceAlt,
+                        }}
+                      >
+                        <Text style={[type.caption, { color: selected ? colors.textOnPrimary : colors.textSecondary, fontWeight: "700", fontSize: 11 }]}>
+                          {n}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
                 <TouchableOpacity
-                  onPress={() => handleConfirmSet(idx)}
-                  activeOpacity={0.8}
-                  style={{
-                    width: 52,
-                    height: 52,
-                    borderRadius: 26,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: row.completed ? colors.secondary : colors.surfaceAlt,
-                    borderWidth: row.completed ? 0 : 1.5,
-                    borderColor: colors.border,
-                  }}
+                  onPress={() => updateSet(idx, { showMore: !row.showMore })}
+                  style={{ flexDirection: "row", alignItems: "center", marginTop: spacing.xs, marginLeft: 38 }}
                 >
-                  <Ionicons name="checkmark" size={26} color={row.completed ? colors.textOnPrimary : colors.textSecondary} />
+                  <Text style={[type.caption, { color: colors.primary, fontWeight: "600" }]}>
+                    {row.showMore ? "Menos opções" : "Mais opções"}
+                  </Text>
+                  <Ionicons
+                    name={row.showMore ? "chevron-up" : "chevron-down"}
+                    size={13}
+                    color={colors.primary}
+                    style={{ marginLeft: 3 }}
+                  />
                 </TouchableOpacity>
-              </View>
 
-              {row.showMore ? (
-                <View style={{ marginTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md }}>
-                  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.xs }}>
-                    <Text style={[type.caption, { color: colors.textSecondary }]}>Tipo de série</Text>
-                    <HelpDot
-                      title="Tipo de série"
-                      text={
-                        "Deixe em 'Válida' se for uma série normal. Os outros tipos são técnicas avançadas: " +
-                        "Drop-set (reduzir o peso e continuar sem descanso), Rest-pause (pausas curtas dentro da série), " +
-                        "Até a falha (ir até não conseguir mais uma repetição), Aquecimento (série leve de preparação), etc. " +
-                        "Não é obrigatório marcar nada."
-                      }
-                    />
-                  </View>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    <View style={{ flexDirection: "row", gap: spacing.xs }}>
-                      {SET_TYPE_ORDER.map((st) => (
-                        <OptionButton
-                          key={st}
-                          compact
-                          label={SET_TYPE_LABELS[st]}
-                          selected={row.setType === st}
-                          onPress={() => updateSet(idx, { setType: st })}
-                        />
-                      ))}
+                {row.showMore ? (
+                  <View style={{ marginTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.xs }}>
+                      <Text style={[type.caption, { color: colors.textSecondary }]}>Técnica avançada</Text>
+                      <HelpDot
+                        title="Técnica avançada"
+                        text={
+                          "Deixe em 'Válida' se for uma série normal. As demais são técnicas avançadas: " +
+                          "Drop-set (reduzir o peso e continuar sem descanso), Rest-pause (pausas curtas dentro da série), " +
+                          "Myo-reps, Superset, etc. Não é obrigatório marcar nada — o tipo básico (normal/aquecimento/" +
+                          "preparatória/falha) já fica no número da série, ali em cima."
+                        }
+                      />
                     </View>
-                  </ScrollView>
-                  <View style={{ flexDirection: "row", alignItems: "center", marginTop: spacing.sm }}>
-                    <Text style={[type.caption, { color: colors.textSecondary }]}>Intensidade (opcional)</Text>
-                    <HelpDot
-                      title="RPE e RIR"
-                      text={
-                        "RPE = quão pesada a série foi, de 0 a 10 (10 = esforço máximo). " +
-                        "RIR = quantas repetições você ainda conseguiria fazer antes de falhar (0 = falhou). " +
-                        "São formas de medir o esforço — preencha só se quiser acompanhar isso."
-                      }
-                    />
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      <View style={{ flexDirection: "row", gap: spacing.xs }}>
+                        {SET_TYPE_ORDER.map((st) => (
+                          <OptionButton
+                            key={st}
+                            compact
+                            label={SET_TYPE_LABELS[st]}
+                            selected={row.setType === st}
+                            onPress={() => updateSet(idx, { setType: st })}
+                          />
+                        ))}
+                      </View>
+                    </ScrollView>
+                    <View style={{ flexDirection: "row", alignItems: "center", marginTop: spacing.sm }}>
+                      <Text style={[type.caption, { color: colors.textSecondary }]}>RPE (opcional)</Text>
+                      <HelpDot
+                        title="RPE"
+                        text="Quão pesada a série foi, de 0 a 10 (10 = esforço máximo). É outra forma de medir o esforço, além do RIR — preencha só se quiser acompanhar isso."
+                      />
+                    </View>
+                    <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.xs }}>
+                      <SetInput label="RPE" value={row.rpe} onChangeText={(v) => updateSet(idx, { rpe: v })} />
+                    </View>
                   </View>
-                  <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.xs }}>
-                    <SetInput label="RPE" value={row.rpe} onChangeText={(v) => updateSet(idx, { rpe: v })} />
-                    <SetInput label="RIR" value={row.rir} onChangeText={(v) => updateSet(idx, { rir: v })} />
-                  </View>
-                </View>
-              ) : null}
-            </View>
-          </Card>
-        ))}
+                ) : null}
+              </View>
+            </Card>
+          );
+        })}
 
         <Button title="+ série extra" variant="ghost" onPress={handleAddSet} />
 
@@ -340,27 +408,31 @@ function SetInput({
   label,
   value,
   onChangeText,
+  compact = false,
 }: {
-  label: string;
+  label?: string;
   value: string;
   onChangeText: (v: string) => void;
+  compact?: boolean;
 }) {
   const { colors, type, spacing, radius } = useTheme();
   return (
     <View>
-      <Text style={[type.caption, { color: colors.textSecondary, marginBottom: 4, textAlign: "center" }]}>{label}</Text>
+      {label ? (
+        <Text style={[type.caption, { color: colors.textSecondary, marginBottom: 4, textAlign: "center" }]}>{label}</Text>
+      ) : null}
       <TextInput
         value={value}
         onChangeText={(v) => onChangeText(v.replace(/[^0-9.]/g, ""))}
         keyboardType="decimal-pad"
         style={[
-          type.h2,
+          compact ? type.body : type.h2,
           {
             color: colors.textPrimary,
             backgroundColor: colors.surfaceAlt,
             borderRadius: radius.button,
-            width: 78,
-            height: 52,
+            width: compact ? 52 : 78,
+            height: compact ? 40 : 52,
             textAlign: "center",
           },
         ]}

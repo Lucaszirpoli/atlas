@@ -4,6 +4,7 @@ import type { Exercise } from "./exercises";
 export type SetType =
   | "warmup"
   | "straight"
+  | "feeder"
   | "drop_set"
   | "rest_pause"
   | "myo_reps"
