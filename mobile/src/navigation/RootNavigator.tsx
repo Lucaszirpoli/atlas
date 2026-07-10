@@ -7,6 +7,7 @@ import { ActivityIndicator, Animated, TouchableOpacity, View } from "react-nativ
 import { useActiveWorkout } from "../context/ActiveWorkoutContext";
 import { useAuth } from "../context/AuthContext";
 import { AiHubScreen } from "../screens/ai/AiHubScreen";
+import { AssistantScreen } from "../screens/ai/AssistantScreen";
 import { ChatScreen } from "../screens/ai/ChatScreen";
 import { EvolutionScreen } from "../screens/evolution/EvolutionScreen";
 import { DashboardScreen } from "../screens/main/DashboardScreen";
@@ -49,6 +50,7 @@ function AppStack() {
       <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: true, title: "Perfil" }} />
       <Stack.Screen name="Evolution" component={EvolutionScreen} options={{ headerShown: true, title: "Evolução" }} />
       <Stack.Screen name="AiHub" component={AiHubScreen} options={{ headerShown: true, title: "Treino com IA" }} />
+      <Stack.Screen name="Assistant" component={AssistantScreen} options={{ headerShown: true, title: "Assistente" }} />
       <Stack.Screen name="Chat" component={ChatScreen} options={{ presentation: "modal" }} />
     </Stack.Navigator>
   );

@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.routers import (
     ai,
+    assistant,
     auth,
     blocks,
     challenges,
@@ -42,6 +43,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(assistant.router)
 app.include_router(users.router)
 app.include_router(foods.router)
 app.include_router(meals.router)

@@ -1,40 +1,20 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import React from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet } from "react-native";
 
-import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../theme/ThemeProvider";
 
-// FAB de IA acessível em qualquer tela (espec. 3.6). O Free entra e prova a
-// IA com créditos grátis (isca); ao esgotar, o chat oferece o Pro.
+// FAB do assistente, acessível em qualquer tela. Abre o assistente
+// determinístico (livre, sem custo de token): responde sobre os dados do
+// usuário e dúvidas de treino/dieta.
 export function AiFab() {
-  const { colors, type } = useTheme();
-  const { user } = useAuth();
+  const { colors } = useTheme();
   const navigation = useNavigation<any>();
 
-  const isPro = user?.plan === "pro";
-  const credits = user?.ai_free_credits ?? 0;
-
-  function handlePress() {
-    if (!isPro && credits <= 0) {
-      Alert.alert(
-        "Assistente de IA — Pro",
-        "Suas mensagens grátis acabaram. Assine o Pro para conversar sem limite, montar treino por IA e registrar refeição por foto."
-      );
-      return;
-    }
-    navigation.navigate("Chat");
-  }
-
   return (
-    <Pressable onPress={handlePress} style={[styles.fab, { backgroundColor: colors.secondary }]}>
+    <Pressable onPress={() => navigation.navigate("Assistant")} style={[styles.fab, { backgroundColor: colors.secondary }]}>
       <Ionicons name="sparkles" size={26} color="#FFFFFF" />
-      {!isPro && credits > 0 ? (
-        <View style={[styles.badge, { backgroundColor: colors.primary }]}>
-          <Text style={{ color: "#FFFFFF", fontSize: 11, fontWeight: "800" }}>{credits}</Text>
-        </View>
-      ) : null}
     </Pressable>
   );
 }
