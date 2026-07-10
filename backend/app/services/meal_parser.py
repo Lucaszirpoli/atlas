@@ -60,6 +60,13 @@ def _parse_segment(db: Session, segment: str) -> dict | None:
     tokens = seg.split()
     norm_tokens = [_strip_accents(t).lower() for t in tokens]
 
+    # Pula palavras de ligação no COMEÇO ("no duas pizzas" -> "duas pizzas") pra
+    # não estragar a leitura da quantidade (que olha só o 1º token) quando sobra
+    # um filler antes do número.
+    while len(norm_tokens) > 1 and norm_tokens[0] in _FILLER:
+        tokens = tokens[1:]
+        norm_tokens = norm_tokens[1:]
+
     quantity: float | None = None
     unit: str | None = None
     consumed = 0  # quantos tokens do início já viraram quantidade/unidade

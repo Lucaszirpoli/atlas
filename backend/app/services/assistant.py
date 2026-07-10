@@ -143,8 +143,14 @@ _MEAL_HINTS: list[tuple[tuple[str, ...], str]] = [
     (("ceia",), "ceia"),
 ]
 
-# Fillers que sobram no começo depois de tirar o verbo/refeição.
-_LEAD_FILLERS = {"no", "na", "de", "da", "do", "hoje", "ontem", "agora", "tipo", "uns", "umas", "que", "um pouco"}
+# Fillers que sobram no começo depois de tirar o verbo/refeição — inclui
+# pronomes/advérbios de sujeito ("eu", "já", "ainda"...) que grudam no nome do
+# alimento se não forem tirados (ex: "eu duas pizzas" em vez de "duas pizzas").
+_LEAD_FILLERS = {
+    "no", "na", "de", "da", "do", "hoje", "ontem", "agora", "tipo", "uns", "umas",
+    "que", "eu", "ja", "ainda", "so", "tambem", "aqui", "ai", "entao", "acabei",
+    "acho", "pra", "manha", "tarde", "noite",
+}
 
 
 def _pick_category(db: Session, user_id: int, text: str) -> tuple[MealCategory, str]:
