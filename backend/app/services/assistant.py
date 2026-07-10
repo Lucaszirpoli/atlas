@@ -190,7 +190,17 @@ def _try_log_food(db: Session, user_id: int, text: str) -> dict | None:
 
     parsed = meal_parser.parse_meal_text(db, cleaned)
     valid = [p for p in parsed if p["food"] is not None and p["quantity_g"] and p["quantity_g"] > 0]
+    # itens que a pessoa disse mas não achamos na base (ex: marca sem dados)
+    missing = [p.get("query") for p in parsed if p["food"] is None and p.get("query")]
+
     if not valid:
+        if missing:
+            nomes = ", ".join(f'"{q}"' for q in missing)
+            return _reply(
+                f"Entendi que você comeu {nomes}, mas não achei {'esse item' if len(missing) == 1 else 'esses itens'} "
+                "na base de alimentos (pode ser uma marca sem dados nutricionais). Dá pra cadastrar qualquer "
+                "alimento/marca manualmente na aba Dieta (em 'Adicionar' > 'Cadastrar'), ou tente outro nome."
+            )
         return _reply(
             "Entendi que você comeu algo, mas não consegui identificar os alimentos. "
             "Tente algo como \"comi 3 pães e 2 ovos\" ou \"150g de arroz e 100g de frango\"."
@@ -209,10 +219,13 @@ def _try_log_food(db: Session, user_id: int, text: str) -> dict | None:
 
     total_kcal = round(sum(i.kcal for i in meal.items))
     linhas = "; ".join(f"{p['food'].name} ({round(p['quantity_g'])}g)" for p in valid)
-    return _reply(
-        f"Registrei no {category.name}: {linhas} — {total_kcal} kcal. ✓\n"
-        "Se algum alimento ficou diferente, dá pra ajustar ou remover na aba Dieta."
-    )
+    reply = f"Registrei no {category.name}: {linhas} — {total_kcal} kcal. ✓"
+    if missing:
+        nomes = ", ".join(f'"{q}"' for q in missing)
+        reply += f"\nNão achei {nomes} na base — dá pra cadastrar manualmente na aba Dieta."
+    else:
+        reply += "\nSe algum alimento ficou diferente, dá pra ajustar ou remover na aba Dieta."
+    return _reply(reply)
 
 
 # ---------------------------------------------------------------------------

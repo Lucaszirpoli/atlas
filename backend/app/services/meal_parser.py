@@ -97,6 +97,7 @@ def _parse_segment(db: Session, segment: str) -> dict | None:
     if not food_query:
         return {
             "raw": seg,
+            "query": "",
             "food": None,
             "alternatives": [],
             "quantity_g": None,
@@ -106,12 +107,21 @@ def _parse_segment(db: Session, segment: str) -> dict | None:
         }
 
     matches = food_service.search_local(db, food_query, limit=6)
+    # Sem match local (ex: uma MARCA como "danone", "nescau"), tenta o Open
+    # Food Facts ao vivo — ele cacheia o que achar, então na próxima já sai do
+    # banco local. Falhou a rede? segue sem match (a pessoa corrige na revisão).
+    if not matches:
+        try:
+            matches = food_service.search_brands_live(db, food_query, limit=6)
+        except Exception:
+            matches = []
     food = matches[0] if matches else None
 
     quantity_g, status = _to_grams(quantity, unit, food)
 
     return {
         "raw": seg,
+        "query": food_query,
         "food": food,
         "alternatives": matches[1:5],
         "quantity_g": quantity_g,
