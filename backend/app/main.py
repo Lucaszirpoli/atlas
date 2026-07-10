@@ -8,6 +8,7 @@ from app.routers import (
     auth,
     blocks,
     challenges,
+    diet_templates,
     evolution,
     exercises,
     feed,
@@ -47,6 +48,7 @@ app.include_router(assistant.router)
 app.include_router(users.router)
 app.include_router(foods.router)
 app.include_router(meals.router)
+app.include_router(diet_templates.router)
 app.include_router(goals.router)
 app.include_router(water.router)
 app.include_router(weight.router)
