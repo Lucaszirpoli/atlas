@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
 import React, { useCallback, useEffect, useState } from "react";
-import { Alert, Image, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 import { getRoutine, type Routine } from "../../api/routines";
 import {
@@ -12,6 +12,7 @@ import {
 } from "../../api/workoutSessions";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
+import { ExerciseThumb } from "../../components/ExerciseThumb";
 import { HelpDot } from "../../components/HelpDot";
 import { OptionButton } from "../../components/OptionButton";
 import { RestTimerOverlay } from "../../components/RestTimerOverlay";
@@ -204,21 +205,12 @@ export function WorkoutExecutionScreen() {
               <Text style={[type.caption, { color: colors.secondary, fontWeight: "700", letterSpacing: 1 }]}>
                 EXERCÍCIO {exerciseIndex + 1} DE {routine.exercises.length}
               </Text>
-              <Text style={[type.h2, { color: colors.textPrimary, marginTop: 2 }]}>{routineExercise.exercise.name}</Text>
-              {routineExercise.exercise.video_url ? (
-                <Image
-                  source={{ uri: routineExercise.exercise.video_url }}
-                  resizeMode="cover"
-                  style={{
-                    width: "100%",
-                    height: 160,
-                    borderRadius: radius.card,
-                    marginTop: spacing.sm,
-                    backgroundColor: colors.surfaceAlt,
-                  }}
-                />
-              ) : null}
-              <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.xs, marginBottom: spacing.sm }}>
+              {/* Foto pequena (tipo ícone) ao lado do nome; toque amplia. */}
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: 4 }}>
+                <ExerciseThumb url={routineExercise.exercise.video_url} name={routineExercise.exercise.name} />
+                <Text style={[type.h2, { color: colors.textPrimary, flex: 1 }]}>{routineExercise.exercise.name}</Text>
+              </View>
+              <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.sm, marginBottom: spacing.sm }}>
                 <Meta icon="repeat" text={`${routineExercise.target_sets}x ${routineExercise.target_reps_min}${routineExercise.target_reps_max ? `-${routineExercise.target_reps_max}` : ""} reps`} />
                 <Meta icon="timer-outline" text={`${routineExercise.rest_seconds}s descanso`} />
                 <Meta icon="checkmark-done" text={`${completedCount}/${sets.length} feitas`} />

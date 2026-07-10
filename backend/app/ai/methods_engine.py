@@ -146,6 +146,8 @@ def _pick(
     composto/isolado pedido, evitando repetição e respeitando proibições."""
     if count <= 0 or not muscles:
         return []
+    # Prefere exercícios COM foto de demonstração (video_url != NULL) — assim
+    # o treino gerado mostra a imagem de cada exercício. Empate: por id.
     stmt = (
         select(Exercise)
         .where(
@@ -153,7 +155,7 @@ def _pick(
             Exercise.is_compound.is_(want_compound),
             Exercise.is_custom.is_(False),
         )
-        .order_by(Exercise.id)
+        .order_by(Exercise.video_url.is_(None), Exercise.id)
     )
     candidates = list(db.execute(stmt).scalars())
     out: list[Exercise] = []
