@@ -62,6 +62,21 @@ export async function logMeal(payload: {
   return data;
 }
 
+export type ParsedMealItem = {
+  raw: string;
+  food: Food | null;
+  alternatives: Food[];
+  quantity_g: number | null;
+  status: "ok" | "porcao_estimada" | "sem_alimento" | "nao_encontrado";
+};
+
+/** Interpreta um texto ("30g de requeijão, 2 ovos") em itens revisáveis.
+ * Determinístico no backend — sem IA/token. */
+export async function parseMeal(text: string): Promise<ParsedMealItem[]> {
+  const { data } = await api.post<ParsedMealItem[]>("/meals/parse", { text });
+  return data;
+}
+
 export async function listMealsForDay(isoDate: string): Promise<MealLog[]> {
   const { data } = await api.get<MealLog[]>("/meals", { params: { day: isoDate } });
   return data;

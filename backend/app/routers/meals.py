@@ -16,10 +16,12 @@ from app.schemas.meal import (
     MealCategoryUpdate,
     MealLogCreate,
     MealLogRead,
+    MealParseRequest,
+    ParsedMealItem,
     SavedMealCreate,
     SavedMealRead,
 )
-from app.services import meal_service
+from app.services import meal_parser, meal_service
 
 router = APIRouter(prefix="/meals", tags=["meals"])
 
@@ -81,6 +83,18 @@ def delete_category(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Categoria não encontrada")
     db.delete(category)
     db.commit()
+
+
+@router.post("/parse", response_model=list[ParsedMealItem])
+def parse_meal(
+    payload: MealParseRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    """Interpreta um texto em linguagem natural ("30g de requeijão, 2 ovos")
+    numa lista de itens (alimento + gramas) pra pessoa revisar e registrar.
+    100% determinístico — SEM IA/token (é livre, faz parte do plano manual)."""
+    return meal_parser.parse_meal_text(db, payload.text)
 
 
 @router.post("", response_model=MealLogRead, status_code=status.HTTP_201_CREATED)

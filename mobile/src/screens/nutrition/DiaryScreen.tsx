@@ -280,21 +280,42 @@ export function DiaryScreen() {
               ) : null}
             </View>
 
-            <TouchableOpacity
-              onPress={() => navigation.navigate("AddFood", { categoryId: category.id })}
-              activeOpacity={0.7}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                paddingVertical: spacing.sm + 2,
-                backgroundColor: colors.surfaceAlt,
-                gap: 6,
-              }}
-            >
-              <Ionicons name="add-circle" size={18} color={colors.primary} />
-              <Text style={[type.bodySmall, { color: colors.primary, fontWeight: "700" }]}>Adicionar alimento</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: "row" }}>
+              <TouchableOpacity
+                onPress={() => navigation.navigate("AddFood", { categoryId: category.id })}
+                activeOpacity={0.7}
+                style={{
+                  flex: 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  paddingVertical: spacing.sm + 2,
+                  backgroundColor: colors.surfaceAlt,
+                  gap: 6,
+                }}
+              >
+                <Ionicons name="add-circle" size={18} color={colors.primary} />
+                <Text style={[type.bodySmall, { color: colors.primary, fontWeight: "700" }]}>Adicionar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => navigation.navigate("QuickLog", { categoryId: category.id })}
+                activeOpacity={0.7}
+                style={{
+                  flex: 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  paddingVertical: spacing.sm + 2,
+                  backgroundColor: colors.surfaceAlt,
+                  borderLeftWidth: 1,
+                  borderLeftColor: colors.border,
+                  gap: 6,
+                }}
+              >
+                <Ionicons name="chatbox-ellipses" size={17} color={colors.secondary} />
+                <Text style={[type.bodySmall, { color: colors.secondary, fontWeight: "700" }]}>Falar/escrever</Text>
+              </TouchableOpacity>
+            </View>
           </Card>
         );
       })}

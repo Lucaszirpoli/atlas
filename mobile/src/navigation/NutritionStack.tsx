@@ -8,6 +8,7 @@ import { DiaryScreen } from "../screens/nutrition/DiaryScreen";
 import { GoalSettingsScreen } from "../screens/nutrition/GoalSettingsScreen";
 import { MealPhotoScreen } from "../screens/nutrition/MealPhotoScreen";
 import { MeasurementsScreen } from "../screens/nutrition/MeasurementsScreen";
+import { QuickLogScreen } from "../screens/nutrition/QuickLogScreen";
 import { useTheme } from "../theme/ThemeProvider";
 
 const Stack = createNativeStackNavigator();
@@ -30,6 +31,7 @@ export function NutritionStack() {
         options={{ title: "Dieta", headerLeft: () => <HeaderBack /> }}
       />
       <Stack.Screen name="AddFood" component={AddFoodScreen} options={{ title: "Adicionar alimento" }} />
+      <Stack.Screen name="QuickLog" component={QuickLogScreen} options={{ title: "Registrar por texto" }} />
       <Stack.Screen
         name="BarcodeScanner"
         component={BarcodeScannerScreen}

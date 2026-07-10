@@ -57,6 +57,20 @@ class MealLogRead(BaseModel):
     items: list[MealLogItemRead]
 
 
+class MealParseRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
+
+
+class ParsedMealItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    raw: str
+    food: FoodRead | None
+    alternatives: list[FoodRead]
+    quantity_g: float | None
+    status: str  # ok | porcao_estimada | sem_alimento | nao_encontrado
+
+
 class SavedMealItemCreate(BaseModel):
     food_id: int
     quantity_g: float = Field(gt=0)
