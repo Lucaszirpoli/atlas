@@ -6,7 +6,7 @@ import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View 
 import { askAssistant } from "../../api/assistant";
 import { useTheme } from "../../theme/ThemeProvider";
 
-type Msg = { role: "user" | "assistant"; text: string };
+type Msg = { role: "user" | "assistant"; text: string; fromAi?: boolean };
 
 const SUGGESTIONS = [
   "Quantas calorias comi hoje?",
@@ -40,7 +40,7 @@ export function AssistantScreen() {
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
     try {
       const r = await askAssistant(q);
-      setMessages((m) => [...m, { role: "assistant", text: r.reply }]);
+      setMessages((m) => [...m, { role: "assistant", text: r.reply, fromAi: r.source === "ai" }]);
     } catch {
       setMessages((m) => [...m, { role: "assistant", text: "Ops, não consegui responder agora. Tente de novo." }]);
     } finally {
@@ -76,6 +76,12 @@ export function AssistantScreen() {
             <Text style={[type.body, { color: m.role === "user" ? colors.textOnPrimary : colors.textPrimary, lineHeight: 21 }]}>
               {m.text}
             </Text>
+            {m.fromAi ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 }}>
+                <Ionicons name="sparkles" size={11} color={colors.secondary} />
+                <Text style={[type.caption, { color: colors.textSecondary, fontSize: 11 }]}>respondido pela IA</Text>
+              </View>
+            ) : null}
           </View>
         ))}
         {loading ? <ActivityIndicator color={colors.textSecondary} style={{ alignSelf: "flex-start", marginTop: 4 }} /> : null}
