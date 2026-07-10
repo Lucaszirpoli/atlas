@@ -16,6 +16,7 @@ import { Card } from "../../components/Card";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { InfoDialog } from "../../components/InfoDialog";
 import { useTheme } from "../../theme/ThemeProvider";
+import { exportDietAsPdf } from "../../utils/pdfExport";
 
 const GOAL_LABELS: Record<string, string> = {
   emagrecimento: "Emagrecimento",
@@ -37,7 +38,26 @@ export function DietTemplatesScreen() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
+
+  async function handleDownload() {
+    if (!preview || downloading) return;
+    setDownloading(true);
+    try {
+      await exportDietAsPdf({
+        name: preview.name,
+        tagline: preview.tagline,
+        meals: preview.meals.map((m) => ({
+          category: m.category,
+          items: m.items.map((i) => ({ food_name: i.food_name, quantity_g: i.quantity_g, kcal: i.kcal })),
+        })),
+        totals: preview.totals,
+      });
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   useEffect(() => {
     listDietTemplates()
@@ -84,39 +104,17 @@ export function DietTemplatesScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }} showsVerticalScrollIndicator={false}>
-        {/* Contexto: com base em quê as porções são ajustadas */}
-        <Card style={{ marginBottom: spacing.md }}>
-          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
-            <Ionicons name="options" size={18} color={colors.primary} />
-            <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8 }]}>Ajustado pra você</Text>
-          </View>
-          <Text style={[type.bodySmall, { color: colors.textSecondary, lineHeight: 20, marginBottom: spacing.md }]}>
-            As porções de cada dieta são calculadas pra bater com a sua meta — sem IA, só conta.
+        {/* Nota breve: as porções já vêm ajustadas à meta calórica (ver kcal em cada card abaixo). */}
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate("GoalSettings")}
+          style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: spacing.md }}
+        >
+          <Ionicons name="information-circle-outline" size={15} color={colors.textSecondary} />
+          <Text style={[type.caption, { color: colors.textSecondary, flex: 1 }]}>
+            As porções já vêm ajustadas à sua meta ({context?.target_kcal ?? "—"} kcal). Pra mudar, toque aqui e ajuste em "Meta".
           </Text>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
-            <Metric label="Objetivo" value={context?.goal ? GOAL_LABELS[context.goal] ?? context.goal : "—"} />
-            <Metric label="Peso" value={context?.weight_kg ? `${context.weight_kg} kg` : "—"} />
-            <Metric label="Altura" value={context?.height_cm ? `${Math.round(context.height_cm)} cm` : "—"} />
-            <Metric
-              label="IMC"
-              value={context?.imc ? `${context.imc}` : "—"}
-              hint={context?.imc_label ?? undefined}
-            />
-            <Metric label="Meta" value={`${context?.target_kcal ?? "—"} kcal`} highlight />
-            {context?.target_protein_g ? <Metric label="Proteína/dia" value={`${context.target_protein_g} g`} /> : null}
-          </View>
-          {!context?.has_goal_defined ? (
-            <TouchableOpacity
-              onPress={() => navigation.navigate("GoalSettings")}
-              style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: spacing.md }}
-            >
-              <Ionicons name="information-circle-outline" size={15} color={colors.primary} />
-              <Text style={[type.caption, { color: colors.primary, fontWeight: "600" }]}>
-                Defina sua meta calórica pra deixar as porções ainda mais precisas
-              </Text>
-            </TouchableOpacity>
-          ) : null}
-        </Card>
+        </TouchableOpacity>
 
         <Text
           style={[
@@ -240,6 +238,28 @@ export function DietTemplatesScreen() {
                 </ScrollView>
 
                 <View style={{ padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border }}>
+                  <TouchableOpacity
+                    onPress={handleDownload}
+                    disabled={downloading}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      paddingVertical: 10,
+                      borderRadius: radius.pill,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      marginBottom: spacing.sm,
+                    }}
+                  >
+                    {downloading ? (
+                      <ActivityIndicator size="small" color={colors.textSecondary} />
+                    ) : (
+                      <Ionicons name="download-outline" size={16} color={colors.textSecondary} />
+                    )}
+                    <Text style={[type.bodySmall, { color: colors.textSecondary, fontWeight: "700" }]}>Baixar PDF</Text>
+                  </TouchableOpacity>
                   <Button title="Usar esta dieta hoje" onPress={() => setConfirmVisible(true)} loading={applying} />
                   <Text style={[type.caption, { color: colors.textSecondary, textAlign: "center", marginTop: spacing.sm }]}>
                     Registra tudo no seu diário de hoje — você pode editar depois.
@@ -273,25 +293,6 @@ export function DietTemplatesScreen() {
         title="Dieta registrada ✓"
         message={success ?? undefined}
       />
-    </View>
-  );
-}
-
-function Metric({ label, value, hint, highlight }: { label: string; value: string; hint?: string; highlight?: boolean }) {
-  const { colors, type, radius } = useTheme();
-  return (
-    <View
-      style={{
-        backgroundColor: highlight ? colors.primarySoft : colors.surfaceAlt,
-        borderRadius: radius.card,
-        paddingVertical: 8,
-        paddingHorizontal: 12,
-        minWidth: 92,
-      }}
-    >
-      <Text style={[type.caption, { color: colors.textSecondary, fontSize: 11 }]}>{label}</Text>
-      <Text style={[type.body, { color: highlight ? colors.primary : colors.textPrimary, fontWeight: "700" }]}>{value}</Text>
-      {hint ? <Text style={[type.caption, { color: colors.textSecondary, fontSize: 10 }]}>{hint}</Text> : null}
     </View>
   );
 }

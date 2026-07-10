@@ -1,23 +1,19 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import React, { useCallback, useState } from "react";
-import { Alert, RefreshControl, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { RefreshControl, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
-import { getNutritionHistory, type NutritionHistory } from "../../api/evolution";
 import { getCurrentGoal, type CalorieGoal } from "../../api/goals";
 import { deleteMealLog, listMealCategories, listMealsForDay, type MealCategory, type MealLog } from "../../api/meals";
-import { getTodayWaterSummary, logWater, type WaterSummary } from "../../api/water";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
-import { HelpDot } from "../../components/HelpDot";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { ProgressRing } from "../../components/ProgressRing";
 import { useTheme } from "../../theme/ThemeProvider";
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
-
-const QUICK_WATER = [200, 300, 500];
 
 const CATEGORY_ICONS: [RegExp, keyof typeof Ionicons.glyphMap][] = [
   [/café|cafe/i, "cafe"],
@@ -39,37 +35,25 @@ export function DiaryScreen() {
   const [categories, setCategories] = useState<MealCategory[]>([]);
   const [meals, setMeals] = useState<MealLog[]>([]);
   const [goal, setGoal] = useState<CalorieGoal | null>(null);
-  const [water, setWater] = useState<WaterSummary | null>(null);
-  const [history, setHistory] = useState<NutritionHistory | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ mealLogId: number; foodName: string } | null>(null);
 
   async function loadAll() {
-    const [cats, mealsForDay, currentGoal, waterSummary, hist] = await Promise.all([
+    const [cats, mealsForDay, currentGoal] = await Promise.all([
       listMealCategories(),
       listMealsForDay(todayIso()),
       getCurrentGoal(),
-      getTodayWaterSummary(),
-      getNutritionHistory(14).catch(() => null),
     ]);
     setCategories(cats);
     setMeals(mealsForDay);
     setGoal(currentGoal);
-    setWater(waterSummary);
-    setHistory(hist);
   }
 
-  async function handleDeleteFood(mealLogId: number, foodName: string) {
-    Alert.alert("Remover alimento", `Remover "${foodName}" do seu diário?`, [
-      { text: "Cancelar", style: "cancel" },
-      {
-        text: "Remover",
-        style: "destructive",
-        onPress: async () => {
-          await deleteMealLog(mealLogId);
-          loadAll();
-        },
-      },
-    ]);
+  async function confirmDeleteFood() {
+    if (!deleteTarget) return;
+    await deleteMealLog(deleteTarget.mealLogId);
+    setDeleteTarget(null);
+    loadAll();
   }
 
   useFocusEffect(
@@ -87,11 +71,6 @@ export function DiaryScreen() {
     }
   }
 
-  async function handleQuickWater(amountMl: number) {
-    await logWater(amountMl);
-    setWater(await getTodayWaterSummary());
-  }
-
   const allItems = meals.flatMap((m) => m.items);
   const consumed = {
     kcal: allItems.reduce((s, i) => s + i.kcal, 0),
@@ -102,7 +81,6 @@ export function DiaryScreen() {
   const kcalGoal = goal?.kcal ?? 0;
   const kcalProgress = kcalGoal > 0 ? consumed.kcal / kcalGoal : 0;
   const overGoal = kcalGoal > 0 && consumed.kcal > kcalGoal;
-  const waterProgress = water && water.goal_ml > 0 ? water.total_ml_today / water.goal_ml : 0;
 
   return (
     <ScrollView
@@ -173,81 +151,6 @@ export function DiaryScreen() {
         ) : null}
       </Card>
 
-      {/* Histórico 14 dias + adesão */}
-      {history && history.days.length > 0 ? (
-        <Card style={{ marginBottom: spacing.md }}>
-          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
-            <Ionicons name="calendar" size={18} color={colors.primary} />
-            <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8, flex: 1 }]}>Últimos 14 dias</Text>
-            <HelpDot
-              title="Janela de 14 dias"
-              text={
-                "Mostra quanto você comeu por dia nas últimas duas semanas. As barras dentro da meta ficam verdes; " +
-                "as que passaram, laranja. A linha pontilhada é a sua meta de calorias."
-              }
-            />
-          </View>
-          <FourteenDayBars history={history} />
-          {history.goal_kcal ? (
-            <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm }]}>
-              {history.days_within_goal} de {history.days_logged}{" "}
-              {history.days_logged === 1 ? "dia registrado" : "dias registrados"} dentro da meta
-            </Text>
-          ) : null}
-        </Card>
-      ) : null}
-
-      {/* Água */}
-      <Card accent={colors.info} style={{ marginBottom: spacing.lg }}>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Ionicons name="water" size={22} color={colors.info} />
-            <View style={{ marginLeft: spacing.sm }}>
-              <Text style={[type.h2, { color: colors.textPrimary }]}>
-                {((water?.total_ml_today ?? 0) / 1000).toFixed(1)}L
-                <Text style={[type.bodySmall, { color: colors.textSecondary }]}>
-                  {"  "}/ {((water?.goal_ml ?? 0) / 1000).toFixed(1)}L
-                </Text>
-              </Text>
-            </View>
-            <HelpDot
-              title="Meta de água"
-              text={
-                "Sua meta é calculada como 35ml por kg do seu peso atual — uma referência comum de hidratação. " +
-                "Se você atualizar seu peso, a meta acompanha. Os botões +200/+300/+500 registram na hora."
-              }
-            />
-          </View>
-          <View style={{ flexDirection: "row", gap: spacing.xs }}>
-            {QUICK_WATER.map((amount) => (
-              <TouchableOpacity
-                key={amount}
-                onPress={() => handleQuickWater(amount)}
-                style={{
-                  borderRadius: radius.pill,
-                  paddingVertical: 6,
-                  paddingHorizontal: 12,
-                  backgroundColor: colors.info + "1A",
-                }}
-              >
-                <Text style={[type.caption, { color: colors.info, fontWeight: "700", fontSize: 11 }]}>+{amount}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-        {/* barra de progresso da água */}
-        <View style={{ height: 8, backgroundColor: colors.surfaceAlt, borderRadius: 4, marginTop: spacing.md }}>
-          <View
-            style={{
-              height: 8,
-              width: `${Math.min(waterProgress, 1) * 100}%`,
-              backgroundColor: colors.info,
-              borderRadius: 4,
-            }}
-          />
-        </View>
-      </Card>
-
       {/* Refeições */}
       <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.sm, letterSpacing: 1, textTransform: "uppercase" }]}>
         Refeições de hoje
@@ -290,7 +193,7 @@ export function DiaryScreen() {
                       <Text style={[type.bodySmall, { color: colors.textSecondary, marginRight: spacing.md }]}>
                         {Math.round(item.kcal)} kcal
                       </Text>
-                      <TouchableOpacity onPress={() => handleDeleteFood(mealLogId, item.food.name)} hitSlop={8}>
+                      <TouchableOpacity onPress={() => setDeleteTarget({ mealLogId, foodName: item.food.name })} hitSlop={8}>
                         <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
                       </TouchableOpacity>
                     </View>
@@ -299,86 +202,35 @@ export function DiaryScreen() {
               ) : null}
             </View>
 
-            <View style={{ flexDirection: "row" }}>
-              <TouchableOpacity
-                onPress={() => navigation.navigate("AddFood", { categoryId: category.id })}
-                activeOpacity={0.7}
-                style={{
-                  flex: 1,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  paddingVertical: spacing.sm + 2,
-                  backgroundColor: colors.surfaceAlt,
-                  gap: 6,
-                }}
-              >
-                <Ionicons name="add-circle" size={18} color={colors.primary} />
-                <Text style={[type.bodySmall, { color: colors.primary, fontWeight: "700" }]}>Adicionar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => navigation.navigate("QuickLog", { categoryId: category.id })}
-                activeOpacity={0.7}
-                style={{
-                  flex: 1,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  paddingVertical: spacing.sm + 2,
-                  backgroundColor: colors.surfaceAlt,
-                  borderLeftWidth: 1,
-                  borderLeftColor: colors.border,
-                  gap: 6,
-                }}
-              >
-                <Ionicons name="chatbox-ellipses" size={17} color={colors.secondary} />
-                <Text style={[type.bodySmall, { color: colors.secondary, fontWeight: "700" }]}>Falar/escrever</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              onPress={() => navigation.navigate("AddFood", { categoryId: category.id })}
+              activeOpacity={0.7}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                paddingVertical: spacing.sm + 2,
+                backgroundColor: colors.surfaceAlt,
+                gap: 6,
+              }}
+            >
+              <Ionicons name="add-circle" size={18} color={colors.primary} />
+              <Text style={[type.bodySmall, { color: colors.primary, fontWeight: "700" }]}>Adicionar</Text>
+            </TouchableOpacity>
           </Card>
         );
       })}
+
+      <ConfirmDialog
+        visible={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        title="Remover alimento"
+        message={deleteTarget ? `Remover "${deleteTarget.foodName}" do seu diário?` : undefined}
+        confirmLabel="Remover"
+        destructive
+        onConfirm={confirmDeleteFood}
+      />
     </ScrollView>
-  );
-}
-
-function FourteenDayBars({ history }: { history: NutritionHistory }) {
-  const { colors, type } = useTheme();
-  const goal = history.goal_kcal ?? 0;
-  const maxKcal = Math.max(...history.days.map((d) => d.kcal), goal, 1) * 1.1;
-  const CHART_H = 90;
-
-  return (
-    <View>
-      <View style={{ flexDirection: "row", alignItems: "flex-end", height: CHART_H, gap: 3, position: "relative" }}>
-        {/* linha da meta */}
-        {goal > 0 ? (
-          <View
-            style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              bottom: (goal / maxKcal) * CHART_H,
-              borderTopWidth: 1,
-              borderStyle: "dashed",
-              borderColor: colors.primary,
-              opacity: 0.6,
-            }}
-          />
-        ) : null}
-        {history.days.map((d) => {
-          const h = d.kcal > 0 ? Math.max((d.kcal / maxKcal) * CHART_H, 3) : 2;
-          const within = goal > 0 && d.kcal > 0 && d.kcal <= goal * 1.05;
-          const over = goal > 0 && d.kcal > goal * 1.05;
-          const color = d.kcal === 0 ? colors.surfaceAlt : over ? colors.warning : within ? colors.primary : colors.textSecondary;
-          return <View key={d.date} style={{ flex: 1, height: h, backgroundColor: color, borderRadius: 3 }} />;
-        })}
-      </View>
-      <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 4 }}>
-        <Text style={[type.caption, { color: colors.textSecondary }]}>14 dias atrás</Text>
-        <Text style={[type.caption, { color: colors.textSecondary }]}>hoje</Text>
-      </View>
-    </View>
   );
 }
 

@@ -16,13 +16,11 @@ import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { useActiveWorkout } from "../../context/ActiveWorkoutContext";
-import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
 
 export function RoutineListScreen() {
   const { colors, type, spacing, radius } = useTheme();
   const navigation = useNavigation<any>();
-  const { user } = useAuth();
   const { startWorkout } = useActiveWorkout();
 
   const [routines, setRoutines] = useState<Routine[]>([]);
@@ -89,34 +87,19 @@ export function RoutineListScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.lg }}>
       {/* Header interno */}
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <View
-            style={{
-              backgroundColor: colors.surfaceAlt,
-              borderRadius: radius.pill,
-              paddingVertical: 4,
-              paddingHorizontal: 12,
-            }}
-          >
-            <Text style={[type.caption, { color: colors.textSecondary, fontWeight: "700" }]}>
-              {routines.length} {routines.length === 1 ? "rotina" : "rotinas"}
-            </Text>
-          </View>
-        </View>
-        <TouchableOpacity
-          onPress={() => {
-            if (user?.plan !== "pro") {
-              Alert.alert("Exclusivo do Pro", "Detecção de platô e sugestão de deload fazem parte do Pro.");
-              return;
-            }
-            navigation.navigate("WorkoutInsights");
+      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.md }}>
+        <View
+          style={{
+            backgroundColor: colors.surfaceAlt,
+            borderRadius: radius.pill,
+            paddingVertical: 4,
+            paddingHorizontal: 12,
           }}
-          style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
         >
-          <Ionicons name="pulse" size={16} color={colors.secondary} />
-          <Text style={[type.caption, { color: colors.secondary, fontWeight: "700" }]}>Reavaliação</Text>
-        </TouchableOpacity>
+          <Text style={[type.caption, { color: colors.textSecondary, fontWeight: "700" }]}>
+            {routines.length} {routines.length === 1 ? "rotina" : "rotinas"}
+          </Text>
+        </View>
       </View>
 
       <FlatList
