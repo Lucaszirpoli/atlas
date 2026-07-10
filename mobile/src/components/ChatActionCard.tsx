@@ -1,13 +1,20 @@
+import { Ionicons } from "@expo/vector-icons";
 import React, { useState } from "react";
-import { Alert, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
-import { applyManualGoal } from "../api/goals";
-import { listMealCategories, logMeal } from "../api/meals";
 import type { ProposedAction } from "../api/ai";
-import { createRoutine } from "../api/routines";
+import { applyManualGoal } from "../api/goals";
+import { listMealCategories, listMealsForDay, logMeal } from "../api/meals";
+import { archiveRoutine, createRoutine, listRoutines } from "../api/routines";
 import { logWeight } from "../api/weight";
+import { exportDietAsPdf } from "../utils/pdfExport";
 import { useTheme } from "../theme/ThemeProvider";
 import { Button } from "./Button";
+import { InfoDialog } from "./InfoDialog";
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 export function ChatActionCard({
   action,
@@ -18,6 +25,9 @@ export function ChatActionCard({
 }) {
   const { colors, type, spacing, radius } = useTheme();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [confirmedDiet, setConfirmedDiet] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   async function handleConfirm() {
     setIsSubmitting(true);
@@ -25,7 +35,7 @@ export function ChatActionCard({
       if (action.tool === "registrar_refeicao") {
         const items = (action.input.itens as any[]).filter((i) => i.food_id != null);
         if (items.length === 0) {
-          Alert.alert("Não deu para confirmar", "Nenhum alimento foi reconhecido na base.");
+          setErrorMsg("Nenhum alimento foi reconhecido na base.");
           onResolved("cancelled");
           return;
         }
@@ -59,12 +69,84 @@ export function ChatActionCard({
             rest_seconds: e.rest_seconds ?? 90,
           })),
         });
+      } else if (action.tool === "criar_dieta_personalizada") {
+        const refeicoes = (action.input.refeicoes as any[]) ?? [];
+        const categories = await listMealCategories();
+        for (const refeicao of refeicoes) {
+          const items = (refeicao.itens as any[]).filter((i) => i.food_id != null);
+          if (items.length === 0) continue;
+          const match =
+            categories.find((c) => c.name.toLowerCase() === String(refeicao.categoria).toLowerCase()) ??
+            categories[0];
+          await logMeal({
+            meal_category_id: match.id,
+            logged_at: new Date().toISOString(),
+            items: items.map((i) => ({ food_id: i.food_id, quantity_g: i.quantidade_g })),
+          });
+        }
+        setConfirmedDiet(true);
+        setIsSubmitting(false);
+        return; // fica aberto mostrando "Baixar PDF" — só fecha quando a pessoa tocar em "Concluir"
+      } else if (action.tool === "criar_treino_personalizado") {
+        if (action.input.substituir_existentes) {
+          const existing = await listRoutines();
+          for (const r of existing) {
+            await archiveRoutine(r.id);
+          }
+        }
+        const rotinas = (action.input.rotinas as any[]) ?? [];
+        for (const rotina of rotinas) {
+          await createRoutine({
+            name: rotina.nome,
+            exercises: (rotina.exercicios as any[]).map((e) => ({
+              exercise_id: e.exercise_id,
+              target_sets: e.target_sets,
+              target_reps_min: e.target_reps_min,
+              target_reps_max: e.target_reps_max ?? null,
+              rest_seconds: e.rest_seconds ?? 90,
+            })),
+          });
+        }
       }
       onResolved("confirmed");
     } catch (err: any) {
-      Alert.alert("Não foi possível confirmar", err?.response?.data?.detail ?? "Tente novamente.");
+      setErrorMsg(err?.response?.data?.detail ?? "Tente novamente.");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleDownloadDiet() {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const meals = await listMealsForDay(todayIso());
+      const byCategory = new Map<string, { food_name: string; quantity_g: number; kcal: number }[]>();
+      const categories = await listMealCategories();
+      const nameById = new Map(categories.map((c) => [c.id, c.name]));
+      let totals = { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
+      for (const meal of meals) {
+        const catName = nameById.get(meal.meal_category_id) ?? "Refeição";
+        const list = byCategory.get(catName) ?? [];
+        for (const item of meal.items) {
+          list.push({ food_name: item.food.name, quantity_g: item.quantity_g, kcal: item.kcal });
+          totals = {
+            kcal: totals.kcal + item.kcal,
+            protein_g: totals.protein_g + item.protein_g,
+            carbs_g: totals.carbs_g + item.carbs_g,
+            fat_g: totals.fat_g + item.fat_g,
+          };
+        }
+        byCategory.set(catName, list);
+      }
+      await exportDietAsPdf({
+        name: action.input.nome_do_plano || "Sua dieta personalizada",
+        tagline: "Montada pela IA do appfit, registrada hoje",
+        meals: Array.from(byCategory.entries()).map(([category, items]) => ({ category, items })),
+        totals,
+      });
+    } finally {
+      setDownloading(false);
     }
   }
 
@@ -85,14 +167,37 @@ export function ChatActionCard({
       <Text style={[type.bodySmall, { color: colors.textPrimary, marginBottom: spacing.md }]}>
         {describeAction(action)}
       </Text>
-      <View style={{ flexDirection: "row", gap: spacing.sm }}>
-        <View style={{ flex: 1 }}>
-          <Button title="Confirmar" onPress={handleConfirm} loading={isSubmitting} />
+      {confirmedDiet ? (
+        <View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: spacing.md }}>
+            <Ionicons name="checkmark-circle" size={14} color={colors.primary} />
+            <Text style={[type.caption, { color: colors.primary }]}>Registrado no seu diário de hoje</Text>
+          </View>
+          <View style={{ flexDirection: "row", gap: spacing.sm }}>
+            <View style={{ flex: 1 }}>
+              <Button title="Baixar PDF" variant="ghost" onPress={handleDownloadDiet} loading={downloading} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Button title="Concluir" onPress={() => onResolved("confirmed")} />
+            </View>
+          </View>
         </View>
-        <View style={{ flex: 1 }}>
-          <Button title="Agora não" variant="ghost" onPress={() => onResolved("cancelled")} />
+      ) : (
+        <View style={{ flexDirection: "row", gap: spacing.sm }}>
+          <View style={{ flex: 1 }}>
+            <Button title="Confirmar" onPress={handleConfirm} loading={isSubmitting} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Button title="Agora não" variant="ghost" onPress={() => onResolved("cancelled")} />
+          </View>
         </View>
-      </View>
+      )}
+      <InfoDialog
+        visible={errorMsg !== null}
+        onClose={() => setErrorMsg(null)}
+        title="Não foi possível confirmar"
+        message={errorMsg ?? undefined}
+      />
     </View>
   );
 }
@@ -113,6 +218,22 @@ function describeAction(action: ProposedAction): string {
       .map((e) => `${e.nome} (${e.target_sets}x${e.target_reps_min}${e.target_reps_max ? `-${e.target_reps_max}` : ""})`)
       .join(", ");
     return `Criar rotina "${action.input.nome}": ${exercicios}`;
+  }
+  if (action.tool === "criar_dieta_personalizada") {
+    const refeicoes = (action.input.refeicoes as any[]) ?? [];
+    const totalItens = refeicoes.reduce((s, r) => s + (r.itens?.length ?? 0), 0);
+    const linhas = refeicoes
+      .map((r) => `${r.categoria}: ${(r.itens as any[]).map((i) => `${i.nome} (${i.quantidade_g}g)`).join(", ")}`)
+      .join("\n");
+    return `Registrar dieta de hoje (${refeicoes.length} refeições, ${totalItens} alimentos):\n${linhas}`;
+  }
+  if (action.tool === "criar_treino_personalizado") {
+    const rotinas = (action.input.rotinas as any[]) ?? [];
+    const nomes = rotinas.map((r) => `"${r.nome}" (${r.exercicios.length} exercícios)`).join(", ");
+    const sub = action.input.substituir_existentes
+      ? " — vai arquivar suas rotinas ativas atuais antes de criar as novas."
+      : " — mantém suas rotinas atuais e adiciona estas.";
+    return `Criar treino: ${nomes}.${sub}`;
   }
   return "Confirmar ação";
 }

@@ -1,7 +1,13 @@
 import { api } from "./client";
 
 export type ProposedAction = {
-  tool: "registrar_refeicao" | "atualizar_peso" | "ajustar_meta_calorica" | "criar_rotina_treino";
+  tool:
+    | "registrar_refeicao"
+    | "atualizar_peso"
+    | "ajustar_meta_calorica"
+    | "criar_rotina_treino"
+    | "criar_dieta_personalizada"
+    | "criar_treino_personalizado";
   input: any;
 };
 

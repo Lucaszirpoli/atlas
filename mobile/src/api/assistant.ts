@@ -1,3 +1,4 @@
+import type { ProposedAction } from "./ai";
 import { api } from "./client";
 
 export type AssistantReply = {
@@ -7,6 +8,8 @@ export type AssistantReply = {
   source?: "app" | "ai";
   /** Créditos-isca de IA restantes do plano Free (null/ausente = Pro/ilimitado). */
   credits_left?: number | null;
+  /** Ação que a IA propôs (ex: criar dieta/treino) — precisa confirmação antes de salvar. */
+  proposed_action?: ProposedAction | null;
 };
 
 /** Assistente híbrido: tenta o motor determinístico (grátis, sem token) e, se

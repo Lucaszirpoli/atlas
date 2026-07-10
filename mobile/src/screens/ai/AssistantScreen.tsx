@@ -1,12 +1,26 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
+import type { ProposedAction } from "../../api/ai";
+import { getChatHistory } from "../../api/ai";
 import { askAssistant } from "../../api/assistant";
+import { ChatActionCard } from "../../components/ChatActionCard";
 import { useTheme } from "../../theme/ThemeProvider";
 
-type Msg = { role: "user" | "assistant"; text: string; fromAi?: boolean };
+type Msg = {
+  role: "user" | "assistant";
+  text: string;
+  fromAi?: boolean;
+  proposedAction?: ProposedAction | null;
+  resolvedAction?: "confirmed" | "cancelled";
+};
+
+const GREETING: Msg = {
+  role: "assistant",
+  text: "Oi! Sou seu assistente. Posso responder sobre seus dados (calorias, proteína, peso, água, sono, treinos) e tirar dúvidas de treino/dieta. Pergunte algo ou toque numa sugestão abaixo. 👇",
+};
 
 const SUGGESTIONS = [
   "Quantas calorias comi hoje?",
@@ -22,14 +36,27 @@ export function AssistantScreen() {
   const navigation = useNavigation<any>();
   const scrollRef = useRef<ScrollView>(null);
 
-  const [messages, setMessages] = useState<Msg[]>([
-    {
-      role: "assistant",
-      text: "Oi! Sou seu assistente. Posso responder sobre seus dados (calorias, proteína, peso, água, sono, treinos) e tirar dúvidas de treino/dieta. Pergunte algo ou toque numa sugestão abaixo. 👇",
-    },
-  ]);
+  const [messages, setMessages] = useState<Msg[]>([GREETING]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Recupera a conversa com a IA ao reabrir a tela (mesmo histórico usado
+  // pela IA pra manter contexto entre mensagens) — sem isso, sair e voltar
+  // fazia a conversa (e qualquer proposta em aberto) sumir da tela. Propostas
+  // antigas só aparecem como texto aqui (não reabrimos o card de confirmação
+  // pra evitar confirmar de novo algo que já foi resolvido antes).
+  useEffect(() => {
+    getChatHistory()
+      .then((history) => {
+        if (history.length === 0) return;
+        setMessages([
+          GREETING,
+          ...history.map((h) => ({ role: h.role, text: h.content, fromAi: h.role === "assistant" })),
+        ]);
+        requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: false }));
+      })
+      .catch(() => {});
+  }, []);
 
   async function send(text: string) {
     const q = text.trim();
@@ -40,13 +67,20 @@ export function AssistantScreen() {
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
     try {
       const r = await askAssistant(q);
-      setMessages((m) => [...m, { role: "assistant", text: r.reply, fromAi: r.source === "ai" }]);
+      setMessages((m) => [
+        ...m,
+        { role: "assistant", text: r.reply, fromAi: r.source === "ai", proposedAction: r.proposed_action },
+      ]);
     } catch {
       setMessages((m) => [...m, { role: "assistant", text: "Ops, não consegui responder agora. Tente de novo." }]);
     } finally {
       setLoading(false);
       requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
     }
+  }
+
+  function resolveAction(index: number, outcome: "confirmed" | "cancelled") {
+    setMessages((m) => m.map((msg, i) => (i === index ? { ...msg, resolvedAction: outcome } : msg)));
   }
 
   return (
@@ -80,6 +114,15 @@ export function AssistantScreen() {
               <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 }}>
                 <Ionicons name="sparkles" size={11} color={colors.secondary} />
                 <Text style={[type.caption, { color: colors.textSecondary, fontSize: 11 }]}>respondido pela IA</Text>
+              </View>
+            ) : null}
+            {m.proposedAction && !m.resolvedAction ? (
+              <ChatActionCard action={m.proposedAction} onResolved={(outcome) => resolveAction(i, outcome)} />
+            ) : null}
+            {m.resolvedAction === "confirmed" ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: spacing.xs }}>
+                <Ionicons name="checkmark-circle" size={14} color={colors.primary} />
+                <Text style={[type.caption, { color: colors.primary }]}>Confirmado</Text>
               </View>
             ) : null}
           </View>
