@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import React from "react";
-import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Animated, TouchableOpacity, View } from "react-native";
 
 import { useActiveWorkout } from "../context/ActiveWorkoutContext";
 import { useAuth } from "../context/AuthContext";
@@ -54,59 +54,77 @@ function AppStack() {
   );
 }
 
-/** Indicador flutuante de "treino em andamento" — aparece em qualquer tela
- * (menos na própria execução do treino) quando há um treino iniciado e não
- * concluído. Toque volta pro treino. Fica no canto, discreto. */
+/** Indicador flutuante de "treino em andamento" — um ícone circular pequeno
+ * no canto (não uma barra larga, pra não atrapalhar quem está usando outra
+ * parte do app). Aparece em qualquer tela menos na própria execução; um pulso
+ * sutil sinaliza que o treino está rolando. Toque volta pro treino. */
 function ActiveWorkoutBadge() {
-  const { colors, type } = useTheme();
+  const { colors } = useTheme();
   const { active, onWorkoutScreen } = useActiveWorkout();
+  const pulse = React.useRef(new Animated.Value(0)).current;
+
+  React.useEffect(() => {
+    if (!active || onWorkoutScreen) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 900, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0, duration: 900, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [active, onWorkoutScreen, pulse]);
 
   if (!active || onWorkoutScreen) return null;
 
   return (
-    <TouchableOpacity
-      activeOpacity={0.9}
-      onPress={() => {
-        if (!navigationRef.isReady()) return;
-        // Reabre exatamente a tela de execução do treino em andamento.
-        (navigationRef.navigate as any)("TrainingModule", {
-          screen: "WorkoutExecution",
-          params: {
-            sessionId: active.sessionId,
-            routineId: active.routineId,
-            prefill: active.prefill,
-          },
-        });
-      }}
-      style={{
-        position: "absolute",
-        left: 16,
-        bottom: 24,
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 8,
-        backgroundColor: colors.moduleTraining,
-        borderRadius: 999,
-        paddingVertical: 10,
-        paddingHorizontal: 14,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.25,
-        shadowRadius: 6,
-        elevation: 6,
-        maxWidth: 260,
-      }}
-    >
-      <Ionicons name="barbell" size={18} color="#FFFFFF" />
-      <View style={{ flexShrink: 1 }}>
-        <Text style={[type.caption, { color: "#FFFFFF", fontWeight: "800" }]} numberOfLines={1}>
-          Treino em andamento
-        </Text>
-        <Text style={[type.caption, { color: "rgba(255,255,255,0.85)", fontSize: 11 }]} numberOfLines={1}>
-          {active.routineName} · toque pra voltar
-        </Text>
-      </View>
-    </TouchableOpacity>
+    <View style={{ position: "absolute", left: 16, bottom: 24, width: 52, height: 52 }} pointerEvents="box-none">
+      {/* anel que pulsa por trás do ícone */}
+      <Animated.View
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: 52,
+          height: 52,
+          borderRadius: 26,
+          backgroundColor: colors.moduleTraining,
+          opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0] }),
+          transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.5] }) }],
+        }}
+      />
+      <TouchableOpacity
+        activeOpacity={0.85}
+        accessibilityLabel={`Treino em andamento: ${active.routineName}. Toque para voltar.`}
+        onPress={() => {
+          if (!navigationRef.isReady()) return;
+          // Reabre exatamente a tela de execução do treino em andamento.
+          (navigationRef.navigate as any)("TrainingModule", {
+            screen: "WorkoutExecution",
+            params: {
+              sessionId: active.sessionId,
+              routineId: active.routineId,
+              prefill: active.prefill,
+            },
+          });
+        }}
+        style={{
+          width: 52,
+          height: 52,
+          borderRadius: 26,
+          backgroundColor: colors.moduleTraining,
+          alignItems: "center",
+          justifyContent: "center",
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: 3 },
+          shadowOpacity: 0.25,
+          shadowRadius: 6,
+          elevation: 6,
+        }}
+      >
+        <Ionicons name="barbell" size={24} color="#FFFFFF" />
+      </TouchableOpacity>
+    </View>
   );
 }
 
