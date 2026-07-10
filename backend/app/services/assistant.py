@@ -21,12 +21,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.calorie_goal import CalorieGoal
-from app.models.meal import MealLog, MealLogItem
+from app.models.meal import MealCategory, MealLog, MealLogItem
 from app.models.sleep_log import SleepLog
 from app.models.water_log import WaterLog
 from app.models.weight_log import WeightLog
 from app.models.workout_session import WorkoutSession
-from app.services import water_service
+from app.schemas.meal import MealLogCreate, MealLogItemCreate
+from app.services import meal_parser, meal_service, water_service
 
 
 def _norm(s: str) -> str:
@@ -122,6 +123,99 @@ def _workouts_this_week(db: Session, user_id: int) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Registrar comida em linguagem natural direto no chat ("comi 3 pães e 2 ovos").
+# ---------------------------------------------------------------------------
+
+# Verbos que indicam "eu comi/bebi" — dispara o registro (fora de perguntas).
+_EAT_VERBS = ("comi", "tomei", "ingeri", "lanchei", "jantei", "almocei", "comendo", "devorei", "mandei ver")
+
+# Palavras da refeição -> nome da categoria pra casar com as do usuário.
+_MEAL_HINTS: list[tuple[tuple[str, ...], str]] = [
+    (("cafe da manha", "cafe-da-manha", "no cafe"), "café da manhã"),
+    (("almoco", "almocei"), "almoço"),
+    (("jantar", "jantei", "janta"), "jantar"),
+    (("lanche da tarde",), "lanche da tarde"),
+    (("lanche da manha",), "lanche da manhã"),
+    (("lanche", "lanchei"), "lanche"),
+    (("ceia",), "ceia"),
+]
+
+# Fillers que sobram no começo depois de tirar o verbo/refeição.
+_LEAD_FILLERS = {"no", "na", "de", "da", "do", "hoje", "ontem", "agora", "tipo", "uns", "umas", "que", "um pouco"}
+
+
+def _pick_category(db: Session, user_id: int, text: str) -> tuple[MealCategory, str]:
+    """Descobre em qual refeição registrar (pelo texto ou pela hora) e devolve
+    a categoria + o texto sem a menção da refeição."""
+    cats = meal_service.ensure_default_categories(db, user_id)
+    db.flush()
+    by_norm = {_norm(c.name): c for c in cats}
+
+    cleaned = text
+    for words, cat_name in _MEAL_HINTS:
+        if _has(text, *words):
+            # remove a menção da refeição do texto
+            for w in words:
+                cleaned = cleaned.replace(w, " ")
+            cat = by_norm.get(_norm(cat_name))
+            if cat is None:  # casa por prefixo (ex: "almoço" vs categorias do user)
+                cat = next((c for c in cats if _norm(cat_name) in _norm(c.name)), None)
+            if cat is not None:
+                return cat, cleaned
+
+    # Sem menção: escolhe pela hora do dia.
+    hour = datetime.now(timezone.utc).hour  # UTC; aproximação boa o bastante
+    target = (
+        "café da manhã" if 8 <= hour < 14 else "almoço" if 14 <= hour < 18 else "jantar" if 18 <= hour < 24 else "ceia"
+    )
+    cat = by_norm.get(_norm(target)) or next((c for c in cats if _norm(target) in _norm(c.name)), None) or cats[0]
+    return cat, cleaned
+
+
+def _strip_lead_fillers(text: str) -> str:
+    toks = text.split()
+    while toks and toks[0] in _LEAD_FILLERS:
+        toks.pop(0)
+    return " ".join(toks)
+
+
+def _try_log_food(db: Session, user_id: int, text: str) -> dict | None:
+    """Se o texto for um registro de comida, interpreta e REGISTRA de verdade,
+    devolvendo a confirmação. Senão devolve None (segue o roteamento normal)."""
+    category, cleaned = _pick_category(db, user_id, text)
+    # tira os verbos de "comer" do começo
+    for v in _EAT_VERBS:
+        cleaned = cleaned.replace(v, " ")
+    cleaned = _strip_lead_fillers(" ".join(cleaned.split()))
+
+    parsed = meal_parser.parse_meal_text(db, cleaned)
+    valid = [p for p in parsed if p["food"] is not None and p["quantity_g"] and p["quantity_g"] > 0]
+    if not valid:
+        return _reply(
+            "Entendi que você comeu algo, mas não consegui identificar os alimentos. "
+            "Tente algo como \"comi 3 pães e 2 ovos\" ou \"150g de arroz e 100g de frango\"."
+        )
+
+    meal = meal_service.log_meal(
+        db,
+        user_id,
+        MealLogCreate(
+            meal_category_id=category.id,
+            logged_at=datetime.now(timezone.utc),
+            items=[MealLogItemCreate(food_id=p["food"].id, quantity_g=p["quantity_g"]) for p in valid],
+        ),
+    )
+    db.commit()
+
+    total_kcal = round(sum(i.kcal for i in meal.items))
+    linhas = "; ".join(f"{p['food'].name} ({round(p['quantity_g'])}g)" for p in valid)
+    return _reply(
+        f"Registrei no {category.name}: {linhas} — {total_kcal} kcal. ✓\n"
+        "Se algum alimento ficou diferente, dá pra ajustar ou remover na aba Dieta."
+    )
+
+
+# ---------------------------------------------------------------------------
 # Base de conhecimento (respostas curadas). Cada item: (palavras, resposta).
 # ---------------------------------------------------------------------------
 
@@ -184,7 +278,14 @@ def answer(db: Session, user_id: int, raw_text: str) -> dict:
     # (conhecimento), não o número consumido hoje.
     wants_reco = _has(text, "devo", "preciso", "recomend", "por dia", "por kg", "ideal", "quanto de")
 
-    # --- Como registrar comida (variações) tem prioridade ---
+    # --- Registrar comida de verdade ("comi 3 pães e 2 ovos") ---
+    # Só fora de perguntas (senão "quantas calorias comi hoje" viraria registro).
+    if not is_question and _has(text, *_EAT_VERBS):
+        logged = _try_log_food(db, user_id, text)
+        if logged is not None:
+            return logged
+
+    # --- Como registrar comida (a dúvida "como faço") ---
     if _has(text, "registr", "anot", "adicion", "lanc", "coloc") and _has(text, "comida", "aliment", "refei"):
         return _reply(HOWTO[0][1])
 

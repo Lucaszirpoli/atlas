@@ -9,8 +9,12 @@ from app.services import open_food_facts
 
 
 def _stem(term: str) -> str:
-    """Remove o 's' final de plurais simples ("ovos"->"ovo", "bananas"->"banana")
-    pra a busca casar singular e plural. Curto demais fica como está."""
+    """Reduz plurais ao singular pra a busca casar os dois. Trata o plural
+    simples ("ovos"->"ovo", "bananas"->"banana") e os plurais em -ão do
+    português ("pães"->"pão"->"pao", "aviões"->"aviao"). Sem acento (o texto
+    já vem normalizado)."""
+    if len(term) >= 4 and (term.endswith("oes") or term.endswith("aes")):
+        return term[:-3] + "ao"  # paes->pao, avioes->aviao
     return term[:-1] if len(term) >= 4 and term.endswith("s") else term
 
 
