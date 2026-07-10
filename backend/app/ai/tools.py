@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.models.exercise import Exercise, MuscleGroup
 from app.models.meal import MealLog, MealLogItem
+from app.models.routine import Routine
 from app.models.sleep_log import SleepLog
 from app.models.water_log import WaterLog
 from app.models.weight_log import WeightLog
@@ -24,6 +25,8 @@ WRITE_TOOL_NAMES = {
     "atualizar_peso",
     "ajustar_meta_calorica",
     "criar_rotina_treino",
+    "criar_dieta_personalizada",
+    "criar_treino_personalizado",
 }
 
 TOOL_DEFINITIONS = [
@@ -139,9 +142,10 @@ TOOL_DEFINITIONS = [
     {
         "name": "criar_rotina_treino",
         "description": (
-            "Propõe a criação de uma rotina de treino completa e estruturada. NUNCA "
-            "salva direto — o usuário confirma na interface. Sempre busque os "
-            "exercise_id certos com buscar_exercicios antes."
+            "Propõe a criação de UMA ÚNICA rotina de treino (um dia). Pra treino "
+            "personalizado com MAIS DE UM dia (o caso comum — ex: Upper/Lower, PPL), "
+            "use criar_treino_personalizado, que propõe todos os dias de uma vez. "
+            "Sempre busque os exercise_id certos com buscar_exercicios antes."
         ),
         "input_schema": {
             "type": "object",
@@ -164,6 +168,101 @@ TOOL_DEFINITIONS = [
                 },
             },
             "required": ["nome", "exercicios"],
+        },
+    },
+    {
+        "name": "listar_rotinas_ativas",
+        "description": (
+            "Lista as rotinas de treino ATIVAS (não arquivadas) do usuário. Use ANTES "
+            "de propor criar_treino_personalizado: se já existir rotina ativa, "
+            "PERGUNTE em texto (sem chamar ferramenta nesse turno) se a pessoa quer "
+            "substituir as rotinas atuais pelas novas ou manter as duas coisas — só "
+            "chame criar_treino_personalizado depois que ela responder."
+        ),
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "criar_dieta_personalizada",
+        "description": (
+            "Propõe um plano de dieta personalizado — um dia inteiro com uma ou mais "
+            "refeições, cada uma com seus alimentos. Usa UMA confirmação só para o dia "
+            "inteiro (não chame registrar_refeicao várias vezes). Sempre busque os "
+            "food_id certos com buscar_alimento antes de cada alimento."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "nome_do_plano": {"type": "string", "description": "Ex: Dieta personalizada - hipertrofia"},
+                "refeicoes": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "categoria": {"type": "string", "description": "Ex: Café da manhã, Almoço"},
+                            "itens": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "food_id": {"type": "integer"},
+                                        "nome": {"type": "string"},
+                                        "quantidade_g": {"type": "number"},
+                                    },
+                                    "required": ["food_id", "nome", "quantidade_g"],
+                                },
+                            },
+                        },
+                        "required": ["categoria", "itens"],
+                    },
+                },
+            },
+            "required": ["refeicoes"],
+        },
+    },
+    {
+        "name": "criar_treino_personalizado",
+        "description": (
+            "Propõe um treino personalizado com UMA OU MAIS rotinas (um dia cada, ex: "
+            "'Treino A - Upper', 'Treino B - Lower') em UMA confirmação só. Sempre "
+            "busque os exercise_id certos com buscar_exercicios antes. Se "
+            "listar_rotinas_ativas mostrou rotinas existentes, pergunte primeiro (em "
+            "texto) se substitui ou mantém, e reflita a resposta em substituir_existentes."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "substituir_existentes": {
+                    "type": "boolean",
+                    "description": "True para arquivar as rotinas ativas atuais antes de criar as novas.",
+                    "default": False,
+                },
+                "rotinas": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "nome": {"type": "string", "description": "Ex: Treino A - Upper"},
+                            "exercicios": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "exercise_id": {"type": "integer"},
+                                        "nome": {"type": "string"},
+                                        "target_sets": {"type": "integer"},
+                                        "target_reps_min": {"type": "integer"},
+                                        "target_reps_max": {"type": "integer"},
+                                        "rest_seconds": {"type": "integer", "default": 90},
+                                    },
+                                    "required": ["exercise_id", "nome", "target_sets", "target_reps_min"],
+                                },
+                            },
+                        },
+                        "required": ["nome", "exercicios"],
+                    },
+                },
+            },
+            "required": ["rotinas"],
         },
     },
 ]
@@ -193,7 +292,16 @@ def _serialize_exercise(exercise: Exercise) -> dict:
 
 def execute_read_tool(db: Session, user_id: int, tool_name: str, tool_input: dict) -> dict:
     if tool_name == "buscar_alimento":
-        foods = food_service.search_with_open_food_facts_fallback(db, tool_input["nome"], limit=10)
+        # Base local (TACO + já cacheado) primeiro; sem match, tenta marcas ao
+        # vivo no Open Food Facts — mesmo padrão usado no resto do app
+        # (food_service.search_with_open_food_facts_fallback nunca existiu,
+        # isso ficava dando erro toda vez que a IA tentava buscar comida).
+        foods = food_service.search_local(db, tool_input["nome"], limit=10)
+        if not foods:
+            try:
+                foods = food_service.search_brands_live(db, tool_input["nome"], limit=10)
+            except Exception:
+                foods = []
         return {"resultados": [_serialize_food(f) for f in foods]}
 
     if tool_name == "verificar_platos_e_deload":
@@ -201,6 +309,14 @@ def execute_read_tool(db: Session, user_id: int, tool_name: str, tool_input: dic
             "platos": workout_insights_service.detect_plateaus(db, user_id),
             "deload": workout_insights_service.detect_deload_suggestion(db, user_id),
         }
+
+    if tool_name == "listar_rotinas_ativas":
+        rotinas = list(
+            db.execute(
+                select(Routine).where(Routine.user_id == user_id, Routine.is_archived.is_(False))
+            ).scalars()
+        )
+        return {"rotinas": [{"id": r.id, "nome": r.name} for r in rotinas]}
 
     if tool_name == "buscar_exercicios":
         stmt = select(Exercise)

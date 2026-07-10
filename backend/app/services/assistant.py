@@ -203,17 +203,23 @@ def _try_log_food(db: Session, user_id: int, text: str) -> dict | None:
     missing = [p.get("query") for p in parsed if p["food"] is None and p.get("query")]
 
     if not valid:
+        # Falha total do parser determinístico (ex: erro de digitação, número
+        # por extenso que ele não conhece) — NÃO conta como "respondido": cai
+        # pra IA (se disponível), que entende a frase e propõe o registro
+        # certo. Sem IA, esta mensagem vira o fallback final.
         if missing:
             nomes = ", ".join(f'"{q}"' for q in missing)
-            return _reply(
+            reply = (
                 f"Entendi que você comeu {nomes}, mas não achei {'esse item' if len(missing) == 1 else 'esses itens'} "
-                "na base de alimentos (pode ser uma marca sem dados nutricionais). Dá pra cadastrar qualquer "
-                "alimento/marca manualmente na aba Dieta (em 'Adicionar' > 'Cadastrar'), ou tente outro nome."
+                "na base de alimentos (pode ser uma marca sem dados nutricionais, ou erro de digitação). Dá pra "
+                "cadastrar manualmente na aba Dieta, ou tente outro nome."
             )
-        return _reply(
-            "Entendi que você comeu algo, mas não consegui identificar os alimentos. "
-            "Tente algo como \"comi 3 pães e 2 ovos\" ou \"150g de arroz e 100g de frango\"."
-        )
+        else:
+            reply = (
+                "Entendi que você comeu algo, mas não consegui identificar os alimentos. "
+                "Tente algo como \"comi 3 pães e 2 ovos\" ou \"150g de arroz e 100g de frango\"."
+            )
+        return {"reply": reply, "answered": False}
 
     meal = meal_service.log_meal(
         db,
@@ -411,74 +417,3 @@ def _fallback() -> dict:
         "answered": False,
     }
 
-
-# ---------------------------------------------------------------------------
-# Fallback de IA (Claude) — SÓ quando o determinístico não resolve.
-# Ancorado nos dados reais do usuário (não inventa números) e sem loop de
-# ferramentas (uma chamada só, modelo mais barato) pra custo mínimo.
-# ---------------------------------------------------------------------------
-
-def _user_context(db: Session, user_id: int) -> str:
-    """Fotografia curta dos dados de hoje pra ancorar a IA — assim ela responde
-    'quanto ainda posso comer?' com o número real, sem alucinar."""
-    n = _today_nutrition(db, user_id)
-    goal = _calorie_goal(db, user_id)
-    w = _latest_weight(db, user_id)
-    water_total, water_goal = _water_today(db, user_id)
-    last_h, avg_h, _nights = _sleep_last_and_week(db, user_id)
-    workouts = _workouts_this_week(db, user_id)
-
-    lines = [
-        f"- Calorias hoje: {n['kcal']} kcal"
-        + (f" (meta {round(goal.kcal)} kcal, faltam {round(goal.kcal - n['kcal'])})" if goal else " (sem meta definida)"),
-        f"- Proteína hoje: {n['protein']} g"
-        + (f" (meta {round(goal.protein_g)} g)" if goal and goal.protein_g else ""),
-        f"- Carboidrato hoje: {n['carbs']} g | Gordura hoje: {n['fat']} g",
-        f"- Água hoje: {water_total} ml de {water_goal} ml",
-        (f"- Peso mais recente: {w.weight_kg} kg" if w else "- Peso: ainda não registrado"),
-        (
-            f"- Sono última noite: {last_h} h"
-            + (f" (média da semana {avg_h} h)" if avg_h else "")
-            if last_h
-            else "- Sono: ainda não registrado"
-        ),
-        f"- Treinos concluídos esta semana: {workouts}",
-    ]
-    return "\n".join(lines)
-
-
-_AI_SYSTEM = (
-    "Você é o assistente do app de fitness e nutrição 'appfit', para o público brasileiro. "
-    "Responda SEMPRE em português do Brasil, de forma curta, direta e acolhedora (no máximo uns 4 parágrafos). "
-    "Fale sobre treino, dieta, sono, hidratação e sobre os dados do usuário. "
-    "Use os DADOS ATUAIS abaixo quando a pergunta for sobre eles e NÃO invente números além dos fornecidos "
-    "(se não tiver o dado, diga que ainda não foi registrado e como registrar no app). "
-    "Nunca dê diagnóstico médico nem prescreva remédio; se for um tema de saúde sério, recomende procurar um "
-    "profissional. Nunca use linguagem de culpa ou vergonha sobre comida ('falhou', 'pecado'). "
-    "Quando fizer sentido, aponte a aba do app (Dieta, Treino, Sono, Água, Evolução).\n\n"
-    "DADOS ATUAIS DO USUÁRIO:\n"
-)
-
-
-def ai_fallback(db: Session, user_id: int, text: str) -> str | None:
-    """Chama a IA (modelo mais barato) ancorada nos dados do usuário. Retorna o
-    texto, ou None se não houver chave/der erro (o chamador cai no determinístico).
-    Import é tardio pra não exigir a lib nem a chave quando a IA está desligada."""
-    from app.core.config import settings
-
-    if not settings.anthropic_api_key:
-        return None
-    try:
-        from app.ai.client import get_client
-
-        system = _AI_SYSTEM + _user_context(db, user_id)
-        resp = get_client().messages.create(
-            model="claude-haiku-4-5-20251001",  # o mais barato — suficiente pra chat do app
-            max_tokens=400,
-            system=system,
-            messages=[{"role": "user", "content": text[:300]}],
-        )
-        out = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text").strip()
-        return out or None
-    except Exception:
-        return None
