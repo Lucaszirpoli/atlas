@@ -1,4 +1,6 @@
-from sqlalchemy import or_, select
+import re
+
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.text import normalize_search_text
@@ -6,18 +8,51 @@ from app.models.food import Food, FoodSource
 from app.services import open_food_facts
 
 
+def _stem(term: str) -> str:
+    """Remove o 's' final de plurais simples ("ovos"->"ovo", "bananas"->"banana")
+    pra a busca casar singular e plural. Curto demais fica como está."""
+    return term[:-1] if len(term) >= 4 and term.endswith("s") else term
+
+
 def search_local(db: Session, query: str, limit: int = 30) -> list[Food]:
     """Busca no banco local (TACO + produtos OFF já cacheados). Casa sem acento
-    e sem maiúsculas via a coluna search_text ("pao" acha "Pão"). Cada palavra
-    da busca precisa aparecer (AND), então "pao integral" filtra os dois."""
+    e sem maiúsculas via a coluna search_text ("pao" acha "Pão"), tolera plural
+    e RE-ORDENA por relevância: nome que começa com o termo e nomes curtos
+    primeiro (então "banana" traz "Banana", não "Açaí com granola e banana")."""
     norm = normalize_search_text(query)
     terms = [t for t in norm.split() if t]
+    if not terms:
+        return []
+    stems = [_stem(t) for t in terms]
+
     stmt = select(Food)
-    for term in terms:
-        stmt = stmt.where(Food.search_text.like(f"%{term}%"))
-    # TACO (alimentos genéricos, base brasileira) primeiro, depois marcas.
-    stmt = stmt.order_by((Food.source == FoodSource.TACO).desc(), Food.name).limit(limit)
-    return list(db.execute(stmt).scalars())
+    for stem in stems:
+        stmt = stmt.where(Food.search_text.like(f"%{stem}%"))
+    # Puxa um conjunto maior (TACO e nomes curtos primeiro) e reordena em Python.
+    stmt = stmt.order_by((Food.source == FoodSource.TACO).desc(), func.length(Food.search_text)).limit(
+        max(limit * 5, 40)
+    )
+    candidates = list(db.execute(stmt).scalars())
+
+    def score(f: Food) -> float:
+        st = f.search_text or ""
+        s = 0.0
+        # começa exatamente com o primeiro termo (ex: "banana ...") — forte sinal
+        if stems and re.match(rf"\b{re.escape(stems[0])}", st):
+            s += 200
+        # cada termo como início de palavra (casa singular/plural: \bovo pega "ovos")
+        for stem in stems:
+            if re.search(rf"\b{re.escape(stem)}", st):
+                s += 60
+        if norm and st == norm:
+            s += 400  # nome idêntico à busca
+        if f.source == FoodSource.TACO:
+            s += 30
+        s -= len(st) * 0.4  # nomes mais curtos primeiro
+        return s
+
+    candidates.sort(key=score, reverse=True)
+    return candidates[:limit]
 
 
 def search_brands_live(db: Session, query: str, limit: int = 30) -> list[Food]:
