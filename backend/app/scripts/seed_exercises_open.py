@@ -23,6 +23,7 @@ from pathlib import Path
 from sqlalchemy import select
 
 from app.core.db import SessionLocal
+from app.data.exercise_translator import translate_exercise_name
 from app.models.exercise import Difficulty, Equipment, Exercise, MuscleGroup
 
 JSON_PATH = Path(__file__).parent.parent / "data" / "exercises_open.json"
@@ -593,7 +594,9 @@ def run() -> None:
             if not video_url:
                 continue
 
-            name_pt = translate_name(row["name"])
+            # Tradutor composicional novo (reordena pra gramática PT). Se ele
+            # não reconhecer o movimento, cai no palavra-a-palavra antigo.
+            name_pt = translate_exercise_name(row["name"])
             # evita colidir com os curados (que têm nomes melhores)
             if name_pt.lower() in existing_names:
                 name_pt = f"{name_pt} (variação)"
