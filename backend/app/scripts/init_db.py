@@ -14,6 +14,7 @@ from app.models.food import Food
 from app.scripts import (
     seed_exercises,
     seed_exercises_open,
+    seed_plant_based,
     seed_taco,
     seed_taco_official,
 )
@@ -35,8 +36,11 @@ def run() -> None:
         print("Base de alimentos vazia — carregando seeds TACO ...")
         seed_taco.run()
         seed_taco_official.run()
+        seed_plant_based.run()  # cobertura vegana / sem-alérgeno (crítica #2)
     else:
         print(f"Alimentos já carregados ({food_count}) — pulando seed.")
+        # idempotente: garante os plant-based mesmo em banco já existente
+        seed_plant_based.run()
 
     if exercise_count == 0:
         print("Base de exercícios vazia — carregando seeds ...")
