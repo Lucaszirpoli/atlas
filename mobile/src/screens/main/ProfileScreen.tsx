@@ -57,14 +57,15 @@ export function ProfileScreen() {
             </Text>
             <Text style={[type.caption, { color: colors.textSecondary }]}>
               {user?.plan === "pro"
-                ? "IA ilimitada, 7 rotinas, reavaliação automática"
-                : "Até 3 rotinas · IA e foto de refeição são do Pro"}
+                ? "Assistente de IA ilimitado + foto de refeição"
+                : "Treino e dieta manual são livres · a IA é do Pro"}
             </Text>
           </View>
           {user?.plan !== "pro" ? (
             <TouchableOpacity
+              onPress={() => navigation.navigate("Paywall")}
               style={{
-                backgroundColor: colors.secondary,
+                backgroundColor: colors.primary,
                 borderRadius: 999,
                 paddingVertical: 8,
                 paddingHorizontal: 16,

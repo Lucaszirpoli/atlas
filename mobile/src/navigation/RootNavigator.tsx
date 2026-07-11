@@ -11,6 +11,7 @@ import { AssistantScreen } from "../screens/ai/AssistantScreen";
 import { ChatScreen } from "../screens/ai/ChatScreen";
 import { EvolutionScreen } from "../screens/evolution/EvolutionScreen";
 import { DashboardScreen } from "../screens/main/DashboardScreen";
+import { PaywallScreen } from "../screens/main/PaywallScreen";
 import { ProfileScreen } from "../screens/main/ProfileScreen";
 import { OnboardingScreen } from "../screens/onboarding/OnboardingScreen";
 import { SleepScreen } from "../screens/sleep/SleepScreen";
@@ -48,6 +49,7 @@ function AppStack() {
       <Stack.Screen name="Sleep" component={SleepScreen} options={{ headerShown: true, title: "Sono" }} />
       <Stack.Screen name="Water" component={WaterScreen} options={{ headerShown: true, title: "Água" }} />
       <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: true, title: "Perfil" }} />
+      <Stack.Screen name="Paywall" component={PaywallScreen} options={{ headerShown: true, title: "ATLAS Pro" }} />
       <Stack.Screen name="Evolution" component={EvolutionScreen} options={{ headerShown: true, title: "Evolução" }} />
       <Stack.Screen name="AiHub" component={AiHubScreen} options={{ headerShown: true, title: "Treino com IA" }} />
       <Stack.Screen name="Assistant" component={AssistantScreen} options={{ headerShown: true, title: "Assistente" }} />

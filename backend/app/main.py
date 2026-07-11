@@ -6,6 +6,7 @@ from app.routers import (
     ai,
     assistant,
     auth,
+    billing,
     blocks,
     challenges,
     diet_templates,
@@ -49,6 +50,7 @@ app.include_router(users.router)
 app.include_router(foods.router)
 app.include_router(meals.router)
 app.include_router(diet_templates.router)
+app.include_router(billing.router)
 app.include_router(goals.router)
 app.include_router(water.router)
 app.include_router(weight.router)
