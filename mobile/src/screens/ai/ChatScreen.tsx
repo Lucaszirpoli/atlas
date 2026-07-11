@@ -131,7 +131,7 @@ export function ChatScreen() {
           <Ionicons name="sparkles" size={20} color={colors.textOnPrimary} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={[type.h2, { color: colors.textPrimary, fontSize: 17 }]}>Assistente appfit</Text>
+          <Text style={[type.h2, { color: colors.textPrimary, fontSize: 17 }]}>Assistente Atlas</Text>
           <Text style={[type.caption, { color: colors.textSecondary }]}>
             Nutrição, treino e sono — num chat só
           </Text>

@@ -25,52 +25,62 @@ export type ColorScheme = {
   moduleSocial: string;
 };
 
-export const lightColors: ColorScheme = {
-  primary: "#1F7A5C",
-  primaryLight: "#2FA37A",
-  primaryDark: "#145C43",
-  primarySoft: "#E4F1EB",
-  secondary: "#FF6B35",
-  secondarySoft: "#FFE9DF",
+// ATLAS — identidade preto + laranja, minimalista. O laranja é o ÚNICO
+// acento de marca; preto/branco/cinza cuidam de toda a estrutura. As cores de
+// módulo são versões harmonizadas (dessaturadas) pra manter o dashboard
+// legível sem poluir a paleta. As cores semânticas (success/warning/danger)
+// existem só pra dar significado a dado, não como acento visual.
 
-  bg: "#F4F6F3",
+export const lightColors: ColorScheme = {
+  primary: "#FF6B2C",
+  primaryLight: "#FF8A5A",
+  primaryDark: "#D9531C",
+  primarySoft: "#FFE7DA",
+  secondary: "#E85D26",
+  secondarySoft: "#FFE0D0",
+
+  bg: "#FAFAF8",
   surface: "#FFFFFF",
-  surfaceAlt: "#F0F3EF",
-  textPrimary: "#1A1F1C",
-  textSecondary: "#6B7570",
+  surfaceAlt: "#F1F1ED",
+  textPrimary: "#17181A",
+  textSecondary: "#6E7370",
   textOnPrimary: "#FFFFFF",
-  border: "#E8EBE6",
+  border: "#E7E7E1",
 
   success: "#2FA37A",
   warning: "#E8A33D",
-  danger: "#D64545",
-  info: "#3B82C4",
+  danger: "#E5484D",
+  info: "#5E93C9",
 
-  moduleNutrition: "#1F7A5C",
-  moduleTraining: "#FF6B35",
-  moduleSleep: "#4A5B8C",
-  moduleSocial: "#E8637A",
+  moduleNutrition: "#FF6B2C",
+  moduleTraining: "#F59E42",
+  moduleSleep: "#7C86A8",
+  moduleSocial: "#C77A8A",
 };
 
 export const darkColors: ColorScheme = {
   ...lightColors,
-  // Verdes/acentos um pouco mais vivos para brilhar sobre o fundo escuro,
-  // mas ainda escuros o bastante para manter texto branco legível em cima.
-  primary: "#2AA37A",
-  primaryLight: "#37C08D",
-  primarySoft: "#17352A",
-  secondarySoft: "#3A2418",
+  // Preto de verdade com o laranja vibrante por cima — o coração da marca
+  // ATLAS. O acento fica um tom mais aceso pra brilhar sobre o fundo escuro.
+  primary: "#FF6B2C",
+  primaryLight: "#FF8A5A",
+  primaryDark: "#C24E1C",
+  primarySoft: "#2A1509",
+  secondary: "#F26A2E",
+  secondarySoft: "#2A1509",
 
-  bg: "#0E1311",
-  surface: "#1B211D",
-  surfaceAlt: "#232B26",
-  textPrimary: "#F2F4F1",
-  textSecondary: "#9AA69F",
-  border: "#2A312C",
+  bg: "#0A0A0B",
+  surface: "#141416",
+  surfaceAlt: "#1D1D21",
+  textPrimary: "#F4F4F2",
+  textSecondary: "#9A9A96",
+  border: "#26262B",
 
   success: "#37C08D",
-  info: "#5AA6E0",
+  info: "#5E93C9",
 
-  moduleNutrition: "#2FB88A",
-  moduleSleep: "#8091C8",
+  moduleNutrition: "#FF7A45",
+  moduleTraining: "#F5A24E",
+  moduleSleep: "#8791B4",
+  moduleSocial: "#D0899A",
 };

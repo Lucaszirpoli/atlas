@@ -1,8 +1,8 @@
-import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import React, { useState } from "react";
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
 
+import { AtlasLogo } from "../../components/AtlasLogo";
 import { Button } from "../../components/Button";
 import { TextField } from "../../components/TextField";
 import { useAuth } from "../../context/AuthContext";
@@ -39,24 +39,22 @@ export function LoginScreen() {
       <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: spacing.lg }}>
         {/* Marca */}
         <View style={{ alignItems: "center", marginBottom: spacing.xl }}>
-          <View
+          <AtlasLogo size={78} color={colors.primary} seam={colors.bg} />
+          <Text
             style={[
+              type.h1,
               {
-                width: 72,
-                height: 72,
-                borderRadius: 22,
-                backgroundColor: colors.primary,
-                alignItems: "center",
-                justifyContent: "center",
-                marginBottom: spacing.md,
+                color: colors.textPrimary,
+                fontSize: 34,
+                marginTop: spacing.md,
+                letterSpacing: 8,
+                fontWeight: "800",
               },
-              shadow.md,
             ]}
           >
-            <Ionicons name="fitness" size={38} color={colors.textOnPrimary} />
-          </View>
-          <Text style={[type.h1, { color: colors.textPrimary, fontSize: 30 }]}>appfit</Text>
-          <Text style={[type.body, { color: colors.textSecondary, marginTop: 2 }]}>
+            ATLAS
+          </Text>
+          <Text style={[type.body, { color: colors.textSecondary, marginTop: 4 }]}>
             Treino, dieta e evolução num lugar só
           </Text>
         </View>

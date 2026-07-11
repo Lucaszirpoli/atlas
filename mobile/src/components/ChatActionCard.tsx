@@ -141,7 +141,7 @@ export function ChatActionCard({
       }
       await exportDietAsPdf({
         name: action.input.nome_do_plano || "Sua dieta personalizada",
-        tagline: "Montada pela IA do appfit, registrada hoje",
+        tagline: "Montada pela IA do Atlas, registrada hoje",
         meals: Array.from(byCategory.entries()).map(([category, items]) => ({ category, items })),
         totals,
       });

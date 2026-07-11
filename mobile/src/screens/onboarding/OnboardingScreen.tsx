@@ -196,7 +196,7 @@ export function OnboardingScreen() {
             <ConsentRow
               checked={form.accepted_medical_disclaimer}
               onToggle={() => update("accepted_medical_disclaimer", !form.accepted_medical_disclaimer)}
-              text="Entendo que o appfit não substitui acompanhamento médico ou nutricional profissional."
+              text="Entendo que o Atlas não substitui acompanhamento médico ou nutricional profissional."
             />
           </Step>
         );

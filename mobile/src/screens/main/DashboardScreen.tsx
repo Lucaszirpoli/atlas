@@ -11,6 +11,7 @@ import { listSleepLogs, type SleepLog } from "../../api/sleep";
 import { getTodayWaterSummary, logWater, type WaterSummary } from "../../api/water";
 import { listWorkoutSessions, type WorkoutSessionDetail } from "../../api/workoutSessions";
 import { AiFab } from "../../components/AiFab";
+import { AtlasLogo } from "../../components/AtlasLogo";
 import { Avatar } from "../../components/Avatar";
 import { ProgressRing } from "../../components/ProgressRing";
 import { motivationOfTheDay } from "../../content/motivation";
@@ -144,7 +145,8 @@ export function DashboardScreen() {
           {/* Linha 1: saudação + ações rápidas (social + perfil). Tema escuro
               agora fica só no Perfil/Aparência. */}
           <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Text style={[type.h1, { color: colors.textPrimary, fontSize: 22, flex: 1 }]}>
+            <AtlasLogo size={22} color={colors.primary} seam={colors.bg} />
+            <Text style={[type.h1, { color: colors.textPrimary, fontSize: 22, flex: 1, marginLeft: spacing.sm }]}>
               {greeting()}, {firstName}
             </Text>
             <IconButton icon="people" tint={colors.moduleSocial} onPress={() => navigation.navigate("Social")} />

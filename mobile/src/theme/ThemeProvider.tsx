@@ -28,7 +28,9 @@ const ThemeContext = createContext<Theme | null>(null);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const scheme = useColorScheme();
-  const [mode, setModeState] = useState<ThemeMode>("system");
+  // ATLAS nasce escuro (preto + laranja é a identidade da marca). A pessoa pode
+  // trocar pra claro ou "acompanhar o sistema" em Perfil > Aparência.
+  const [mode, setModeState] = useState<ThemeMode>("dark");
 
   // Carrega a preferência salva uma vez no início.
   useEffect(() => {

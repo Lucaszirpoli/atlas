@@ -53,7 +53,7 @@ function dietHtml(diet: ExportableDiet): string {
           <div><b>${Math.round(diet.totals.fat_g)}g</b>gordura</div>
         </div>
         ${rows}
-        <div class="footer">Gerado pelo appfit — ponto de partida, não substitui orientação de um nutricionista.</div>
+        <div class="footer">Gerado pelo Atlas — ponto de partida, não substitui orientação de um nutricionista.</div>
       </body>
     </html>`;
 }
