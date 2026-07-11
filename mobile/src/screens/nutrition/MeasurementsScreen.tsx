@@ -17,6 +17,7 @@ import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { OptionButton } from "../../components/OptionButton";
 import { useTheme } from "../../theme/ThemeProvider";
+import { persistProgressPhoto, resolveProgressPhotoUri } from "../../utils/photoStorage";
 
 const MEASUREMENT_LABELS: Record<MeasurementType, string> = {
   waist: "Cintura",
@@ -72,7 +73,10 @@ export function MeasurementsScreen() {
     }
     const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.8 });
     if (result.canceled || !result.assets[0]) return;
-    await createProgressPhoto(result.assets[0].uri);
+    // copia pra pasta permanente do app antes de salvar (a URI do picker é
+    // temporária — some quando o sistema limpa o cache).
+    const persistedKey = await persistProgressPhoto(result.assets[0].uri);
+    await createProgressPhoto(persistedKey);
     await load();
   }
 
@@ -178,7 +182,7 @@ export function MeasurementsScreen() {
           {photos.map((photo) => (
             <View key={photo.id} style={{ marginRight: spacing.sm, alignItems: "center" }}>
               <Image
-                source={{ uri: photo.photo_url }}
+                source={{ uri: resolveProgressPhotoUri(photo.photo_url) }}
                 style={{ width: 110, height: 145, borderRadius: radius.card }}
               />
               <Text style={[type.caption, { color: colors.textSecondary, marginTop: 4 }]}>
