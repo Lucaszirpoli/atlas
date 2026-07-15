@@ -103,6 +103,71 @@ export async function generateTraining(payload: {
   return data;
 }
 
+// --- IA de dieta: meta de macros com rails no código ----------------------
+
+export type DietContext = {
+  target_kcal: number | null;
+  target_protein_g: number | null;
+  target_carbs_g: number | null;
+  target_fat_g: number | null;
+  has_goal_defined: boolean;
+  profile_restrictions: string[];
+};
+
+export type DietItem = {
+  food_id: number;
+  food_name: string;
+  quantity_g: number;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+};
+
+export type DietMeal = {
+  category: string;
+  items: DietItem[];
+  note?: string | null;
+};
+
+export type DietPlan = {
+  target: { kcal: number; protein_g: number; carbs_g: number; fat_g: number };
+  meals: DietMeal[];
+  totals: { kcal: number; protein_g: number; carbs_g: number; fat_g: number };
+  restrictions: string[];
+};
+
+export type GenerateDietResult = {
+  plan: DietPlan;
+  intro: string | null;
+  ai_used: boolean;
+  is_faithful: boolean;
+  violations: string[];
+  ai_locked: boolean;
+  free_credits_remaining?: number | null;
+};
+
+export async function getDietContext(): Promise<DietContext> {
+  const { data } = await api.get<DietContext>("/ai/diet/context");
+  return data;
+}
+
+export async function generateDiet(payload: {
+  restrictions: string[];
+  meals_per_day: number;
+  variant?: number;
+}): Promise<GenerateDietResult> {
+  const { data } = await api.post<GenerateDietResult>("/ai/diet/generate", payload);
+  return data;
+}
+
+export async function applyDiet(
+  meals: { category: string; items: { food_id: number; quantity_g: number }[] }[]
+): Promise<{ meals_logged: number; items_logged: number }> {
+  const { data } = await api.post("/ai/diet/apply", { meals });
+  return data;
+}
+
 export type MealPhotoItem = {
   nome_identificado: string;
   food_id: number | null;

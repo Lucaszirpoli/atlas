@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 
 from pydantic import BaseModel
 
+from app.ai.diet_ai import enrich_plan
+from app.ai.diet_engine import MacroTarget, build_diet_plan
 from app.ai.methods import list_methods
 from app.ai.methods_ai import generate_method_plan
 from app.ai.orchestrator import run_chat_turn
@@ -13,6 +15,9 @@ from app.core.db import get_db
 from app.core.security import get_current_user, require_pro_plan
 from app.models.chat_message import ChatMessage
 from app.models.user import Plan, User
+from app.models.user_profile import UserProfile
+from app.services import goal_service
+from app.services.nutrition_calc import compute_auto_goal
 from app.schemas.ai import (
     ChatMessageRead,
     ChatRequest,
@@ -83,6 +88,148 @@ def training_generate(
         result["free_credits_remaining"] = current_user.ai_free_credits
     result["ai_locked"] = not can_use_ai
     return result
+
+
+# --- IA de dieta (meta de macros com rails no código) ----------------------
+
+class DietContext(BaseModel):
+    target_kcal: int | None
+    target_protein_g: float | None
+    target_carbs_g: float | None
+    target_fat_g: float | None
+    has_goal_defined: bool
+    profile_restrictions: list[str]
+
+
+class GenerateDietRequest(BaseModel):
+    restrictions: list[str] = []
+    meals_per_day: int = 4
+    variant: int = 0
+
+
+def _resolve_target(db: Session, user_id: int) -> MacroTarget | None:
+    """Meta de macros vigente: usa a meta salva; senão calcula do perfil+peso.
+    None se não dá pra determinar (sem meta e sem perfil/peso)."""
+    goal = goal_service.get_current_goal(db, user_id)
+    if goal is not None:
+        return MacroTarget(goal.kcal, goal.protein_g, goal.carbs_g, goal.fat_g)
+    profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).one_or_none()
+    weight = goal_service.get_latest_weight_kg(db, user_id)
+    if profile is not None and weight is not None:
+        auto = compute_auto_goal(
+            biological_sex=profile.biological_sex,
+            weight_kg=weight,
+            height_cm=profile.height_cm,
+            age=profile.age,
+            activity_level=profile.activity_level,
+            goal=profile.goal,
+        )
+        return MacroTarget(auto["kcal"], auto["protein_g"], auto["carbs_g"], auto["fat_g"])
+    return None
+
+
+@router.get("/diet/context", response_model=DietContext)
+def diet_context(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DietContext:
+    """Meta de macros da pessoa + restrições do perfil, pra tela pré-geração."""
+    target = _resolve_target(db, current_user.id)
+    profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).one_or_none()
+    return DietContext(
+        target_kcal=round(target.kcal) if target else None,
+        target_protein_g=round(target.protein_g, 1) if target else None,
+        target_carbs_g=round(target.carbs_g, 1) if target else None,
+        target_fat_g=round(target.fat_g, 1) if target else None,
+        has_goal_defined=goal_service.get_current_goal(db, current_user.id) is not None,
+        profile_restrictions=list(profile.dietary_restrictions) if profile else [],
+    )
+
+
+@router.post("/diet/generate")
+def diet_generate(
+    payload: GenerateDietRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Monta uma dieta que BATE a meta de macros da pessoa. O plano é
+    determinístico (sempre fiel, funciona sem IA); a explicação e as dicas por
+    refeição são a camada Pro (IA sandbox). Isca: Pro ilimitado, Free tem
+    créditos grátis — sem créditos, ainda recebe o plano, só sem as dicas."""
+    target = _resolve_target(db, current_user.id)
+    if target is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Defina sua meta de calorias/macros (ou complete o perfil com peso e "
+                "objetivo) antes de gerar a dieta."
+            ),
+        )
+
+    meals = 3 if payload.meals_per_day <= 3 else 4
+    plan = build_diet_plan(db, target, payload.restrictions, meals_per_day=meals, variant=payload.variant)
+
+    is_pro = current_user.plan == Plan.PRO
+    can_use_ai = is_pro or current_user.ai_free_credits > 0
+    result = enrich_plan(target, plan, use_ai=can_use_ai)
+
+    if result.get("ai_used") and not is_pro:
+        current_user.ai_free_credits = max(current_user.ai_free_credits - 1, 0)
+        db.add(current_user)
+        db.commit()
+        result["free_credits_remaining"] = current_user.ai_free_credits
+    result["ai_locked"] = not can_use_ai
+    return result
+
+
+class ApplyDietItem(BaseModel):
+    food_id: int
+    quantity_g: float
+
+
+class ApplyDietMeal(BaseModel):
+    category: str
+    items: list[ApplyDietItem]
+
+
+class ApplyDietRequest(BaseModel):
+    meals: list[ApplyDietMeal]
+
+
+@router.post("/diet/apply")
+def diet_apply(
+    payload: ApplyDietRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Registra a dieta gerada no diário de HOJE (append-only), uma refeição por
+    categoria. A pessoa pode editar/remover depois no módulo de nutrição."""
+    from datetime import datetime, timezone
+
+    from app.schemas.meal import MealLogCreate, MealLogItemCreate
+    from app.services import meal_service
+
+    categories = {c.name: c for c in meal_service.ensure_default_categories(db, current_user.id)}
+    db.flush()
+    now = datetime.now(timezone.utc)
+    logged_meals = logged_items = 0
+    for meal in payload.meals:
+        cat = categories.get(meal.category)
+        if cat is None or not meal.items:
+            continue
+        meal_service.log_meal(
+            db,
+            current_user.id,
+            MealLogCreate(
+                meal_category_id=cat.id,
+                logged_at=now,
+                items=[MealLogItemCreate(food_id=i.food_id, quantity_g=i.quantity_g) for i in meal.items],
+            ),
+        )
+        logged_meals += 1
+        logged_items += len(meal.items)
+    db.commit()
+    return {"meals_logged": logged_meals, "items_logged": logged_items}
 
 
 def _require_api_key() -> None:

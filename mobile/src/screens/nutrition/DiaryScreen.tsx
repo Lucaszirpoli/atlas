@@ -95,6 +95,31 @@ export function DiaryScreen() {
         <HeaderChip icon="flag" label="Meta" onPress={() => navigation.navigate("GoalSettings")} />
       </View>
 
+      {/* Entrada da IA de dieta: monta um cardápio que BATE a meta de macros
+          (porções resolvidas pelo código, alimentos reais). */}
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={() => navigation.navigate("AiDiet")}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          backgroundColor: colors.secondary,
+          borderRadius: radius.card,
+          paddingVertical: spacing.sm,
+          paddingHorizontal: spacing.md,
+          marginBottom: spacing.md,
+        }}
+      >
+        <Ionicons name="sparkles" size={18} color="#FFFFFF" />
+        <View style={{ flex: 1, marginLeft: spacing.sm }}>
+          <Text style={[type.bodySmall, { color: "#FFFFFF", fontWeight: "700" }]}>Montar dieta com IA</Text>
+          <Text style={[type.caption, { color: "rgba(255,255,255,0.88)" }]} numberOfLines={1}>
+            Um dia inteiro que bate exatamente sua meta de calorias e macros
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
+      </TouchableOpacity>
+
       {/* Entrada compacta pras dietas semi-prontas (NÃO é IA — são moldes
           curados que o app escala pra bater com a meta calórica da pessoa). */}
       <TouchableOpacity

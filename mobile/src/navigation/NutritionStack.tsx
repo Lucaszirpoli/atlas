@@ -2,6 +2,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import React from "react";
 
 import { HeaderBack } from "../components/HeaderBack";
+import { AiDietScreen } from "../screens/ai/AiDietScreen";
 import { AddFoodScreen } from "../screens/nutrition/AddFoodScreen";
 import { BarcodeScannerScreen } from "../screens/nutrition/BarcodeScannerScreen";
 import { DiaryScreen } from "../screens/nutrition/DiaryScreen";
@@ -34,6 +35,7 @@ export function NutritionStack() {
       <Stack.Screen name="AddFood" component={AddFoodScreen} options={{ title: "Adicionar alimento" }} />
       <Stack.Screen name="QuickLog" component={QuickLogScreen} options={{ title: "Registrar por texto" }} />
       <Stack.Screen name="DietTemplates" component={DietTemplatesScreen} options={{ title: "Dietas prontas" }} />
+      <Stack.Screen name="AiDiet" component={AiDietScreen} options={{ title: "Dieta com IA" }} />
       <Stack.Screen
         name="BarcodeScanner"
         component={BarcodeScannerScreen}
