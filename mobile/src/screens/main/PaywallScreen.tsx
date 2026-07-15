@@ -1,9 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import type { PurchasesPackage } from "react-native-purchases";
 
-import { getOffering, subscribePro, type Offering } from "../../api/billing";
+import { getOffering, restorePro, subscribePro, type Offering } from "../../api/billing";
+import { getCurrentOffering, isNativePurchasesAvailable } from "../../api/purchases";
 import { AtlasLogo } from "../../components/AtlasLogo";
 import { Button } from "../../components/Button";
 import { InfoDialog } from "../../components/InfoDialog";
@@ -16,26 +18,51 @@ export function PaywallScreen() {
   const { refreshUser } = useAuth();
 
   const [offering, setOffering] = useState<Offering | null>(null);
+  const [nativePackage, setNativePackage] = useState<PurchasesPackage | null>(null);
   const [loading, setLoading] = useState(true);
   const [subscribing, setSubscribing] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const [done, setDone] = useState<string | null>(null);
 
   useEffect(() => {
     getOffering()
       .then(setOffering)
       .finally(() => setLoading(false));
+
+    if (isNativePurchasesAvailable()) {
+      getCurrentOffering()
+        .then((o) => setNativePackage(o?.monthly ?? o?.availablePackages[0] ?? null))
+        .catch(() => {});
+    }
   }, []);
 
   async function handleSubscribe() {
     setSubscribing(true);
     try {
-      await subscribePro();
+      await subscribePro(nativePackage ?? undefined);
       await refreshUser();
       setDone("Bem-vindo ao ATLAS Pro! Todos os recursos avançados estão liberados. 🎉");
     } catch (err: any) {
       setDone(err?.response?.data?.detail ?? "Não deu pra concluir agora. Tente de novo.");
     } finally {
       setSubscribing(false);
+    }
+  }
+
+  async function handleRestore() {
+    setRestoring(true);
+    try {
+      const result = await restorePro();
+      await refreshUser();
+      setDone(
+        result.is_pro
+          ? "Sua assinatura Pro foi restaurada! 🎉"
+          : "Não encontramos nenhuma assinatura ativa nessa conta da loja."
+      );
+    } catch (err: any) {
+      setDone(err?.response?.data?.detail ?? "Não deu pra restaurar agora. Tente de novo.");
+    } finally {
+      setRestoring(false);
     }
   }
 
@@ -94,10 +121,17 @@ export function PaywallScreen() {
         </View>
 
         <View style={{ alignItems: "center", marginBottom: spacing.lg }}>
-          <Text style={[type.display, { color: colors.textPrimary, fontSize: 40, lineHeight: 44 }]}>
-            R$ {offering?.price_brl.toFixed(2).replace(".", ",")}
-            <Text style={[type.body, { color: colors.textSecondary }]}> / {offering?.period}</Text>
-          </Text>
+          {nativePackage ? (
+            <Text style={[type.display, { color: colors.textPrimary, fontSize: 40, lineHeight: 44 }]}>
+              {nativePackage.product.priceString}
+              <Text style={[type.body, { color: colors.textSecondary }]}> / mês</Text>
+            </Text>
+          ) : (
+            <Text style={[type.display, { color: colors.textPrimary, fontSize: 40, lineHeight: 44 }]}>
+              R$ {offering?.price_brl.toFixed(2).replace(".", ",")}
+              <Text style={[type.body, { color: colors.textSecondary }]}> / {offering?.period}</Text>
+            </Text>
+          )}
           <Text style={[type.caption, { color: colors.textSecondary, marginTop: 2 }]}>Cancele quando quiser.</Text>
         </View>
 
@@ -117,6 +151,14 @@ export function PaywallScreen() {
             A assinatura é processada com segurança pela App Store / Google Play.
           </Text>
         )}
+
+        {isNativePurchasesAvailable() ? (
+          <TouchableOpacity onPress={handleRestore} disabled={restoring} style={{ alignItems: "center", marginTop: spacing.lg }}>
+            <Text style={[type.bodySmall, { color: colors.textSecondary, fontWeight: "700" }]}>
+              {restoring ? "Restaurando..." : "Restaurar compras"}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </ScrollView>
 
       <InfoDialog

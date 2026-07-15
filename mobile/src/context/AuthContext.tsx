@@ -3,6 +3,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 
 import * as authApi from "../api/auth";
 import { TOKEN_STORAGE_KEY } from "../api/client";
+import { configurePurchases } from "../api/purchases";
 
 type AuthContextValue = {
   isLoading: boolean;
@@ -62,6 +63,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     loadFromStoredToken();
   }, []);
+
+  useEffect(() => {
+    if (user) configurePurchases(String(user.id));
+  }, [user?.id]);
 
   async function persistTokenAndLoadUser(accessToken: string) {
     await AsyncStorage.setItem(TOKEN_STORAGE_KEY, accessToken);
