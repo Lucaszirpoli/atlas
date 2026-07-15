@@ -4,6 +4,7 @@ import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect } from "react";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ActiveWorkoutProvider } from "./src/context/ActiveWorkoutContext";
 import { AuthProvider } from "./src/context/AuthContext";
@@ -33,13 +34,15 @@ export default function App() {
   }
 
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <ActiveWorkoutProvider>
-          <RootNavigator />
-          <StatusBar style="auto" />
-        </ActiveWorkoutProvider>
-      </AuthProvider>
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <ActiveWorkoutProvider>
+            <RootNavigator />
+            <StatusBar style="auto" />
+          </ActiveWorkoutProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }

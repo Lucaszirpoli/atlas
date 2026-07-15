@@ -7,6 +7,12 @@ backend/*.db
 backend/*.egg-info/
 *.pyc
 
+# Artefatos de simulação / análise (não fazem parte do produto)
+backend/sim_*.py
+backend/sim_*.csv
+backend/sim_*.csv.gz
+backend/sim_*.json
+
 # Mobile (Expo / React Native)
 mobile/node_modules/
 mobile/.expo/

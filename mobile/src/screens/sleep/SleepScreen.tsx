@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
 import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { deleteSleepLog, listSleepLogs, logSleep, type SleepLog, type WakeFeeling } from "../../api/sleep";
 import { Button } from "../../components/Button";
@@ -37,6 +38,7 @@ function parseTimes(sleepHHMM: string, wakeHHMM: string): { sleepAt: Date; wakeA
 
 export function SleepScreen() {
   const { colors, type, spacing, radius } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const [logs, setLogs] = useState<SleepLog[]>([]);
   const [sleepTime, setSleepTime] = useState("23:00");
@@ -99,7 +101,7 @@ export function SleepScreen() {
   return (
     <ScrollView
       style={{ backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
+      contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl + insets.bottom }}
       showsVerticalScrollIndicator={false}
     >
       <Card accent={colors.moduleSleep} style={{ marginBottom: spacing.lg }}>
@@ -128,7 +130,7 @@ export function SleepScreen() {
         <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.md, marginBottom: spacing.xs }]}>
           Qualidade do sono
         </Text>
-        <View style={{ flexDirection: "row", gap: spacing.xs }}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
           {[1, 2, 3, 4, 5].map((n) => (
             <OptionButton key={n} compact label={"★".repeat(n)} selected={quality === n} onPress={() => setQuality(n)} />
           ))}
@@ -154,17 +156,18 @@ export function SleepScreen() {
           onChangeText={setNotes}
           placeholder="Notas (opcional): acordou de madrugada, sonhos..."
           placeholderTextColor={colors.textSecondary}
+          multiline
+          textAlignVertical="top"
           style={[
             type.bodySmall,
             {
               color: colors.textPrimary,
               backgroundColor: colors.surfaceAlt,
               borderRadius: radius.button,
-              padding: spacing.sm,
-              paddingHorizontal: spacing.md,
+              padding: spacing.md,
               marginTop: spacing.sm,
               marginBottom: spacing.md,
-              minHeight: 44,
+              minHeight: 64,
             },
           ]}
         />

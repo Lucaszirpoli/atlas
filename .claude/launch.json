@@ -12,6 +12,12 @@
       "runtimeExecutable": "cmd.exe",
       "runtimeArgs": ["/c", "cd /d mobile && npx expo start --web --port 8091"],
       "port": 8091
+    },
+    {
+      "name": "phone-frame",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8095", "--directory", "C:\\Users\\lucas\\AppData\\Local\\Temp\\claude\\C--Users-lucas-Documents-Projects-appfit\\dda04574-f35a-4707-8396-2b4a35c89dde\\scratchpad\\frame"],
+      "port": 8095
     }
   ]
 }

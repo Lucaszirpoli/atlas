@@ -105,6 +105,7 @@ export function SocialFeedScreen() {
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={{ padding: spacing.lg, paddingTop: 0, paddingBottom: spacing.xxl }}
         showsVerticalScrollIndicator={false}
+        ListHeaderComponent={<ChallengesBanner onPress={() => navigation.navigate("Challenges")} />}
         ListEmptyComponent={
           <Card>
             <View style={{ alignItems: "center", paddingVertical: spacing.lg }}>
@@ -239,16 +240,61 @@ export function SocialFeedScreen() {
   );
 }
 
+function ChallengesBanner({ onPress }: { onPress: () => void }) {
+  const { colors, type, spacing, radius } = useTheme();
+  return (
+    <Card style={{ marginBottom: spacing.md }}>
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.7}
+        style={{ flexDirection: "row", alignItems: "center" }}
+      >
+        <View
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: 16,
+            backgroundColor: colors.moduleSocial + "22",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ionicons name="trophy" size={24} color={colors.moduleSocial} />
+        </View>
+        <View style={{ flex: 1, marginLeft: spacing.sm }}>
+          <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>Desafios</Text>
+          <Text style={[type.bodySmall, { color: colors.textSecondary }]}>
+            Compita com amigos por streak, treinos e volume
+          </Text>
+        </View>
+        <View
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: radius.pill,
+            backgroundColor: colors.surfaceAlt,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+        </View>
+      </TouchableOpacity>
+    </Card>
+  );
+}
+
 function HeaderIcon({ icon, onPress }: { icon: keyof typeof Ionicons.glyphMap; onPress: () => void }) {
   const { colors } = useTheme();
   return (
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.7}
+      hitSlop={8}
       style={{
-        width: 40,
-        height: 40,
-        borderRadius: 14,
+        width: 44,
+        height: 44,
+        borderRadius: 16,
         backgroundColor: colors.surface,
         borderWidth: 1,
         borderColor: colors.border,
@@ -256,7 +302,7 @@ function HeaderIcon({ icon, onPress }: { icon: keyof typeof Ionicons.glyphMap; o
         justifyContent: "center",
       }}
     >
-      <Ionicons name={icon} size={19} color={colors.textPrimary} />
+      <Ionicons name={icon} size={22} color={colors.textPrimary} />
     </TouchableOpacity>
   );
 }

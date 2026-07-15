@@ -207,7 +207,12 @@ export function WorkoutExecutionScreen() {
               </Text>
               {/* Foto pequena (tipo ícone) ao lado do nome; toque amplia. */}
               <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: 4 }}>
-                <ExerciseThumb url={routineExercise.exercise.video_url} name={routineExercise.exercise.name} />
+                <ExerciseThumb
+                  url={routineExercise.exercise.video_url}
+                  name={routineExercise.exercise.name}
+                  muscleGroup={routineExercise.exercise.primary_muscle_group}
+                  equipment={routineExercise.exercise.equipment}
+                />
                 <Text style={[type.h2, { color: colors.textPrimary, flex: 1 }]}>{routineExercise.exercise.name}</Text>
               </View>
               <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.sm, marginBottom: spacing.sm }}>
@@ -244,7 +249,7 @@ export function WorkoutExecutionScreen() {
                             P (preparatória) → F (falha) → normal. */}
                         <TouchableOpacity
                           onPress={() => updateSet(exerciseIndex, idx, { setType: nextQuickType(row.setType) })}
-                          hitSlop={6}
+                          hitSlop={8}
                           style={{
                             width: 30,
                             height: 30,
@@ -276,6 +281,7 @@ export function WorkoutExecutionScreen() {
                         <TouchableOpacity
                           onPress={() => handleConfirmSet(exerciseIndex, idx)}
                           activeOpacity={0.8}
+                          hitSlop={6}
                           style={{
                             width: 40,
                             height: 40,
@@ -303,11 +309,12 @@ export function WorkoutExecutionScreen() {
                             <TouchableOpacity
                               key={n}
                               onPress={() => updateSet(exerciseIndex, idx, { rir: selected ? "" : String(n) })}
+                              hitSlop={4}
                               style={{
-                                width: 26,
-                                height: 26,
-                                borderRadius: 13,
-                                marginRight: 5,
+                                width: 32,
+                                height: 32,
+                                borderRadius: 16,
+                                marginRight: 8,
                                 alignItems: "center",
                                 justifyContent: "center",
                                 backgroundColor: selected ? colors.primary : colors.surfaceAlt,
@@ -432,8 +439,8 @@ function SetInput({
             color: colors.textPrimary,
             backgroundColor: colors.surfaceAlt,
             borderRadius: radius.button,
-            width: compact ? 52 : 78,
-            height: compact ? 40 : 52,
+            width: compact ? 56 : 78,
+            height: compact ? 44 : 52,
             textAlign: "center",
           },
         ]}

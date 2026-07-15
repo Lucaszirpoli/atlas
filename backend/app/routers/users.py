@@ -10,8 +10,9 @@ from app.models.user import User
 from app.models.user_profile import UserProfile
 from app.models.weight_log import WeightLog
 from app.schemas.onboarding import OnboardingRequest, OnboardingResponse
+from app.schemas.profile import ProfileCalcRead, ProfileCalcUpdate
 from app.schemas.user import HandleAvailabilityResponse, UserRead
-from app.services import user_service
+from app.services import goal_service, user_service
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -28,6 +29,74 @@ def check_handle_availability(handle: str, db: Session = Depends(get_db)) -> Han
 @router.get("/me", response_model=UserRead)
 def read_current_user(current_user: User = Depends(get_current_user)) -> User:
     return current_user
+
+
+def _require_profile(current_user: User) -> UserProfile:
+    if current_user.profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Onboarding precisa ser concluído antes de editar o perfil",
+        )
+    return current_user.profile
+
+
+@router.get("/profile/calc", response_model=ProfileCalcRead)
+def read_profile_calc(
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> ProfileCalcRead:
+    profile = _require_profile(current_user)
+    return ProfileCalcRead(
+        biological_sex=profile.biological_sex,
+        age=profile.age,
+        height_cm=profile.height_cm,
+        activity_level=profile.activity_level,
+        goal=profile.goal,
+        current_weight_kg=goal_service.get_latest_weight_kg(db, current_user.id),
+    )
+
+
+@router.patch("/profile/calc", response_model=ProfileCalcRead)
+def update_profile_calc(
+    payload: ProfileCalcUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ProfileCalcRead:
+    profile = _require_profile(current_user)
+
+    if payload.biological_sex is not None:
+        profile.biological_sex = payload.biological_sex
+    if payload.age is not None:
+        profile.age = payload.age
+    if payload.height_cm is not None:
+        profile.height_cm = payload.height_cm
+    if payload.activity_level is not None:
+        profile.activity_level = payload.activity_level
+    if payload.goal is not None:
+        profile.goal = payload.goal
+
+    # Peso é histórico append-only: um novo valor vira um novo registro, nunca
+    # sobrescreve o anterior (base dos gráficos de evolução).
+    if payload.current_weight_kg is not None:
+        db.add(
+            WeightLog(
+                user_id=current_user.id,
+                weight_kg=payload.current_weight_kg,
+                recorded_at=datetime.now(timezone.utc),
+            )
+        )
+
+    db.add(profile)
+    db.commit()
+    db.refresh(profile)
+
+    return ProfileCalcRead(
+        biological_sex=profile.biological_sex,
+        age=profile.age,
+        height_cm=profile.height_cm,
+        activity_level=profile.activity_level,
+        goal=profile.goal,
+        current_weight_kg=goal_service.get_latest_weight_kg(db, current_user.id),
+    )
 
 
 @router.post("/onboarding", response_model=OnboardingResponse)

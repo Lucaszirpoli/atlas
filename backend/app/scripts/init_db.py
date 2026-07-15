@@ -49,7 +49,46 @@ def run() -> None:
     else:
         print(f"Exercícios já carregados ({exercise_count}) — pulando seed.")
 
+    _wire_local_exercise_images()
+
     print("init_db concluído.")
+
+
+def _wire_local_exercise_images() -> None:
+    """Liga cada exercício curado ao seu GIF local (baixado da ExerciseDB e
+    versionado em app/static/exercise_images/{id}.gif) usando uma URL RELATIVA
+    ("/static/..."). O app mobile prefixa o endereço do backend na hora de
+    exibir — assim as imagens funcionam em qualquer host (dev, Railway, etc.)
+    sem depender de um endereço fixo gravado no banco. Idempotente.
+    """
+    from pathlib import Path
+
+    from sqlalchemy import select
+
+    images_dir = Path(__file__).parent.parent / "static" / "exercise_images"
+    if not images_dir.exists():
+        return
+
+    db = SessionLocal()
+    try:
+        wired = 0
+        for gif in images_dir.glob("*.gif"):
+            try:
+                ex_id = int(gif.stem)
+            except ValueError:
+                continue
+            ex = db.execute(select(Exercise).where(Exercise.id == ex_id)).scalar_one_or_none()
+            if ex is None:
+                continue
+            rel = f"/static/exercise_images/{ex_id}.gif"
+            if ex.video_url != rel:
+                ex.video_url = rel
+                wired += 1
+        db.commit()
+        if wired:
+            print(f"Imagens locais de exercício ligadas: {wired}.")
+    finally:
+        db.close()
 
 
 if __name__ == "__main__":

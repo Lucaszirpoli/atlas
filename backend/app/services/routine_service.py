@@ -4,12 +4,12 @@ from sqlalchemy.orm import Session
 from app.models.routine import Routine
 from app.models.user import Plan
 
-# Rotinas ativas são ILIMITADAS em ambos os planos (decisão do produto,
-# 2026-07-08): o produto manual é 100% livre e a monetização fica só na IA
-# (Pro). `None` = sem teto. Mantido como dict pra compat com quem lê daqui.
+# Limite de rotinas ativas por plano — regra de negócio da Parte 4 da
+# especificação (não simplificar sem confirmar): 3 no Free, 7 no Pro.
+# Rotinas arquivadas não contam pro limite.
 ACTIVE_ROUTINE_LIMITS: dict[Plan, int | None] = {
-    Plan.FREE: None,
-    Plan.PRO: None,
+    Plan.FREE: 3,
+    Plan.PRO: 7,
 }
 
 

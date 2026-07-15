@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRoute } from "@react-navigation/native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   getNutritionHistory,
@@ -241,6 +242,7 @@ function buildInsights(args: {
 export function EvolutionScreen() {
   const { colors, type, spacing } = useTheme();
   const route = useRoute<any>();
+  const insets = useSafeAreaInsets();
 
   const [active, setActive] = useState<Set<MetricKey>>(
     () => new Set<MetricKey>(route.params?.initialMetrics ?? ["peso"])
@@ -396,7 +398,7 @@ export function EvolutionScreen() {
   return (
     <ScrollView
       style={{ backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
+      contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl + insets.bottom }}
       showsVerticalScrollIndicator={false}
     >
       {/* Seletor múltiplo — liga quantas métricas quiser, todas aparecem
@@ -629,18 +631,18 @@ export function EvolutionScreen() {
             value={newWeight}
             onChangeText={(v) => setNewWeight(v.replace(/[^0-9.,]/g, ""))}
             keyboardType="decimal-pad"
-            placeholder="Novo peso (kg)"
+            placeholder="Peso (kg)"
             placeholderTextColor={colors.textSecondary}
             style={[
               type.body,
               {
                 flex: 1,
+                minWidth: 0,
                 color: colors.textPrimary,
                 backgroundColor: colors.surfaceAlt,
                 borderRadius: 14,
                 height: 48,
                 paddingHorizontal: spacing.md,
-                textAlign: "center",
               },
             ]}
           />

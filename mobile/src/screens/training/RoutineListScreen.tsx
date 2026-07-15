@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import React, { useCallback, useState } from "react";
 import { Alert, FlatList, Text, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   archiveRoutine,
@@ -22,6 +23,7 @@ export function RoutineListScreen() {
   const { colors, type, spacing, radius } = useTheme();
   const navigation = useNavigation<any>();
   const { startWorkout } = useActiveWorkout();
+  const insets = useSafeAreaInsets();
 
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [optionsRoutine, setOptionsRoutine] = useState<Routine | null>(null);
@@ -85,7 +87,7 @@ export function RoutineListScreen() {
     : [];
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.lg }}>
+    <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.lg, paddingBottom: spacing.lg + insets.bottom }}>
       {/* Header interno */}
       <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.md }}>
         <View
@@ -141,7 +143,14 @@ export function RoutineListScreen() {
           const totalSets = item.exercises.reduce((s, e) => s + e.target_sets, 0);
           return (
             <Card accent={colors.moduleTraining} style={{ marginBottom: spacing.md }}>
-              <TouchableOpacity onLongPress={() => setOptionsRoutine(item)} activeOpacity={0.85}>
+              {/* Toque no corpo do card abre a rotina pra ver/editar os
+                  exercícios (não inicia o treino). O botão embaixo é que
+                  inicia. Toque longo abre as opções (editar/duplicar/etc). */}
+              <TouchableOpacity
+                onPress={() => navigation.navigate("RoutineBuilder", { routineId: item.id })}
+                onLongPress={() => setOptionsRoutine(item)}
+                activeOpacity={0.85}
+              >
                 <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.xs }}>
                   <Text style={[type.h2, { color: colors.textPrimary, flex: 1 }]}>{item.name}</Text>
                   <TouchableOpacity onPress={() => setOptionsRoutine(item)} hitSlop={10}>
@@ -153,7 +162,7 @@ export function RoutineListScreen() {
                   <MetaInfo icon="repeat" text={`${totalSets} séries`} />
                 </View>
               </TouchableOpacity>
-              <Button title="Treinar agora" variant="secondary" icon="🏋️" onPress={() => handleStart(item)} />
+              <Button title="Treinar agora" variant="secondary" onPress={() => handleStart(item)} />
             </Card>
           );
         }}

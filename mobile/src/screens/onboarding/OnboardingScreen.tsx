@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { submitOnboarding, type OnboardingPayload } from "../../api/onboarding";
 import { Button } from "../../components/Button";
@@ -44,6 +45,7 @@ const TOTAL_STEPS = 7;
 export function OnboardingScreen() {
   const { colors, type, spacing } = useTheme();
   const { refreshUser } = useAuth();
+  const insets = useSafeAreaInsets();
 
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>(initialForm);
@@ -228,7 +230,7 @@ export function OnboardingScreen() {
         </View>
       </View>
       <ScrollView contentContainerStyle={{ padding: spacing.lg, flexGrow: 1 }}>{renderStep()}</ScrollView>
-      <View style={{ flexDirection: "row", gap: spacing.sm, padding: spacing.lg }}>
+      <View style={{ flexDirection: "row", gap: spacing.sm, padding: spacing.lg, paddingBottom: spacing.lg + insets.bottom }}>
         {step > 0 ? (
           <View style={{ flex: 1 }}>
             <Button title="Voltar" variant="ghost" onPress={() => setStep((s) => s - 1)} />

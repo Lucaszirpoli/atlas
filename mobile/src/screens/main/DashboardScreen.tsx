@@ -189,6 +189,62 @@ export function DashboardScreen() {
           </View>
         </TouchableOpacity>
 
+        {/* Social em destaque — antes era só um ícone sem legenda no topo,
+            difícil de achar. Agora é uma faixa rotulada de 1 toque que leva
+            aos amigos, feed e desafios. */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate("Social")}
+          style={{ width: contentW, marginBottom: spacing.md }}
+        >
+          <View
+            style={{
+              backgroundColor: colors.surface,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 14,
+              paddingVertical: 10,
+              paddingHorizontal: spacing.md,
+              flexDirection: "row",
+              alignItems: "center",
+            }}
+          >
+            <View
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 11,
+                backgroundColor: colors.moduleSocial + "22",
+                alignItems: "center",
+                justifyContent: "center",
+                marginRight: spacing.sm,
+              }}
+            >
+              <Ionicons name="people" size={19} color={colors.moduleSocial} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>Social</Text>
+              <Text style={[type.caption, { color: colors.textSecondary }]}>Amigos, feed e desafios</Text>
+            </View>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 4,
+                backgroundColor: colors.moduleSocial + "18",
+                borderRadius: 999,
+                paddingVertical: 4,
+                paddingHorizontal: 10,
+              }}
+            >
+              <Ionicons name="trophy" size={13} color={colors.moduleSocial} />
+              <Text style={[type.caption, { color: colors.moduleSocial, fontWeight: "800", fontSize: 11 }]}>
+                Desafios
+              </Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+
         {/* Grid 2×2 — os quadrados crescem pra preencher a altura da tela
             (sem sobrar espaço vazio embaixo no celular). minHeight garante o
             tamanho mínimo quadrado em telas curtas (aí a tela rola). */}

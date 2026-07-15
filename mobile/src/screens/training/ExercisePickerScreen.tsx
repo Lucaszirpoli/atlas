@@ -3,9 +3,12 @@ import { useNavigation } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
 import { FlatList, Image, Pressable, Text, TextInput, View } from "react-native";
 
+import { resolveMediaUrl } from "../../api/client";
 import { listExercises, type Exercise, type MuscleGroup } from "../../api/exercises";
+import { ExerciseFigure } from "../../components/ExerciseFigure";
 import { OptionButton } from "../../components/OptionButton";
 import { useTheme } from "../../theme/ThemeProvider";
+import { classifyMovementPattern } from "../../utils/exercisePattern";
 import { exercisePickBus } from "./exercisePickBus";
 
 const MUSCLE_LABELS: Partial<Record<MuscleGroup, string>> = {
@@ -106,7 +109,7 @@ export function ExercisePickerScreen() {
           >
             {item.video_url ? (
               <Image
-                source={{ uri: item.video_url }}
+                source={{ uri: resolveMediaUrl(item.video_url) ?? undefined }}
                 style={{ width: 46, height: 46, borderRadius: 14, marginRight: spacing.md, backgroundColor: colors.surfaceAlt }}
               />
             ) : (
@@ -121,7 +124,11 @@ export function ExercisePickerScreen() {
                   marginRight: spacing.md,
                 }}
               >
-                <Ionicons name="barbell" size={19} color={colors.secondary} />
+                <ExerciseFigure
+                  pattern={classifyMovementPattern(item.name, item.primary_muscle_group, item.equipment)}
+                  size={46}
+                  animated={false}
+                />
               </View>
             )}
             <View style={{ flex: 1 }}>

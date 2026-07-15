@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   applyDietTemplate,
@@ -29,6 +30,7 @@ const GOAL_LABELS: Record<string, string> = {
 export function DietTemplatesScreen() {
   const { colors, type, spacing, radius } = useTheme();
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
 
   const [context, setContext] = useState<DietContext | null>(null);
   const [templates, setTemplates] = useState<DietTemplateSummary[]>([]);
@@ -103,7 +105,7 @@ export function DietTemplatesScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl + insets.bottom }} showsVerticalScrollIndicator={false}>
         {/* Nota breve: as porções já vêm ajustadas à meta calórica (ver kcal em cada card abaixo). */}
         <TouchableOpacity
           activeOpacity={0.7}

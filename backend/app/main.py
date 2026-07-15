@@ -1,5 +1,8 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.routers import (
@@ -68,6 +71,12 @@ app.include_router(challenges.router)
 app.include_router(sleep.router)
 app.include_router(workout_insights.router)
 app.include_router(evolution.router)
+
+# GIFs de exercício baixados da ExerciseDB (ver scripts/backfill_exercise_images.py)
+# ficam aqui até migrarmos pra um bucket S3-compatible (Cloudflare R2) em produção.
+_static_dir = Path(__file__).parent / "static"
+_static_dir.mkdir(exist_ok=True)
+app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
 
 @app.get("/health")
