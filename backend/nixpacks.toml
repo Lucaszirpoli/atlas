@@ -1,0 +1,8 @@
+# Config explícita de build/start pro Railway (Nixpacks) — evita a detecção
+# automática falhar silenciosamente em projetos com só pyproject.toml (visto
+# em produção: build "passava" mas o processo subia sem sqlalchemy instalado).
+[phases.install]
+cmds = ["pip install --no-cache-dir -r requirements.txt"]
+
+[start]
+cmd = "python -m app.scripts.init_db && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
