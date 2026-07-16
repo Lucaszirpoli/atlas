@@ -64,6 +64,66 @@ def _set_plan(db: Session, user: User, plan: Plan) -> None:
     db.commit()
 
 
+class SyncRequest(BaseModel):
+    # Status do entitlement lido pelo SDK do RevenueCat no app (a compra é
+    # verificada pela loja). Usado só como FALLBACK se a verificação no servidor
+    # não rolar (sem chave / erro de rede).
+    is_pro: bool | None = None
+
+
+def _revenuecat_entitlement_active(app_user_id: int) -> bool | None:
+    """Consulta a API do RevenueCat pra saber se o usuário tem o entitlement
+    'pro' ativo. Autoritativo. Devolve None se não deu pra verificar (sem chave,
+    erro de rede, permissão) — aí o chamador cai no fallback do cliente."""
+    key = settings.revenuecat_api_key
+    if not key:
+        return None
+    import json
+    import urllib.request
+    from datetime import datetime, timezone
+
+    url = f"https://api.revenuecat.com/v1/subscribers/{app_user_id}"
+    req = urllib.request.Request(
+        url, headers={"Authorization": f"Bearer {key}", "Accept": "application/json"}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
+    except Exception:
+        return None
+
+    entitlements = (data.get("subscriber", {}) or {}).get("entitlements", {}) or {}
+    ent = entitlements.get("pro")
+    if not ent:
+        return False
+    expires = ent.get("expires_date")
+    if expires is None:  # vitalício / sem expiração
+        return True
+    try:
+        dt = datetime.fromisoformat(str(expires).replace("Z", "+00:00"))
+        return dt > datetime.now(timezone.utc)
+    except Exception:
+        return True  # tem o entitlement; na dúvida, considera ativo
+
+
+@router.post("/sync", response_model=PlanStatus)
+def sync_plan(
+    payload: SyncRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PlanStatus:
+    """Sincroniza o plano do usuário com o RevenueCat, SEM depender do webhook.
+    Resolve o caso de quem comprou o Pro antes do webhook existir (ou quando o
+    webhook falhou): o app chama isto após comprar/restaurar e ao abrir. Só
+    LIGA o Pro (nunca rebaixa por aqui — rebaixamento vem só do webhook), então
+    uma verificação que falha nunca tira o Pro de ninguém."""
+    verified = _revenuecat_entitlement_active(current_user.id)
+    is_pro = verified if verified is not None else bool(payload.is_pro)
+    if is_pro and current_user.plan != Plan.PRO:
+        _set_plan(db, current_user, Plan.PRO)
+    return PlanStatus(plan=current_user.plan.value, is_pro=current_user.plan == Plan.PRO)
+
+
 @router.post("/dev-activate", response_model=PlanStatus)
 def dev_activate(
     current_user: User = Depends(get_current_user),

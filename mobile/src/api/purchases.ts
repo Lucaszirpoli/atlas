@@ -46,3 +46,16 @@ export async function restore(): Promise<CustomerInfo> {
 export function isEntitlementActive(info: CustomerInfo): boolean {
   return info.entitlements.active[PRO_ENTITLEMENT_ID] != null;
 }
+
+/** Lê o entitlement 'pro' atual da loja (sem forçar compra). null se o SDK
+ * nativo não está disponível ou falhou. Usado na inicialização pra sincronizar
+ * quem já é Pro. */
+export async function getEntitlementActive(): Promise<boolean | null> {
+  if (!isNativePurchasesAvailable()) return null;
+  try {
+    const info = await Purchases.getCustomerInfo();
+    return isEntitlementActive(info);
+  } catch {
+    return null;
+  }
+}

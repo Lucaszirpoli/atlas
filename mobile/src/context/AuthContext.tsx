@@ -2,8 +2,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useContext, useEffect, useState } from "react";
 
 import * as authApi from "../api/auth";
+import { syncPlan } from "../api/billing";
 import { TOKEN_STORAGE_KEY } from "../api/client";
-import { configurePurchases } from "../api/purchases";
+import { configurePurchases, getEntitlementActive } from "../api/purchases";
 
 type AuthContextValue = {
   isLoading: boolean;
@@ -65,7 +66,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (user) configurePurchases(String(user.id));
+    if (!user) return;
+    configurePurchases(String(user.id));
+    // Se a pessoa já é Pro na loja mas o backend ainda mostra Free (ex: comprou
+    // antes do webhook existir, ou o webhook falhou), sincroniza ao abrir o app
+    // e recarrega o usuário pra refletir o Pro na hora.
+    if (user.plan !== "pro") {
+      getEntitlementActive().then((active) => {
+        if (active) {
+          syncPlan(true)
+            .then(() => refreshUser())
+            .catch(() => {});
+        }
+      });
+    }
   }, [user?.id]);
 
   async function persistTokenAndLoadUser(accessToken: string) {

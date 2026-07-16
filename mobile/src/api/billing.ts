@@ -23,7 +23,11 @@ export async function getOffering(): Promise<Offering> {
 export async function subscribePro(pkg?: PurchasesPackage): Promise<{ plan: string; is_pro: boolean }> {
   if (isNativePurchasesAvailable() && pkg) {
     const info = await purchase(pkg);
-    return { plan: isEntitlementActive(info) ? "pro" : "free", is_pro: isEntitlementActive(info) };
+    const active = isEntitlementActive(info);
+    // Sincroniza o backend na hora (não depende do webhook) — o servidor
+    // confirma o entitlement no RevenueCat e liga o Pro.
+    await syncPlan(active).catch(() => {});
+    return { plan: active ? "pro" : "free", is_pro: active };
   }
   const { data } = await api.post("/billing/dev-activate");
   return data;
@@ -32,7 +36,18 @@ export async function subscribePro(pkg?: PurchasesPackage): Promise<{ plan: stri
 /** Restaura compras já feitas (obrigatório pela Apple para apps com IAP). */
 export async function restorePro(): Promise<{ plan: string; is_pro: boolean }> {
   const info = await restore();
-  return { plan: isEntitlementActive(info) ? "pro" : "free", is_pro: isEntitlementActive(info) };
+  const active = isEntitlementActive(info);
+  await syncPlan(active).catch(() => {});
+  return { plan: active ? "pro" : "free", is_pro: active };
+}
+
+/** Pede ao backend pra confirmar o Pro direto no RevenueCat e ligar o plano.
+ * Resolve quem comprou antes do webhook existir / quando o webhook falhou.
+ * `isPro` é o que o SDK leu no cliente (fallback se o servidor não verificar).
+ * Só LIGA o Pro — nunca rebaixa. */
+export async function syncPlan(isPro?: boolean): Promise<{ plan: string; is_pro: boolean }> {
+  const { data } = await api.post("/billing/sync", { is_pro: isPro });
+  return data;
 }
 
 export async function cancelPro(): Promise<{ plan: string; is_pro: boolean }> {
