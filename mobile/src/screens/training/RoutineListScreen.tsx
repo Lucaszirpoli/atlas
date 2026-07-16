@@ -38,7 +38,13 @@ export function RoutineListScreen() {
   async function handleStart(routine: Routine) {
     try {
       const { session, prefill } = await startWorkoutSession(routine.id);
-      startWorkout({ sessionId: session.id, routineId: routine.id, routineName: routine.name, prefill });
+      startWorkout({
+        sessionId: session.id,
+        routineId: routine.id,
+        routineName: routine.name,
+        prefill,
+        startedAt: new Date(session.started_at).getTime(),
+      });
       navigation.navigate("WorkoutExecution", {
         sessionId: session.id,
         routineId: routine.id,
@@ -110,44 +116,51 @@ export function RoutineListScreen() {
         contentContainerStyle={{ paddingBottom: spacing.lg }}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
-          // Entrada compacta pro gerador por metodologia (não é IA — é montagem
-          // fiel ao método consagrado, por isso o texto não fala em "IA").
+          // Porta de entrada da montagem de treino: dentro tem os 10 métodos
+          // consagrados (grátis) e a criação por IA conversacional (Pro).
           <TouchableOpacity
             activeOpacity={0.85}
             onPress={() => navigation.navigate("AiHub")}
             style={{
               flexDirection: "row",
               alignItems: "center",
-              backgroundColor: colors.surface,
-              borderWidth: 1,
-              borderColor: colors.border,
+              backgroundColor: colors.secondary,
               borderRadius: radius.card,
-              paddingVertical: spacing.sm,
-              paddingHorizontal: spacing.md,
+              padding: spacing.md,
               marginBottom: spacing.md,
             }}
           >
-            <Ionicons name="book-outline" size={18} color={colors.secondary} />
-            <View style={{ flex: 1, marginLeft: spacing.sm }}>
-              <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "700" }]}>
-                Montar treino por metodologia
-              </Text>
-              <Text style={[type.caption, { color: colors.textSecondary }]} numberOfLines={1}>
-                Mentzer, FST-7, 5/3/1… fiel ao método
+            <View
+              style={{
+                width: 46,
+                height: 46,
+                borderRadius: 15,
+                backgroundColor: "rgba(255,255,255,0.22)",
+                alignItems: "center",
+                justifyContent: "center",
+                marginRight: spacing.md,
+              }}
+            >
+              <Ionicons name="sparkles" size={24} color="#FFFFFF" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[type.h2, { color: "#FFFFFF", fontSize: 16 }]}>Monte um treino pro seu perfil</Text>
+              <Text style={[type.caption, { color: "rgba(255,255,255,0.9)" }]} numberOfLines={2}>
+                Métodos consagrados ou um treino feito pela IA pra você
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+            <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
           </TouchableOpacity>
         }
         renderItem={({ item }) => {
           const totalSets = item.exercises.reduce((s, e) => s + e.target_sets, 0);
           return (
             <Card accent={colors.moduleTraining} style={{ marginBottom: spacing.md }}>
-              {/* Toque no corpo do card abre a rotina pra ver/editar os
-                  exercícios (não inicia o treino). O botão embaixo é que
-                  inicia. Toque longo abre as opções (editar/duplicar/etc). */}
+              {/* Toque no corpo do card abre a PRÉVIA do treino (exercícios,
+                  séries e pesos da última vez) sem iniciar. O botão embaixo
+                  inicia de verdade. Editar/duplicar/etc ficam no menu "...". */}
               <TouchableOpacity
-                onPress={() => navigation.navigate("RoutineBuilder", { routineId: item.id })}
+                onPress={() => navigation.navigate("WorkoutPreview", { routineId: item.id })}
                 onLongPress={() => setOptionsRoutine(item)}
                 activeOpacity={0.85}
               >

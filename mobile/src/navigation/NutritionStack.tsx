@@ -35,7 +35,7 @@ export function NutritionStack() {
       <Stack.Screen name="AddFood" component={AddFoodScreen} options={{ title: "Adicionar alimento" }} />
       <Stack.Screen name="QuickLog" component={QuickLogScreen} options={{ title: "Registrar por texto" }} />
       <Stack.Screen name="DietTemplates" component={DietTemplatesScreen} options={{ title: "Dietas prontas" }} />
-      <Stack.Screen name="AiDiet" component={AiDietScreen} options={{ title: "Dieta com IA" }} />
+      <Stack.Screen name="AiDiet" component={AiDietScreen} options={{ title: "Montar dieta" }} />
       <Stack.Screen
         name="BarcodeScanner"
         component={BarcodeScannerScreen}

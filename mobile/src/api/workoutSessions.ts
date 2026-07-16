@@ -70,6 +70,14 @@ export async function startWorkoutSession(
   return data;
 }
 
+/** Prévia do treino (pesos da última vez) SEM iniciar a sessão. */
+export async function getWorkoutPreview(routineId: number): Promise<ExercisePrefill[]> {
+  const { data } = await api.get<ExercisePrefill[]>("/workout-sessions/preview", {
+    params: { routine_id: routineId },
+  });
+  return data;
+}
+
 export async function logSet(
   sessionId: number,
   payload: {
@@ -87,8 +95,25 @@ export async function logSet(
   return data;
 }
 
-export async function completeWorkoutSession(sessionId: number): Promise<WorkoutSessionSummary> {
-  const { data } = await api.post<WorkoutSessionSummary>(`/workout-sessions/${sessionId}/complete`);
+export async function completeWorkoutSession(
+  sessionId: number,
+  durationMinutes?: number
+): Promise<WorkoutSessionSummary> {
+  const { data } = await api.post<WorkoutSessionSummary>(
+    `/workout-sessions/${sessionId}/complete`,
+    durationMinutes != null ? { duration_minutes: durationMinutes } : {}
+  );
+  return data;
+}
+
+/** Descarta a sessão (não vira histórico) — pra quando iniciou por engano. */
+export async function discardWorkoutSession(sessionId: number): Promise<void> {
+  await api.delete(`/workout-sessions/${sessionId}`);
+}
+
+/** Duração média (min) dos treinos concluídos. avg_minutes=null se pouco histórico. */
+export async function getAvgWorkoutDuration(): Promise<{ avg_minutes: number | null; count: number }> {
+  const { data } = await api.get("/workout-sessions/avg-duration");
   return data;
 }
 

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useHeaderHeight } from "@react-navigation/elements";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -44,8 +44,10 @@ const SUGGESTIONS = [
 export function AssistantScreen() {
   const { colors, type, spacing, radius } = useTheme();
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
   const headerHeight = useHeaderHeight();
   const scrollRef = useRef<ScrollView>(null);
+  const autoSentRef = useRef(false);
 
   const [messages, setMessages] = useState<Msg[]>([GREETING]);
   const [input, setInput] = useState("");
@@ -68,6 +70,18 @@ export function AssistantScreen() {
       })
       .catch(() => {});
   }, []);
+
+  // Quando aberto por um botão que já traz um pedido pronto (ex: "criar treino
+  // com IA" / "gerar minha dieta personalizada"), envia esse pedido sozinho pra
+  // a IA já começar perguntando o que precisa. Só uma vez.
+  useEffect(() => {
+    const autoSend: string | undefined = route.params?.autoSend;
+    if (autoSend && !autoSentRef.current) {
+      autoSentRef.current = true;
+      send(autoSend);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route.params?.autoSend]);
 
   async function send(text: string) {
     const q = text.trim();

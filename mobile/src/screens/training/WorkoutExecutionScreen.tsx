@@ -6,12 +6,16 @@ import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "reac
 import { getRoutine, type Routine } from "../../api/routines";
 import {
   completeWorkoutSession,
+  discardWorkoutSession,
+  getAvgWorkoutDuration,
   logSet,
   type ExercisePrefill,
   type SetType,
 } from "../../api/workoutSessions";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { DurationCheckModal } from "../../components/DurationCheckModal";
 import { ExerciseThumb } from "../../components/ExerciseThumb";
 import { HelpDot } from "../../components/HelpDot";
 import { OptionButton } from "../../components/OptionButton";
@@ -68,7 +72,7 @@ type SetRow = {
 export function WorkoutExecutionScreen() {
   const { colors, type, spacing, radius } = useTheme();
   const navigation = useNavigation<any>();
-  const { endWorkout, setOnWorkoutScreen } = useActiveWorkout();
+  const { active, endWorkout, setOnWorkoutScreen } = useActiveWorkout();
   const route = useRoute<any>();
 
   // Enquanto esta tela está em foco, o indicador flutuante some (a pessoa já
@@ -91,6 +95,10 @@ export function WorkoutExecutionScreen() {
   const [setsByExercise, setSetsByExercise] = useState<SetRow[][]>([]);
   const [restSeconds, setRestSeconds] = useState<number | null>(null);
   const [isCompleting, setIsCompleting] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  // Quando o treino durou muito mais que a média, guarda os minutos medidos pra
+  // a pessoa confirmar/corrigir antes de salvar.
+  const [durationCheck, setDurationCheck] = useState<number | null>(null);
 
   useEffect(() => {
     getRoutine(routineId).then((r) => {
@@ -167,15 +175,47 @@ export function WorkoutExecutionScreen() {
     );
   }
 
+  // Ao concluir: se o treino durou +30% acima da média normal da pessoa (ex:
+  // deixou minimizado e esqueceu), abre a checagem pra confirmar/corrigir o
+  // tempo antes de salvar. Senão, salva direto.
   async function handleFinishWorkout() {
+    const startedAt = active?.startedAt;
+    if (startedAt) {
+      const elapsedMin = (Date.now() - startedAt) / 60000;
+      try {
+        const { avg_minutes } = await getAvgWorkoutDuration();
+        if (avg_minutes != null && elapsedMin > avg_minutes * 1.3) {
+          setDurationCheck(Math.round(elapsedMin));
+          return;
+        }
+      } catch {
+        // sem média disponível — segue e salva normal
+      }
+    }
+    await finishWith(undefined);
+  }
+
+  async function finishWith(durationMinutes?: number) {
     setIsCompleting(true);
     try {
-      const summary = await completeWorkoutSession(sessionId);
+      const summary = await completeWorkoutSession(sessionId, durationMinutes);
       endWorkout(); // não está mais "em andamento" — some o indicador flutuante
+      setDurationCheck(null);
       navigation.replace("WorkoutSummary", { summary });
     } finally {
       setIsCompleting(false);
     }
+  }
+
+  async function handleDiscard() {
+    setConfirmDiscard(false);
+    try {
+      await discardWorkoutSession(sessionId);
+    } catch {
+      // mesmo se falhar no servidor, tira o treino da tela
+    }
+    endWorkout();
+    navigation.navigate("RoutineList");
   }
 
   return (
@@ -392,12 +432,37 @@ export function WorkoutExecutionScreen() {
           );
         })}
 
-        <Button title="Concluir treino" variant="secondary" onPress={handleFinishWorkout} loading={isCompleting} />
+        <View style={{ flexDirection: "row", gap: spacing.sm }}>
+          <View style={{ flex: 1 }}>
+            <Button title="Descartar" variant="ghost" onPress={() => setConfirmDiscard(true)} />
+          </View>
+          <View style={{ flex: 2 }}>
+            <Button title="Concluir treino" variant="secondary" onPress={handleFinishWorkout} loading={isCompleting} />
+          </View>
+        </View>
       </ScrollView>
 
       {restSeconds !== null ? (
         <RestTimerOverlay seconds={restSeconds} onFinish={() => setRestSeconds(null)} onSkip={() => setRestSeconds(null)} />
       ) : null}
+
+      <ConfirmDialog
+        visible={confirmDiscard}
+        onClose={() => setConfirmDiscard(false)}
+        title="Descartar treino"
+        message="Isso apaga este treino e o que você registrou nele. Não vira histórico. Tem certeza?"
+        confirmLabel="Descartar"
+        destructive
+        onConfirm={handleDiscard}
+      />
+
+      <DurationCheckModal
+        visible={durationCheck !== null}
+        measuredMinutes={durationCheck ?? 0}
+        onConfirm={(minutes) => finishWith(minutes)}
+        onKeepMeasured={() => finishWith(durationCheck ?? undefined)}
+        saving={isCompleting}
+      />
     </View>
   );
 }

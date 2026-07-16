@@ -11,6 +11,9 @@ export type ActiveWorkout = {
    * "anteriores" de cada série). As séries já concluídas ficam salvas no
    * backend; isto é só pra remontar a tela ao voltar pelo indicador. */
   prefill: unknown;
+  /** Início da sessão (ms epoch, do started_at do backend) — pra medir a
+   * duração real e detectar um treino anormalmente longo ao concluir. */
+  startedAt?: number;
 };
 
 type Value = {
