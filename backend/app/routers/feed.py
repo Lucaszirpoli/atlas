@@ -75,6 +75,27 @@ def share_progress_photo(
     return _serialize_post(db, post, current_user.id)
 
 
+@router.delete("/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_post(
+    post_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """Apaga um post do feed. SÓ o autor pode apagar o próprio post (postar um
+    treino é automático quando a privacidade permite, então a pessoa precisa
+    poder tirar do ar o que não queria mostrar). Leva junto reações e
+    comentários daquele post; não mexe no treino/refeição em si."""
+    post = db.get(FeedPost, post_id)
+    if post is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post não encontrado")
+    if post.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Você só pode apagar os seus próprios posts."
+        )
+    db.delete(post)
+    db.commit()
+
+
 @router.post("/{post_id}/react", status_code=status.HTTP_204_NO_CONTENT)
 def react_to_post(
     post_id: int,

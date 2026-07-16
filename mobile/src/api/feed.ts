@@ -54,3 +54,8 @@ export async function commentOnPost(postId: number, content: string): Promise<Fe
   const { data } = await api.post<FeedComment>(`/feed/${postId}/comments`, { content });
   return data;
 }
+
+/** Apaga um post do feed. Só o autor consegue (o backend valida). */
+export async function deleteFeedPost(postId: number): Promise<void> {
+  await api.delete(`/feed/${postId}`);
+}

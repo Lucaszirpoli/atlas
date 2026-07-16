@@ -21,6 +21,18 @@ from app.models.weight_log import WeightLog
 MAX_TOOL_ITERATIONS = 14
 HISTORY_MESSAGE_LIMIT = 20
 
+# Cache de prompt da Anthropic. As ferramentas + o system prompt fixo são
+# ~6.9k tokens IDÊNTICOS em toda chamada, e o loop abaixo repete a chamada até
+# MAX_TOOL_ITERATIONS vezes por mensagem do usuário — sem cache, um pedido que
+# faz 5 buscas paga ~34k tokens só de texto repetido. Marcado o breakpoint, a
+# releitura custa ~10% do preço de entrada.
+#
+# É casamento de PREFIXO: qualquer byte diferente antes do breakpoint invalida
+# tudo dali pra frente. A ordem de renderização é tools -> system -> messages,
+# então o breakpoint no bloco fixo do system cobre também as ferramentas, e o
+# bloco fixo é igual pra TODOS os usuários (o cache é compartilhado entre eles).
+CACHE_BREAKPOINT = {"type": "ephemeral"}
+
 
 def _load_history_as_messages(db: Session, user_id: int) -> list[dict]:
     rows = list(
@@ -115,16 +127,26 @@ def run_chat_turn(
     messages = _load_history_as_messages(db, user_id)
     messages.append({"role": "user", "content": user_message})
 
-    system_prompt = ASSISTANT_SYSTEM_PROMPT
+    # O system vai em DOIS blocos por causa do cache (ver CACHE_BREAKPOINT):
+    # o texto fixo primeiro, o que varia por pessoa/tela depois. Se o perfil
+    # fosse concatenado no fim do prompt como antes, cada peso novo registrado
+    # mudaria os bytes do bloco inteiro e o cache nunca pegaria.
+    system_blocks: list[dict] = [
+        {"type": "text", "text": ASSISTANT_SYSTEM_PROMPT, "cache_control": CACHE_BREAKPOINT}
+    ]
+    volatil: list[str] = []
     profile_ctx = _profile_context(db, user_id)
     if profile_ctx:
-        system_prompt += f"\n\n## Perfil já cadastrado da pessoa\n{profile_ctx}"
+        volatil.append(f"## Perfil já cadastrado da pessoa\n{profile_ctx}")
     if context_module:
-        system_prompt += f"\n\n## Contexto atual\nA pessoa abriu o chat a partir da tela de {context_module}."
+        volatil.append(f"## Contexto atual\nA pessoa abriu o chat a partir da tela de {context_module}.")
+    if volatil:
+        system_blocks.append({"type": "text", "text": "\n\n".join(volatil)})
 
     client = get_client()
     proposed_action: dict | None = None
     reply_text = ""
+    cached_block: dict | None = None  # breakpoint móvel no fim das mensagens
 
     for _ in range(MAX_TOOL_ITERATIONS):
         response = client.messages.create(
@@ -133,7 +155,7 @@ def run_chat_turn(
             # tool_use pode gerar um JSON grande — 1024 truncava a chamada no
             # meio (stop_reason="max_tokens"), fazendo a proposta sumir.
             max_tokens=4096,
-            system=system_prompt,
+            system=system_blocks,
             tools=TOOL_DEFINITIONS,
             messages=messages,
         )
@@ -169,6 +191,16 @@ def run_chat_turn(
                     "content": json.dumps(result, ensure_ascii=False),
                 }
             )
+        # Segundo breakpoint, andando junto com o fim da conversa: cada volta do
+        # loop reenvia todo o histórico + os resultados de busca já trazidos (que
+        # ficam grandes — buscar_exercicios por grupo muscular traz vários de uma
+        # vez). Assim a volta seguinte relê isso do cache em vez de reprocessar.
+        # Só o mais recente fica marcado (o limite é 4 por chamada); a entrada já
+        # escrita continua válida pra ser lida mesmo sem a marca.
+        if cached_block is not None:
+            cached_block.pop("cache_control", None)
+        tool_results[-1]["cache_control"] = CACHE_BREAKPOINT
+        cached_block = tool_results[-1]
         messages.append({"role": "user", "content": tool_results})
     else:
         if not reply_text:

@@ -18,6 +18,7 @@ import type { ProposedAction } from "../../api/ai";
 import { getChatHistory } from "../../api/ai";
 import { askAssistant } from "../../api/assistant";
 import { ChatActionCard } from "../../components/ChatActionCard";
+import { MarkdownText } from "../../components/MarkdownText";
 import { useTheme } from "../../theme/ThemeProvider";
 
 type Msg = {
@@ -138,9 +139,13 @@ export function AssistantScreen() {
               borderColor: colors.border,
             }}
           >
-            <Text style={[type.body, { color: m.role === "user" ? colors.textOnPrimary : colors.textPrimary, lineHeight: 21 }]}>
-              {m.text}
-            </Text>
+            {/* A IA formata em markdown (## título, **negrito**, listas). Sem
+                renderizar, os símbolos apareciam crus na tela. */}
+            {m.role === "assistant" ? (
+              <MarkdownText content={m.text} color={colors.textPrimary} />
+            ) : (
+              <Text style={[type.body, { color: colors.textOnPrimary, lineHeight: 21 }]}>{m.text}</Text>
+            )}
             {m.fromAi ? (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 }}>
                 <Ionicons name="sparkles" size={11} color={colors.secondary} />

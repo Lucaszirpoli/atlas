@@ -9,7 +9,6 @@ import { getCurrentGoal, type CalorieGoal } from "../../api/goals";
 import { listMealsForDay, type MealLog } from "../../api/meals";
 import { listRoutines, type Routine } from "../../api/routines";
 import { listSleepLogs, type SleepLog } from "../../api/sleep";
-import { getTodayWaterSummary, logWater, type WaterSummary } from "../../api/water";
 import { listWorkoutSessions, type WorkoutSessionDetail } from "../../api/workoutSessions";
 import { AiFab } from "../../components/AiFab";
 import { AtlasLogo } from "../../components/AtlasLogo";
@@ -43,17 +42,15 @@ export function DashboardScreen() {
 
   const [goal, setGoal] = useState<CalorieGoal | null>(null);
   const [meals, setMeals] = useState<MealLog[]>([]);
-  const [water, setWater] = useState<WaterSummary | null>(null);
   const [sleepLogs, setSleepLogs] = useState<SleepLog[]>([]);
   const [sessions, setSessions] = useState<WorkoutSessionDetail[]>([]);
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [consistency, setConsistency] = useState<ConsistencyHistory | null>(null);
 
   async function load() {
-    const [g, m, w, s, sess, r, c] = await Promise.all([
+    const [g, m, s, sess, r, c] = await Promise.all([
       getCurrentGoal().catch(() => null),
       listMealsForDay(todayIso()).catch(() => []),
-      getTodayWaterSummary().catch(() => null),
       listSleepLogs().catch(() => []),
       listWorkoutSessions().catch(() => []),
       listRoutines().catch(() => []),
@@ -61,7 +58,6 @@ export function DashboardScreen() {
     ]);
     setGoal(g);
     setMeals(m);
-    setWater(w);
     setSleepLogs(s);
     setSessions(sess);
     setRoutines(r);
@@ -74,19 +70,11 @@ export function DashboardScreen() {
     }, [])
   );
 
-  async function quickWater(ml: number) {
-    await logWater(ml);
-    setWater(await getTodayWaterSummary());
-  }
-
   // ---- Cálculos dos 4 quadrados -------------------------------------------
+  // (Água saiu daqui: mora na Dieta, junto das calorias.)
   const kcalConsumed = meals.reduce((s, m) => s + m.items.reduce((a, i) => a + i.kcal, 0), 0);
   const kcalGoal = goal?.kcal ?? 0;
   const kcalPct = kcalGoal > 0 ? Math.min(kcalConsumed / kcalGoal, 1) : 0;
-
-  const waterMl = water?.total_ml_today ?? 0;
-  const waterGoalMl = water?.goal_ml ?? 0;
-  const waterPct = waterGoalMl > 0 ? Math.min(waterMl / waterGoalMl, 1) : 0;
 
   // Treino de hoje: a rotina ativa treinada há mais tempo (ou nunca treinada
   // vem primeiro). É uma sugestão inteligente já que o app não tem agenda fixa.
@@ -194,106 +182,53 @@ export function DashboardScreen() {
           </View>
         </TouchableOpacity>
 
-        {/* Social em destaque — antes era só um ícone sem legenda no topo,
-            difícil de achar. Agora é uma faixa rotulada de 1 toque que leva
-            aos amigos, feed e desafios. */}
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate("Social")}
-          style={{ width: contentW, marginBottom: spacing.md }}
-        >
-          <View
-            style={{
-              backgroundColor: colors.surface,
-              borderWidth: 1,
-              borderColor: colors.border,
-              borderRadius: 14,
-              paddingVertical: 10,
-              paddingHorizontal: spacing.md,
-              flexDirection: "row",
-              alignItems: "center",
-            }}
-          >
-            <View
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: 11,
-                backgroundColor: colors.moduleSocial + "22",
-                alignItems: "center",
-                justifyContent: "center",
-                marginRight: spacing.sm,
-              }}
-            >
-              <Ionicons name="people" size={19} color={colors.moduleSocial} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>Social</Text>
-              <Text style={[type.caption, { color: colors.textSecondary }]}>Amigos, feed e desafios</Text>
-            </View>
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 4,
-                backgroundColor: colors.moduleSocial + "18",
-                borderRadius: 999,
-                paddingVertical: 4,
-                paddingHorizontal: 10,
-              }}
-            >
-              <Ionicons name="trophy" size={13} color={colors.moduleSocial} />
-              <Text style={[type.caption, { color: colors.moduleSocial, fontWeight: "800", fontSize: 11 }]}>
-                Desafios
-              </Text>
-            </View>
-          </View>
-        </TouchableOpacity>
+        {/* A faixa "Social" saiu daqui: o quadrado de Desafios abaixo já é a
+            porta de entrada (e com destaque bem maior). */}
 
-        {/* Grid 2×2 — os quadrados crescem pra preencher a altura da tela
+        {/* Grid 2×2— os quadrados crescem pra preencher a altura da tela
             (sem sobrar espaço vazio embaixo no celular). minHeight garante o
             tamanho mínimo quadrado em telas curtas (aí a tela rola). */}
         <View style={{ width: contentW, flex: 1, gap, minHeight: tile * 2 + gap }}>
           <View style={{ flexDirection: "row", gap, flex: 1 }}>
-          {/* Água — barra horizontal */}
-          <Tile minH={tile} onPress={() => navigation.navigate("Water")}>
-            <TileHeader icon="water" tint={colors.info} title="Água" />
-            <View style={{ flex: 1, justifyContent: "center" }}>
-              <Text style={[type.display, { color: colors.textPrimary, fontSize: 34, lineHeight: 38 }]}>
-                {(waterMl / 1000).toFixed(1)}
-                <Text style={[type.h2, { color: colors.textSecondary }]}> L</Text>
-              </Text>
-              <Text style={[type.caption, { color: colors.textSecondary }]}>
-                de {(waterGoalMl / 1000).toFixed(1)} L · {Math.round(waterPct * 100)}%
-              </Text>
-            </View>
-            <View style={{ height: 10, backgroundColor: colors.surfaceAlt, borderRadius: 5 }}>
+          {/* Desafios — ocupa o lugar que era da Água (a água virou parte da
+              Dieta, onde a pessoa já anota o que consome). Desafios é o foco:
+              é o que traz os amigos e faz a pessoa voltar. */}
+          <Tile minH={tile} onPress={() => navigation.navigate("Social", { screen: "Challenges" })}>
+            <TileHeader icon="trophy" tint={colors.moduleSocial} title="Desafios" />
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
               <View
                 style={{
-                  height: 10,
-                  width: `${waterPct * 100}%`,
-                  backgroundColor: colors.info,
-                  borderRadius: 5,
+                  width: Math.min(tile - 80, 92),
+                  height: Math.min(tile - 80, 92),
+                  borderRadius: Math.min(tile - 80, 92) / 2,
+                  backgroundColor: colors.moduleSocial + "22",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
-              />
+              >
+                <Ionicons name="trophy" size={Math.min(tile - 130, 46)} color={colors.moduleSocial} />
+              </View>
+              <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm, textAlign: "center" }]}>
+                Dispute com seus amigos
+              </Text>
             </View>
-            <View style={{ flexDirection: "row", gap: spacing.xs, marginTop: spacing.sm }}>
-              {[200, 300, 500].map((ml) => (
-                <TouchableOpacity
-                  key={ml}
-                  onPress={() => quickWater(ml)}
-                  style={{
-                    flex: 1,
-                    alignItems: "center",
-                    paddingVertical: 7,
-                    borderRadius: 999,
-                    backgroundColor: colors.info + "18",
-                  }}
-                >
-                  <Text style={[type.caption, { color: colors.info, fontWeight: "800", fontSize: 11 }]}>+{ml}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <TouchableOpacity
+              onPress={() => navigation.navigate("Social")}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 5,
+                paddingVertical: 7,
+                borderRadius: 999,
+                backgroundColor: colors.moduleSocial + "18",
+              }}
+            >
+              <Ionicons name="people" size={13} color={colors.moduleSocial} />
+              <Text style={[type.caption, { color: colors.moduleSocial, fontWeight: "800", fontSize: 11 }]}>
+                Amigos e feed
+              </Text>
+            </TouchableOpacity>
           </Tile>
 
           {/* Calorias — anel circular */}

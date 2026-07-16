@@ -4,9 +4,17 @@ import React, { useCallback, useState } from "react";
 import { Alert, FlatList, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 import { reportContent } from "../../api/blocksAndReports";
-import { commentOnPost, getFeed, reactToPost, removeReaction, type FeedPost } from "../../api/feed";
+import {
+  commentOnPost,
+  deleteFeedPost,
+  getFeed,
+  reactToPost,
+  removeReaction,
+  type FeedPost,
+} from "../../api/feed";
 import { Avatar } from "../../components/Avatar";
 import { Card } from "../../components/Card";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
 
@@ -42,6 +50,7 @@ export function SocialFeedScreen() {
 
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
+  const [deleteTarget, setDeleteTarget] = useState<FeedPost | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -72,6 +81,18 @@ export function SocialFeedScreen() {
       { text: "Assédio", onPress: () => reportContent("feed_post", post.id, "Assédio") },
       { text: "Cancelar", style: "cancel" },
     ]);
+  }
+
+  async function confirmDeletePost() {
+    if (!deleteTarget) return;
+    const id = deleteTarget.id;
+    setDeleteTarget(null);
+    setPosts((prev) => prev.filter((p) => p.id !== id)); // some na hora
+    try {
+      await deleteFeedPost(id);
+    } catch {
+      getFeed().then(setPosts).catch(() => {}); // falhou: recarrega a verdade
+    }
   }
 
   return (
@@ -148,7 +169,14 @@ export function SocialFeedScreen() {
                   <TouchableOpacity onPress={() => handleReport(item)} hitSlop={10}>
                     <Ionicons name="ellipsis-horizontal" size={18} color={colors.textSecondary} />
                   </TouchableOpacity>
-                ) : null}
+                ) : (
+                  // No próprio post: apagar. O post de treino é criado sozinho
+                  // ao concluir a sessão, então a pessoa precisa poder tirar do
+                  // ar o que não queria ter mostrado.
+                  <TouchableOpacity onPress={() => setDeleteTarget(item)} hitSlop={10}>
+                    <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                )}
               </View>
 
               {/* Conteúdo */}
@@ -235,6 +263,16 @@ export function SocialFeedScreen() {
             </Card>
           );
         }}
+      />
+
+      <ConfirmDialog
+        visible={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        title="Apagar post"
+        message="Este post sai do feed pra todo mundo. Seu treino/refeição continua salvo normalmente — só a publicação é removida."
+        confirmLabel="Apagar"
+        destructive
+        onConfirm={confirmDeletePost}
       />
     </View>
   );
