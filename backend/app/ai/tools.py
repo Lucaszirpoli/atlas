@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.exercise import Exercise, MuscleGroup
+from app.models.exercise import EXTENDED_STRENGTH_CATEGORIES, Exercise, MuscleGroup
 from app.models.meal import MealLog, MealLogItem
 from app.models.routine import Routine
 from app.models.sleep_log import SleepLog
@@ -319,14 +319,26 @@ def execute_read_tool(db: Session, user_id: int, tool_name: str, tool_input: dic
         return {"rotinas": [{"id": r.id, "nome": r.name} for r in rotinas]}
 
     if tool_name == "buscar_exercicios":
-        stmt = select(Exercise)
+        # Três filtros/ordens que faltavam e produziam treino ruim:
+        # 1. category: sem isso a IA recebia alongamento e cardio como opção de
+        #    exercício de rotina (um terço da base importada não é musculação).
+        # 2. is_custom: exercício criado por OUTRO usuário não pode vazar aqui.
+        # 3. order_by: não havia ORDER BY nenhum — com .limit(15) o banco
+        #    devolvia os primeiros por ordem física (ids baixos = curados), que
+        #    são justo os que não têm foto. Era por isso que o treino montado
+        #    pelo chat vinha inteiro sem imagem. Agora quem tem foto vem antes.
+        stmt = select(Exercise).where(
+            Exercise.is_custom.is_(False),
+            Exercise.category.in_(EXTENDED_STRENGTH_CATEGORIES),
+        )
         if tool_input.get("nome"):
             stmt = stmt.where(Exercise.name.ilike(f"%{tool_input['nome']}%"))
         if tool_input.get("grupo_muscular"):
             stmt = stmt.where(
                 Exercise.primary_muscle_group == MuscleGroup(tool_input["grupo_muscular"])
             )
-        exercises = list(db.execute(stmt.limit(15)).scalars())
+        stmt = stmt.order_by(Exercise.video_url.is_(None), Exercise.id)
+        exercises = list(db.execute(stmt.limit(25)).scalars())
         return {"resultados": [_serialize_exercise(e) for e in exercises]}
 
     if tool_name == "consultar_historico":

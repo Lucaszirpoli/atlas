@@ -277,6 +277,55 @@ _LEFTOVER_TERMS: dict[str, str] = {
     "two": "",
     "bar": "barra",
     "rollout": "rollout",
+    # Termos que vazavam crus pro nome final ("Rosca de punho palm down over
+    # no banco", "Encolhimento behind costas"). Ficam aqui, não em _MODIFIERS,
+    # porque aparecem soltos quando o movimento já foi casado.
+    "palm": "",
+    "palms": "",
+    "seesaw": "alternado",
+    "behind": "atrás de",
+    "bent": "curvado",
+    "double": "duplo",
+    "single": "unilateral",
+    "jerk": "arremesso",
+    "over": "",
+    "around": "em círculo",
+    "through": "",
+    "inner": "interna",
+    "outer": "externa",
+    "wide": "aberta",
+    "close": "fechada",
+    "world": "",
+    "windmill": "moinho",
+    "hang": "suspenso",
+    "split": "afundo",
+    "pulley": "polia",
+    "leverage": "na máquina",
+    "facing": "",
+    "in": "",
+    "down": "",
+    "rear": "posterior",
+    "side": "lateral",
+    "low": "baixa",
+    "high": "alta",
+    "medium": "média",
+    "narrow": "fechada",
+    "alternating": "alternado",
+    "alternate": "alternado",
+    "legged": "",
+    "twist": "com rotação",
+    "twisting": "com rotação",
+    "slam": "arremesso",
+    "mixed": "mista",
+    "chin": "na barra fixa",
+    "straight": "reta",
+    "cross": "cruzado",
+    "body": "corpo",
+    "weighted": "com peso",
+    "assisted": "assistida",
+    "negative": "negativa",
+    "partial": "parcial",
+    "isometric": "isométrico",
 }
 
 _STOPWORDS = {"the", "a", "an", "with", "and", "on", "of", "to", "for", "your", "smr", "up", "ups"}
@@ -322,7 +371,18 @@ def _match_longest(tokens: list[str], table: dict) -> tuple[str | None, int, int
 
 
 def _tr_leftover(tok: str) -> str:
-    return _LEFTOVER_TERMS.get(tok) or _LEFTOVER_TERMS.get(_singular(tok)) or _singular(tok)
+    """Traduz um token solto. Um termo mapeado para "" deve ser DESCARTADO.
+
+    Cuidado com o encadeamento por `or` aqui: "" é falsy, então
+    `_LEFTOVER_TERMS.get(tok) or ... or _singular(tok)` tratava "descartar"
+    como "não achei" e devolvia a palavra em inglês intacta — era por isso que
+    "Two-Arm Kettlebell Jerk" virava "Jerk two braço com kettlebell" mesmo com
+    "two": "" no dicionário. Testar a PRESENÇA da chave, não a verdade do valor.
+    """
+    for key in (tok, _singular(tok)):
+        if key in _LEFTOVER_TERMS:
+            return _LEFTOVER_TERMS[key]
+    return _singular(tok)
 
 
 def translate_exercise_name(english: str) -> str:

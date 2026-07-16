@@ -12,6 +12,7 @@ from app.core.db import Base, SessionLocal, engine
 from app.models.exercise import Exercise
 from app.models.food import Food
 from app.scripts import (
+    backfill_exercise_category,
     seed_exercises,
     seed_exercises_open,
     seed_plant_based,
@@ -50,6 +51,11 @@ def run() -> None:
         print(f"Exercícios já carregados ({exercise_count}) — pulando seed.")
 
     _wire_local_exercise_images()
+
+    # Idempotente e OBRIGATÓRIO em banco já existente: create_all não adiciona
+    # coluna em tabela que já existe, então a categoria (que separa musculação
+    # de alongamento/cardio) precisa deste passo explícito pra chegar na prod.
+    backfill_exercise_category.run()
 
     print("init_db concluído.")
 

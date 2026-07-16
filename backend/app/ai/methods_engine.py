@@ -22,7 +22,12 @@ from sqlalchemy.orm import Session
 
 from app.ai.methods import MethodSpec, Phase
 from app.core.text import normalize_search_text
-from app.models.exercise import Exercise, MuscleGroup
+from app.models.exercise import (
+    EXTENDED_STRENGTH_CATEGORIES,
+    STRENGTH_CATEGORIES,
+    Exercise,
+    MuscleGroup,
+)
 
 # Grupos musculares treinados por cada rótulo de "foco" usado nos splits.
 _FOCUS_MUSCLES: dict[str, list[MuscleGroup]] = {
@@ -53,8 +58,23 @@ _FOCUS_MUSCLES: dict[str, list[MuscleGroup]] = {
     "desenvolvimento": [MuscleGroup.SHOULDERS, MuscleGroup.TRICEPS, MuscleGroup.TRAPS],
     "me inferior": [MuscleGroup.QUADS, MuscleGroup.GLUTES, MuscleGroup.HAMSTRINGS],
     "de inferior": [MuscleGroup.QUADS, MuscleGroup.GLUTES, MuscleGroup.HAMSTRINGS],
-    "me superior": [MuscleGroup.CHEST, MuscleGroup.BACK, MuscleGroup.SHOULDERS, MuscleGroup.TRICEPS],
-    "de superior": [MuscleGroup.CHEST, MuscleGroup.BACK, MuscleGroup.SHOULDERS, MuscleGroup.TRICEPS],
+    # BICEPS entra aqui de propósito: sem ele, o Westside inteiro (4 dias)
+    # saía sem UM exercício de bíceps sequer — e "acessório pra ponto fraco"
+    # é justamente o que o método prega. Mesmo motivo pra TRAPS no ME/DE.
+    "me superior": [
+        MuscleGroup.CHEST,
+        MuscleGroup.BACK,
+        MuscleGroup.SHOULDERS,
+        MuscleGroup.TRICEPS,
+        MuscleGroup.BICEPS,
+    ],
+    "de superior": [
+        MuscleGroup.CHEST,
+        MuscleGroup.BACK,
+        MuscleGroup.SHOULDERS,
+        MuscleGroup.TRICEPS,
+        MuscleGroup.BICEPS,
+    ],
 }
 
 # Levantamento PRINCIPAL de cada dia, quando o método define o dia por ele
@@ -191,6 +211,11 @@ def _pick(
             Exercise.primary_muscle_group.in_(muscles),
             Exercise.is_compound.is_(want_compound),
             Exercise.is_custom.is_(False),
+            # Só musculação. Sem isto, a base importada devolvia alongamento
+            # ("All Fours Quad Stretch"), mobilidade ("Ankle Circles") e
+            # levantamento olímpico como se fossem exercício de rotina — foi
+            # o que gerou o "treino de perna" com três alongamentos dentro.
+            Exercise.category.in_(STRENGTH_CATEGORIES),
         )
         .order_by(Exercise.video_url.is_(None), Exercise.id)
     )
@@ -225,12 +250,30 @@ def _pick(
     return out
 
 
+def _rotate(muscles: list[MuscleGroup], n: int) -> list[MuscleGroup]:
+    """Gira a lista de músculos em n posições, pra próxima seleção continuar o
+    rodízio de onde a anterior parou (e não recomeçar sempre no primeiro)."""
+    if not muscles:
+        return muscles
+    k = n % len(muscles)
+    return muscles[k:] + muscles[:k]
+
+
 def _find_exercise(db: Session, name_query: str) -> Exercise | None:
     """Acha um exercício específico pelo nome (levantamento principal do dia).
-    Prefere o de menor id — a base curada (nomes limpos) vem antes da importada."""
+    Prefere o de menor id — a base curada (nomes limpos) vem antes da importada.
+
+    Aceita o pool ampliado (olímpico/strongman/pliometria) de propósito: alguns
+    métodos pedem esses levantamentos pelo nome (5/3/1 usa terra e
+    desenvolvimento; Westside usa trenó). O que nunca entra é alongamento/cardio.
+    """
     return db.execute(
         select(Exercise)
-        .where(Exercise.name.ilike(f"%{name_query}%"), Exercise.is_custom.is_(False))
+        .where(
+            Exercise.name.ilike(f"%{name_query}%"),
+            Exercise.is_custom.is_(False),
+            Exercise.category.in_(EXTENDED_STRENGTH_CATEGORIES),
+        )
         .order_by(Exercise.id)
     ).scalars().first()
 
@@ -311,10 +354,30 @@ def build_plan(
                     compounds.append(primary)
                     used_ids.add(primary.id)
 
+            # A rotação de músculos CONTINUA de onde parou, em vez de reiniciar
+            # a cada chamada. Sem isso os músculos no fim da lista morriam de
+            # fome: em "me superior" ([peito, costas, ombro, tríceps, bíceps]),
+            # os compostos pegavam peito/costas/ombro e os isolados voltavam pro
+            # peito — o Westside inteiro saía sem UM bíceps, e o dia vinha com
+            # três exercícios de peito.
             compounds += _pick(
-                db, muscles, True, n_compound - len(compounds), used_ids, forbid_heavy_week, False
+                db,
+                _rotate(muscles, len(compounds)),
+                True,
+                n_compound - len(compounds),
+                used_ids,
+                forbid_heavy_week,
+                False,
             )
-            isolations = _pick(db, muscles, False, n_isolation, used_ids, False, prefer_machines)
+            isolations = _pick(
+                db,
+                _rotate(muscles, len(compounds)),
+                False,
+                n_isolation,
+                used_ids,
+                False,
+                prefer_machines,
+            )
             picked_by_focus[focus] = [(ex, True) for ex in compounds] + [(ex, False) for ex in isolations]
 
         session = PlannedSession(

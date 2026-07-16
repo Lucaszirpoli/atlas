@@ -42,6 +42,41 @@ class Difficulty(str, enum.Enum):
     ADVANCED = "advanced"
 
 
+class ExerciseCategory(str, enum.Enum):
+    """Que TIPO de movimento é — vem do campo `category` do free-exercise-db.
+
+    Existe por um motivo concreto: sem isso, "All Fours Quad Stretch" (um
+    ALONGAMENTO) era importado indistinguível de um agachamento e a engine o
+    escolhia como exercício de perna. Um terço da base importada (292 de 873)
+    não é musculação: 123 alongamentos, 61 pliometrias, 21 strongman, 14 cardio.
+    """
+
+    STRENGTH = "strength"
+    POWERLIFTING = "powerlifting"
+    OLYMPIC = "olympic_weightlifting"
+    STRONGMAN = "strongman"
+    PLYOMETRICS = "plyometrics"
+    STRETCHING = "stretching"
+    CARDIO = "cardio"
+
+
+# Categorias que podem virar exercício de uma rotina de musculação. Alongamento
+# e cardio NUNCA entram (não são séries de treino); pliometria/strongman/olímpico
+# entram só quando o método pede (ver STRENGTH_CATEGORIES abaixo).
+STRENGTH_CATEGORIES: tuple[ExerciseCategory, ...] = (
+    ExerciseCategory.STRENGTH,
+    ExerciseCategory.POWERLIFTING,
+)
+
+# Pool ampliado: métodos como Westside usam trenó/farmer's walk (strongman) e
+# saltos (pliometria) de propósito, e 5/3/1 usa levantamentos olímpicos.
+EXTENDED_STRENGTH_CATEGORIES: tuple[ExerciseCategory, ...] = STRENGTH_CATEGORIES + (
+    ExerciseCategory.OLYMPIC,
+    ExerciseCategory.STRONGMAN,
+    ExerciseCategory.PLYOMETRICS,
+)
+
+
 class Exercise(Base):
     """Biblioteca de exercícios. is_custom=True para exercícios criados por
     um usuário (com vídeo/gif próprio opcional)."""
@@ -60,6 +95,18 @@ class Exercise(Base):
     difficulty: Mapped[Difficulty] = mapped_column(Enum(Difficulty, name="difficulty"))
     execution_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     video_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Tipo do movimento (musculação / alongamento / cardio / ...). Sem isso a
+    # engine e a IA escolhiam alongamento como exercício de treino.
+    category: Mapped[ExerciseCategory] = mapped_column(
+        Enum(ExerciseCategory, name="exercise_category"),
+        default=ExerciseCategory.STRENGTH,
+        # .name, não .value: o Enum do SQLAlchemy persiste o NOME do membro
+        # (as outras colunas guardam 'CHEST', 'BARBELL'), e um default com o
+        # value minúsculo faz a leitura estourar LookupError.
+        server_default=ExerciseCategory.STRENGTH.name,
+        index=True,
+    )
 
     # Composto (multiarticular) vs isolado — base da proporção intra-sessão
     # dos métodos (Kuba 40/60 etc.). Preenchido pelos listeners abaixo.

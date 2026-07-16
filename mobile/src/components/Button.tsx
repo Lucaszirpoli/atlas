@@ -15,6 +15,9 @@ type ButtonProps = PressableProps & {
   variant?: "primary" | "secondary" | "ghost";
   loading?: boolean;
   icon?: string;
+  /** Para botão em espaço apertado (dois lado a lado dentro de um card do
+   * chat). Reduz o respiro lateral, que é fixo e não encolhe sozinho. */
+  compact?: boolean;
 };
 
 export function Button({
@@ -23,6 +26,7 @@ export function Button({
   loading,
   disabled,
   icon,
+  compact,
   style,
   ...rest
 }: ButtonProps) {
@@ -46,7 +50,7 @@ export function Button({
           backgroundColor,
           borderRadius: radius.pill,
           paddingVertical: spacing.md - 1,
-          paddingHorizontal: spacing.lg,
+          paddingHorizontal: compact ? spacing.sm : spacing.lg,
           transform: [{ scale: state.pressed ? 0.98 : 1 }],
           opacity: disabled ? 0.45 : 1,
         },
@@ -60,9 +64,18 @@ export function Button({
       ) : (
         <View style={styles.row}>
           {icon ? <Text style={[styles.icon, { color: textColor }]}>{icon}</Text> : null}
-          {/* numberOfLines=1: rótulo de botão nunca quebra em duas linhas
-              ("Desca/rtar") quando o botão fica estreito — encolhe o texto. */}
-          <Text numberOfLines={1} style={[type.body, styles.text, { color: textColor }]}>
+          {/* numberOfLines=1 evita o rótulo quebrar em duas linhas
+              ("Desca/rtar"), mas sozinho ele TRUNCA quando falta largura — era
+              o bug do "Con..." ("Confirmar" e "Concluir" viravam os dois a
+              mesma coisa) nos botões dentro do card do chat. adjustsFontSizeToFit
+              faz o texto DIMINUIR até caber, em vez de cortar; segura também
+              quem usa fonte grande do sistema. */}
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}
+            style={[type.body, styles.text, { color: textColor }]}
+          >
             {title}
           </Text>
         </View>

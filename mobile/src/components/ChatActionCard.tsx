@@ -209,20 +209,20 @@ export function ChatActionCard({
           </View>
           <View style={{ flexDirection: "row", gap: spacing.sm }}>
             <View style={{ flex: 1 }}>
-              <Button title="Baixar PDF" variant="ghost" onPress={handleDownloadDiet} loading={downloading} />
+              <Button title="Baixar PDF" variant="ghost" compact onPress={handleDownloadDiet} loading={downloading} />
             </View>
             <View style={{ flex: 1 }}>
-              <Button title="Concluir" onPress={() => onResolved("confirmed")} />
+              <Button title="Concluir" compact onPress={() => onResolved("confirmed")} />
             </View>
           </View>
         </View>
       ) : (
         <View style={{ flexDirection: "row", gap: spacing.sm }}>
           <View style={{ flex: 1 }}>
-            <Button title="Confirmar" onPress={handleConfirm} loading={isSubmitting} />
+            <Button title="Confirmar" compact onPress={handleConfirm} loading={isSubmitting} />
           </View>
           <View style={{ flex: 1 }}>
-            <Button title="Agora não" variant="ghost" onPress={() => onResolved("cancelled")} />
+            <Button title="Agora não" variant="ghost" compact onPress={() => onResolved("cancelled")} />
           </View>
         </View>
       )}

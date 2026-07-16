@@ -24,7 +24,7 @@ from sqlalchemy import select
 
 from app.core.db import SessionLocal
 from app.data.exercise_translator import translate_exercise_name
-from app.models.exercise import Difficulty, Equipment, Exercise, MuscleGroup
+from app.models.exercise import Difficulty, Equipment, Exercise, ExerciseCategory, MuscleGroup
 
 JSON_PATH = Path(__file__).parent.parent / "data" / "exercises_open.json"
 IMAGE_BASE = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/"
@@ -69,6 +69,18 @@ DIFFICULTY_MAP = {
     "beginner": Difficulty.BEGINNER,
     "intermediate": Difficulty.INTERMEDIATE,
     "expert": Difficulty.ADVANCED,
+}
+
+# O campo `category` da fonte — que este seed ignorava. Um terço dos registros
+# (292 de 873) não é musculação; sem essa marca, alongamento vira exercício.
+CATEGORY_MAP = {
+    "strength": ExerciseCategory.STRENGTH,
+    "powerlifting": ExerciseCategory.POWERLIFTING,
+    "olympic weightlifting": ExerciseCategory.OLYMPIC,
+    "strongman": ExerciseCategory.STRONGMAN,
+    "plyometrics": ExerciseCategory.PLYOMETRICS,
+    "stretching": ExerciseCategory.STRETCHING,
+    "cardio": ExerciseCategory.CARDIO,
 }
 
 # Tradução por termos (frases maiores primeiro para não quebrar). Aplicada
@@ -618,6 +630,9 @@ def run() -> None:
                     difficulty=DIFFICULTY_MAP.get(str(row.get("level")), Difficulty.INTERMEDIATE),
                     execution_text=instructions or None,
                     video_url=video_url,
+                    # Sem isso, alongamento/cardio da fonte entram indistinguíveis
+                    # de musculação e a engine os escolhe como exercício de treino.
+                    category=CATEGORY_MAP.get(str(row.get("category")), ExerciseCategory.STRENGTH),
                     is_custom=False,
                 )
             )

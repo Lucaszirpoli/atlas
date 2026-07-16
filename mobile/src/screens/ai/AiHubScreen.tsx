@@ -9,7 +9,7 @@ import {
   type GenerateTrainingResult,
   type TrainingMethod,
 } from "../../api/ai";
-import { createRoutine, listRoutines } from "../../api/routines";
+import { createRoutinesBulk, listRoutines } from "../../api/routines";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { InfoDialog } from "../../components/InfoDialog";
@@ -121,22 +121,49 @@ export function AiHubScreen() {
       const existing = await listRoutines();
       const existingNames = new Set(existing.map((x) => x.name));
       const saved = new Set<number>();
-      let created = 0;
+
+      // UMA chamada atômica pros dias que faltam. Antes era um laço de N
+      // createRoutine soltos: se um dia falhava, o erro aparecia mas os
+      // anteriores FICAVAM salvos — foi assim que um método de 4 dias virou 3
+      // no aparelho (o Dia 1 morreu e os outros ficaram).
+      const pendentes: number[] = [];
       let already = 0;
       for (let i = 0; i < r.plan.sessions.length; i++) {
-        const session = r.plan.sessions[i];
-        const name = routineNameFor(r.plan.method_name, session);
+        const name = routineNameFor(r.plan.method_name, r.plan.sessions[i]);
         if (existingNames.has(name)) {
           already += 1;
           saved.add(i);
-          continue;
+        } else {
+          pendentes.push(i);
         }
-        await createRoutine({ name, exercises: slotsToExercises(session) });
-        created += 1;
-        saved.add(i);
+      }
+
+      if (pendentes.length > 0) {
+        const res = await createRoutinesBulk({
+          rotinas: pendentes.map((i) => ({
+            nome: routineNameFor(r.plan.method_name, r.plan.sessions[i]),
+            exercicios: slotsToExercises(r.plan.sessions[i]).map((e) => ({
+              exercise_id: e.exercise_id,
+              target_sets: e.target_sets,
+              target_reps_min: e.target_reps_min,
+              target_reps_max: e.target_reps_max ?? null,
+              rest_seconds: e.rest_seconds ?? 90,
+            })),
+          })),
+        });
+        pendentes.forEach((i) => saved.add(i));
+        setSavedIndices(saved);
+        setSaveSummary({ created: res.created, existing: already });
+        if (res.skipped_exercises.length > 0) {
+          setInfo({
+            title: "Treino salvo",
+            message: `${res.skipped_exercises.length} exercício(s) não existiam na base e ficaram de fora.`,
+          });
+        }
+        return;
       }
       setSavedIndices(saved);
-      setSaveSummary({ created, existing: already });
+      setSaveSummary({ created: 0, existing: already });
     } catch (err: any) {
       setInfo({ title: "Não consegui salvar os treinos", message: err?.response?.data?.detail ?? "Tente novamente." });
     }
