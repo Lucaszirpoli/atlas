@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import {
+  generatePersonalizedTraining,
   generateTraining,
   getTrainingMethods,
   type GenerateTrainingResult,
@@ -59,7 +60,7 @@ function slotsToExercises(session: Session) {
 }
 
 export function AiHubScreen() {
-  const { colors, type, spacing } = useTheme();
+  const { colors, type, spacing, radius } = useTheme();
   const navigation = useNavigation<any>();
   const { user } = useAuth();
 
@@ -91,6 +92,26 @@ export function AiHubScreen() {
     setSaveSummary(null);
     try {
       const r = await generateTraining({ method_key: method.key, available_days: d });
+      setResult(r);
+      await autoSavePlan(r);
+    } catch (err: any) {
+      setInfo({ title: "Não consegui gerar", message: err?.response?.data?.detail ?? "Tente novamente." });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // "Monte um treino ideal pro seu perfil": o backend escolhe o método que mais
+  // combina com o perfil da pessoa e gera o plano — mesma ideia das dietas
+  // prontas + IA, mas pro treino.
+  async function handlePersonalized() {
+    setLoading(true);
+    setSelected(null);
+    setResult(null);
+    setSavedIndices(new Set());
+    setSaveSummary(null);
+    try {
+      const r = await generatePersonalizedTraining();
       setResult(r);
       await autoSavePlan(r);
     } catch (err: any) {
@@ -143,6 +164,24 @@ export function AiHubScreen() {
         <Text style={[type.caption, { color: colors.textSecondary, marginTop: 2 }]}>
           {p.author} · {p.days_per_week} dias/semana{p.phase_context ? ` · ${p.phase_context}` : ""}
         </Text>
+
+        {result.recommended && result.recommended_reason ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              backgroundColor: colors.primary + "1A",
+              borderRadius: 12,
+              paddingVertical: 8,
+              paddingHorizontal: 12,
+              marginTop: spacing.md,
+            }}
+          >
+            <Ionicons name="sparkles" size={15} color={colors.primary} />
+            <Text style={[type.caption, { color: colors.textPrimary, flex: 1 }]}>{result.recommended_reason}</Text>
+          </View>
+        ) : null}
 
         {/* Selo de fidelidade — a promessa central do recurso */}
         <View
@@ -307,10 +346,11 @@ export function AiHubScreen() {
         </TouchableOpacity>
 
         <Text style={[type.h1, { color: colors.textPrimary }]}>{selected.name}</Text>
-        <Text style={[type.caption, { color: colors.textSecondary, marginTop: 2 }]}>{selected.author}</Text>
+        <Text style={[type.caption, { color: colors.textSecondary, marginTop: 2 }]}>
+          {selected.author} · {EXP_LABEL[selected.experience_min] ?? selected.experience_min}
+        </Text>
         <Card style={{ marginTop: spacing.md }}>
           <Text style={[type.body, { color: colors.textPrimary }]}>{selected.goal}</Text>
-          <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm }]}>{selected.guide_excerpt}</Text>
         </Card>
 
         <Text style={[type.h2, { color: colors.textPrimary, marginTop: spacing.lg, marginBottom: spacing.sm }]}>
@@ -356,8 +396,47 @@ export function AiHubScreen() {
     >
       <Text style={[type.h1, { color: colors.textPrimary }]}>Treino com IA</Text>
       <Text style={[type.body, { color: colors.textSecondary, marginTop: 4 }]}>
-        Escolha uma metodologia consagrada. A IA monta seu treino fiel ao método — frequência, volume,
-        proporção e ordem exatas — usando só a base oficial, sem inventar.
+        Escolha uma metodologia consagrada — seu treino é montado fiel ao método (frequência, volume,
+        proporção e ordem). Ou deixe a gente escolher o método ideal pro seu perfil.
+      </Text>
+
+      {/* Atalho: montar direto pelo perfil (não precisa escolher método) */}
+      <TouchableOpacity activeOpacity={0.85} onPress={handlePersonalized} disabled={loading}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            backgroundColor: colors.primary,
+            borderRadius: radius.card,
+            padding: spacing.md,
+            marginTop: spacing.md,
+          }}
+        >
+          <View
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 15,
+              backgroundColor: "rgba(255,255,255,0.22)",
+              alignItems: "center",
+              justifyContent: "center",
+              marginRight: spacing.md,
+            }}
+          >
+            <Ionicons name="sparkles" size={22} color="#FFFFFF" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[type.h2, { color: "#FFFFFF", fontSize: 16 }]}>Monte um treino pro seu perfil</Text>
+            <Text style={[type.caption, { color: "rgba(255,255,255,0.9)" }]} numberOfLines={2}>
+              Escolhemos o método ideal pelo seu objetivo e frequência
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
+        </View>
+      </TouchableOpacity>
+
+      <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.lg, fontWeight: "700" }]}>
+        OU ESCOLHA UM MÉTODO
       </Text>
 
       {methods.map((m) => (

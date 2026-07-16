@@ -110,21 +110,26 @@ export function SleepScreen() {
           <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8 }]}>Como foi sua noite?</Text>
         </View>
 
-        {/* flexWrap em vez de flex:1 na duração: os TimeInputs têm largura
-            fixa e não encolhem (padrão do RN), então em telas estreitas um
-            flex:1 ficava espremido a ~0 e o texto vazava por cima do campo
-            de horário. Com wrap, se não couber ao lado ela desce de linha,
-            nunca sobrepõe. */}
-        <View style={{ flexDirection: "row", flexWrap: "wrap", rowGap: spacing.sm, gap: spacing.md, alignItems: "center" }}>
+        {/* Horários numa linha centrada; a duração numa linha PRÓPRIA e
+            centralizada abaixo — antes ela ficava encostada na direita com
+            marginLeft:auto e saía torta no celular. */}
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: spacing.md,
+          }}
+        >
           <TimeInput label="Dormi às" value={sleepTime} onChangeText={setSleepTime} />
           <Ionicons name="arrow-forward" size={18} color={colors.textSecondary} style={{ marginTop: 18 }} />
           <TimeInput label="Acordei às" value={wakeTime} onChangeText={setWakeTime} />
-          <View style={{ alignItems: "flex-end", marginLeft: "auto", marginTop: 18 }}>
-            <Text style={[type.caption, { color: colors.textSecondary }]}>duração</Text>
-            <Text style={[type.h2, { color: colors.moduleSleep }]}>
-              {Math.floor(durationMin / 60)}h{String(durationMin % 60).padStart(2, "0")}
-            </Text>
-          </View>
+        </View>
+        <View style={{ alignItems: "center", marginTop: spacing.md }}>
+          <Text style={[type.caption, { color: colors.textSecondary }]}>duração</Text>
+          <Text style={[type.h2, { color: colors.moduleSleep }]}>
+            {Math.floor(durationMin / 60)}h{String(durationMin % 60).padStart(2, "0")}
+          </Text>
         </View>
 
         <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.md, marginBottom: spacing.xs }]}>

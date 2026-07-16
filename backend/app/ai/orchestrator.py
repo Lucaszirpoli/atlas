@@ -27,7 +27,7 @@ def _load_history_as_messages(db: Session, user_id: int) -> list[dict]:
         db.execute(
             select(ChatMessage)
             .where(ChatMessage.user_id == user_id)
-            .order_by(ChatMessage.created_at.desc())
+            .order_by(ChatMessage.id.desc())  # ordem de inserção (created_at empata no mesmo turno)
             .limit(HISTORY_MESSAGE_LIMIT)
         ).scalars()
     )

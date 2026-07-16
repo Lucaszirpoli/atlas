@@ -42,7 +42,7 @@ export function AiDietScreen() {
 
   const [ctx, setCtx] = useState<DietContext | null>(null);
   const [restrictions, setRestrictions] = useState<Set<string>>(new Set());
-  const [meals, setMeals] = useState<3 | 4>(4);
+  const [meals, setMeals] = useState<number>(4);
   const [variant, setVariant] = useState(0);
   const [result, setResult] = useState<GenerateDietResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -311,22 +311,23 @@ export function AiDietScreen() {
           </View>
 
           <Text style={[type.h2, { color: colors.textPrimary, marginTop: spacing.lg, marginBottom: spacing.sm }]}>
-            Refeições por dia
+            Quantas refeições por dia?
           </Text>
           <View style={{ flexDirection: "row", gap: spacing.sm }}>
-            {([3, 4] as const).map((n) => {
+            {[3, 4, 5, 6].map((n) => {
               const on = meals === n;
               return (
                 <TouchableOpacity
                   key={n}
                   onPress={() => setMeals(n)}
                   style={{
+                    flex: 1,
+                    alignItems: "center",
                     backgroundColor: on ? colors.primary : colors.surface,
                     borderWidth: 1,
                     borderColor: on ? colors.primary : colors.border,
                     borderRadius: 14,
                     paddingVertical: spacing.md,
-                    paddingHorizontal: spacing.xl,
                   }}
                 >
                   <Text style={[type.body, { color: on ? colors.textOnPrimary : colors.textPrimary, fontWeight: "700" }]}>
@@ -336,6 +337,15 @@ export function AiDietScreen() {
               );
             })}
           </View>
+          <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.xs }]}>
+            {meals <= 3
+              ? "Café, almoço e jantar"
+              : meals === 4
+                ? "Café, almoço, lanche da tarde e jantar"
+                : meals === 5
+                  ? "Café, almoço, lanche, jantar e ceia"
+                  : "Café, lanche da manhã, almoço, lanche da tarde, jantar e ceia"}
+          </Text>
 
           <Button
             title="Gerar minha dieta"
@@ -344,6 +354,33 @@ export function AiDietScreen() {
             style={{ marginTop: spacing.xl }}
           />
           {loading ? <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.lg }} size="large" /> : null}
+
+          {/* A outra forma de montar dieta: moldes prontos curados (sem IA). */}
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate("DietTemplates")}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: colors.surface,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 14,
+              padding: spacing.md,
+              marginTop: spacing.xl,
+            }}
+          >
+            <Ionicons name="restaurant-outline" size={20} color={colors.secondary} />
+            <View style={{ flex: 1, marginLeft: spacing.sm }}>
+              <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "700" }]}>
+                Prefere uma dieta pronta?
+              </Text>
+              <Text style={[type.caption, { color: colors.textSecondary }]} numberOfLines={1}>
+                Clássica, low carb, alta proteína… já ajustadas pra sua meta
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+          </TouchableOpacity>
         </>
       ) : null}
 

@@ -40,8 +40,21 @@ export function PaywallScreen() {
     setSubscribing(true);
     try {
       await subscribePro(nativePackage ?? undefined);
-      await refreshUser();
-      setDone("Bem-vindo ao ATLAS Pro! Todos os recursos avançados estão liberados. 🎉");
+      // A compra é confirmada na loja na hora, mas o backend só vira Pro quando
+      // o webhook do RevenueCat chega (costuma levar 1-3s). Então tentamos
+      // atualizar algumas vezes até o plano virar 'pro', pra o app não continuar
+      // mostrando "Free" logo após a compra.
+      let isPro = false;
+      for (let i = 0; i < 6 && !isPro; i++) {
+        const u = await refreshUser();
+        isPro = u?.plan === "pro";
+        if (!isPro) await new Promise((r) => setTimeout(r, 1500));
+      }
+      setDone(
+        isPro
+          ? "Bem-vindo ao ATLAS Pro! Todos os recursos avançados estão liberados. 🎉"
+          : "Compra recebida! O Pro é liberado em instantes — se ainda aparecer Free, reabra o app em um minuto."
+      );
     } catch (err: any) {
       setDone(err?.response?.data?.detail ?? "Não deu pra concluir agora. Tente de novo.");
     } finally {

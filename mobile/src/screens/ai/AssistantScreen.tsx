@@ -1,7 +1,17 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useHeaderHeight } from "@react-navigation/elements";
 import { useNavigation } from "@react-navigation/native";
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 import type { ProposedAction } from "../../api/ai";
 import { getChatHistory } from "../../api/ai";
@@ -34,6 +44,7 @@ const SUGGESTIONS = [
 export function AssistantScreen() {
   const { colors, type, spacing, radius } = useTheme();
   const navigation = useNavigation<any>();
+  const headerHeight = useHeaderHeight();
   const scrollRef = useRef<ScrollView>(null);
 
   const [messages, setMessages] = useState<Msg[]>([GREETING]);
@@ -84,7 +95,11 @@ export function AssistantScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={headerHeight}
+    >
       <ScrollView
         ref={scrollRef}
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.md }}
@@ -200,6 +215,6 @@ export function AssistantScreen() {
           <Ionicons name="arrow-up" size={22} color={input.trim() ? colors.textOnPrimary : colors.textSecondary} />
         </TouchableOpacity>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }

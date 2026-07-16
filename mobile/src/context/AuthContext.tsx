@@ -16,7 +16,7 @@ type AuthContextValue = {
     display_name: string;
   }) => Promise<void>;
   signOut: () => Promise<void>;
-  refreshUser: () => Promise<void>;
+  refreshUser: () => Promise<authApi.UserRead | null>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -97,6 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function refreshUser() {
     const currentUser = await authApi.fetchCurrentUser();
     setUser(currentUser);
+    return currentUser;
   }
 
   return (

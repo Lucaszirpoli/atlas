@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
-import React from "react";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import React, { useCallback } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { Avatar } from "../../components/Avatar";
@@ -11,7 +11,16 @@ import { useTheme, type ThemeMode } from "../../theme/ThemeProvider";
 export function ProfileScreen() {
   const { colors, type, spacing, mode, setMode } = useTheme();
   const navigation = useNavigation<any>();
-  const { user, signOut } = useAuth();
+  const { user, signOut, refreshUser } = useAuth();
+
+  // Sempre que a tela ganha foco, revalida o plano — assim, se a compra do Pro
+  // foi confirmada pelo webhook depois que a pessoa saiu do paywall, o status
+  // Pro aparece aqui sem precisar reabrir o app.
+  useFocusEffect(
+    useCallback(() => {
+      refreshUser().catch(() => {});
+    }, [])
+  );
 
   return (
     <ScrollView

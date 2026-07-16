@@ -190,15 +190,17 @@ export function OnboardingScreen() {
       case 6:
         return (
           <Step title="Quase lá!" subtitle="Só falta o consentimento. Experiência de treino, local e restrições você ajusta depois no perfil.">
+            {/* Um único consentimento cobre as duas autorizações (uso de dados
+                de saúde pela LGPD + ciência de que não substitui médico) — ambos
+                continuam registrados no backend, mas a pessoa marca uma vez só. */}
             <ConsentRow
-              checked={form.accepted_lgpd_health_data}
-              onToggle={() => update("accepted_lgpd_health_data", !form.accepted_lgpd_health_data)}
-              text="Autorizo o uso dos meus dados de saúde (peso, altura, treino, alimentação) para personalizar o app, conforme a LGPD."
-            />
-            <ConsentRow
-              checked={form.accepted_medical_disclaimer}
-              onToggle={() => update("accepted_medical_disclaimer", !form.accepted_medical_disclaimer)}
-              text="Entendo que o Atlas não substitui acompanhamento médico ou nutricional profissional."
+              checked={form.accepted_lgpd_health_data && form.accepted_medical_disclaimer}
+              onToggle={() => {
+                const next = !(form.accepted_lgpd_health_data && form.accepted_medical_disclaimer);
+                update("accepted_lgpd_health_data", next);
+                update("accepted_medical_disclaimer", next);
+              }}
+              text="Autorizo o uso dos meus dados de saúde (peso, altura, treino, alimentação) para personalizar o app, conforme a LGPD, e entendo que o Atlas não substitui acompanhamento médico ou nutricional profissional."
             />
           </Step>
         );

@@ -327,10 +327,14 @@ def chat_history(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[ChatMessage]:
+    # Ordena por ID (ordem de inserção), NÃO por created_at: user e assistant
+    # de um mesmo turno eram gravados no mesmo segundo, então created_at
+    # empatava e a ordem embaralhava ao reabrir a conversa. O id é monotônico,
+    # então reflete a ordem cronológica real sem empate.
     stmt = (
         select(ChatMessage)
         .where(ChatMessage.user_id == current_user.id)
-        .order_by(ChatMessage.created_at.desc())
+        .order_by(ChatMessage.id.desc())
         .limit(limit)
     )
     rows = list(db.execute(stmt).scalars())

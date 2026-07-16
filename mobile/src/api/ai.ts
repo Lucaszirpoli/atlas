@@ -97,6 +97,8 @@ export type GenerateTrainingResult = {
   violations: string[];
   ai_locked: boolean;
   free_credits_remaining?: number | null;
+  recommended?: boolean;
+  recommended_reason?: string;
 };
 
 export async function getTrainingMethods(): Promise<TrainingMethod[]> {
@@ -110,6 +112,17 @@ export async function generateTraining(payload: {
   phase_index?: number;
 }): Promise<GenerateTrainingResult> {
   const { data } = await api.post<GenerateTrainingResult>("/ai/training/generate", payload, {
+    timeout: AI_TIMEOUT_MS,
+  });
+  return data;
+}
+
+/** "Monte um treino ideal pro seu perfil" — o backend escolhe o método que
+ * melhor casa com experiência/objetivo/frequência da pessoa e gera o plano. */
+export async function generatePersonalizedTraining(payload: {
+  available_days?: number | null;
+} = {}): Promise<GenerateTrainingResult> {
+  const { data } = await api.post<GenerateTrainingResult>("/ai/training/personalized", payload, {
     timeout: AI_TIMEOUT_MS,
   });
   return data;
