@@ -43,10 +43,26 @@ export function GymScreen() {
       .then(([g, c]) => {
         setGym(g);
         setCheckins(c);
+        // Sem academia cadastrada: já mostra as da região, sem precisar digitar.
+        if (!g) loadNearby();
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  /** Lista as academias da região (busca vazia = todas por perto). */
+  async function loadNearby() {
+    setSearching(true);
+    try {
+      const pos = await currentPosition();
+      if (!pos) return;
+      setResults(await searchGyms("", pos.lat, pos.lng));
+    } catch {
+      // silencioso: a pessoa ainda pode buscar pelo nome
+    } finally {
+      setSearching(false);
+    }
+  }
 
   /** Pede permissão e devolve a posição atual (ou null se negada/falhou). */
   async function currentPosition(): Promise<{ lat: number; lng: number } | null> {
@@ -64,7 +80,6 @@ export function GymScreen() {
   }
 
   async function handleSearch() {
-    if (!query.trim()) return;
     setSearching(true);
     setResults(null);
     try {
@@ -257,8 +272,8 @@ export function GymScreen() {
         <>
           <Text style={[type.h2, { color: colors.textPrimary }]}>Qual é a sua academia?</Text>
           <Text style={[type.bodySmall, { color: colors.textSecondary, marginTop: 4, marginBottom: spacing.md }]}>
-            Busque pelo nome — usamos sua localização só pra achar as unidades perto de você e, depois, pra confirmar
-            sua presença nos check-ins.
+            Estas são as academias perto de você. Não achou a sua? Busque pelo nome. Usamos sua localização só pra
+            isso e, depois, pra confirmar sua presença nos check-ins.
           </Text>
 
           <View style={{ flexDirection: "row", gap: spacing.sm }}>
@@ -299,9 +314,10 @@ export function GymScreen() {
 
           {searching ? <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.lg }} /> : null}
 
-          {results != null && results.length === 0 ? (
+          {results != null && results.length === 0 && !searching ? (
             <Text style={[type.bodySmall, { color: colors.textSecondary, marginTop: spacing.lg }]}>
-              Não achei nenhuma academia com esse nome perto de você. Tente o nome exato (ex: "Smart Fit", "Bio Ritmo").
+              Não achei academias mapeadas perto de você. Tente buscar pelo nome — ou confira se a localização está
+              ligada.
             </Text>
           ) : null}
 

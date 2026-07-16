@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -93,6 +94,99 @@ def create_routine(
     _replace_exercises(db, routine, payload.exercises)
     db.commit()
     return _load(db, routine.id, current_user.id)
+
+
+class BulkExercise(BaseModel):
+    exercise_id: int
+    target_sets: int = 3
+    target_reps_min: int = 8
+    target_reps_max: int | None = None
+    rest_seconds: int = 90
+    notes: str | None = None
+
+
+class BulkRoutine(BaseModel):
+    nome: str
+    exercicios: list[BulkExercise]
+
+
+class BulkRoutinesRequest(BaseModel):
+    rotinas: list[BulkRoutine]
+    substituir_existentes: bool = False
+
+
+class BulkRoutinesResponse(BaseModel):
+    created: int
+    archived: int
+    skipped_exercises: list[int]
+
+
+@router.post("/bulk", response_model=BulkRoutinesResponse, status_code=status.HTTP_201_CREATED)
+def create_routines_bulk(
+    payload: BulkRoutinesRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> BulkRoutinesResponse:
+    """Cria VÁRIAS rotinas de uma vez (o treino que a IA montou), opcionalmente
+    arquivando as ativas antes. Atômico: ou entra tudo, ou nada.
+
+    Antes o app fazia isso com N chamadas soltas (1 arquivar por rotina + 1
+    criar por rotina); qualquer uma falhando deixava o usuário pela metade e
+    mostrava só "tente novamente". Aqui, um exercício inexistente (a IA às vezes
+    erra o id) é PULADO em vez de derrubar o treino inteiro, e volta na resposta
+    pra ser mostrado com transparência."""
+    if not payload.rotinas:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nenhuma rotina recebida.")
+
+    archived = 0
+    if payload.substituir_existentes:
+        actives = list(
+            db.execute(
+                select(Routine).where(Routine.user_id == current_user.id, Routine.is_archived.is_(False))
+            ).scalars()
+        )
+        for r in actives:
+            r.is_archived = True
+            archived += 1
+        db.flush()
+
+    # Filtra ids de exercício que não existem (em vez de estourar 404).
+    wanted = {e.exercise_id for r in payload.rotinas for e in r.exercicios}
+    existing = set(db.execute(select(Exercise.id).where(Exercise.id.in_(wanted))).scalars())
+    skipped = sorted(wanted - existing)
+
+    created = 0
+    for rot in payload.rotinas:
+        valid = [e for e in rot.exercicios if e.exercise_id in existing]
+        if not valid:
+            continue
+        routine = Routine(user_id=current_user.id, name=rot.nome[:100])
+        db.add(routine)
+        db.flush()
+        for i, e in enumerate(valid):
+            db.add(
+                RoutineExercise(
+                    routine_id=routine.id,
+                    exercise_id=e.exercise_id,
+                    sort_order=i,
+                    target_sets=max(1, e.target_sets),
+                    target_reps_min=max(1, e.target_reps_min),
+                    target_reps_max=e.target_reps_max,
+                    rest_seconds=max(0, e.rest_seconds),
+                    notes=e.notes,
+                )
+            )
+        created += 1
+
+    if created == 0:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Nenhum exercício do treino foi reconhecido na base. Peça pra IA montar de novo.",
+        )
+
+    db.commit()
+    return BulkRoutinesResponse(created=created, archived=archived, skipped_exercises=skipped)
 
 
 @router.get("/{routine_id}", response_model=RoutineRead)

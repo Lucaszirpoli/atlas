@@ -368,7 +368,12 @@ _reg(
         progression_family=ProgressionFamily.VOLUME_LANDMARKS,
         days_per_week=(4, 5, 6),
         frequency_per_muscle="2x/semana por músculo (típico)",
-        sets_per_exercise="3-4 exercícios por músculo na semana; compostos como base",
+        # O guia NÃO fixa um número de séries por exercício: a regra do RP é
+        # começar no MEV e somar +1 set por músculo por semana até MAV/MRV. Este
+        # campo antes trazia a frase de "3-4 EXERCÍCIOS por músculo" (outra
+        # coisa), e o app lia o "3" dela como se fosse a série. Sem número aqui,
+        # o motor usa o padrão conservador dele, explicitamente.
+        sets_per_exercise="começa no MEV e sobe +1 série por músculo a cada semana, até o MRV",
         reps="faixas de hipertrofia; RIR progride de 3 até 0-1 ao longo do bloco",
         rir="3 → 0-1 ao longo do mesociclo",
         mesocycle_weeks="4-6 semanas de acumulação + 1 semana obrigatória de deload",
@@ -382,7 +387,10 @@ _reg(
             "Não mentir no RIR — a autorregulação depende do dado honesto.",
         ),
         equipment_pref="Flexível (não fixa máquina vs barra), desde que o volume direto por músculo seja contado corretamente. Compostos como base, isoladores para complementar.",
-        coaching_notes=("Começar em MEV, subir sets semanalmente rumo a MAV/MRV, deload ao degradar recuperação.",),
+        coaching_notes=(
+            "Começar em MEV, subir sets semanalmente rumo a MAV/MRV, deload ao degradar recuperação.",
+            "3-4 exercícios por músculo na semana; compostos como base.",
+        ),
         guide_excerpt=(
             "RP: framework de volume landmarks (MEV/MAV/MRV) e autorregulação. Mesociclos de 4-6 semanas de "
             "acumulação + 1 semana de deload. Progressão aditiva: +1 set por músculo por semana. RIR 3→0-1. "

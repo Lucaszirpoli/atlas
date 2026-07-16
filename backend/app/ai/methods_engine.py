@@ -42,6 +42,34 @@ _FOCUS_MUSCLES: dict[str, list[MuscleGroup]] = {
     "full body b": [MuscleGroup.BACK, MuscleGroup.HAMSTRINGS, MuscleGroup.SHOULDERS, MuscleGroup.BICEPS, MuscleGroup.TRICEPS],
     "a": [MuscleGroup.CHEST, MuscleGroup.SHOULDERS, MuscleGroup.TRICEPS, MuscleGroup.QUADS],
     "b": [MuscleGroup.BACK, MuscleGroup.BICEPS, MuscleGroup.HAMSTRINGS, MuscleGroup.CALVES],
+    # --- Métodos de FORÇA -------------------------------------------------
+    # 5/3/1 e Juggernaut nomeiam o dia pelo levantamento principal; Westside
+    # usa ME/DE (esforço máximo / dinâmico) por metade do corpo. Sem estes
+    # mapeamentos eles caíam em "full body" e o motor sorteava exercício
+    # genérico (burpee, kettlebell swing) num treino de powerlifting.
+    "agachamento": [MuscleGroup.QUADS, MuscleGroup.GLUTES, MuscleGroup.HAMSTRINGS],
+    "supino": [MuscleGroup.CHEST, MuscleGroup.TRICEPS, MuscleGroup.SHOULDERS],
+    "terra": [MuscleGroup.BACK, MuscleGroup.HAMSTRINGS, MuscleGroup.GLUTES],
+    "desenvolvimento": [MuscleGroup.SHOULDERS, MuscleGroup.TRICEPS, MuscleGroup.TRAPS],
+    "me inferior": [MuscleGroup.QUADS, MuscleGroup.GLUTES, MuscleGroup.HAMSTRINGS],
+    "de inferior": [MuscleGroup.QUADS, MuscleGroup.GLUTES, MuscleGroup.HAMSTRINGS],
+    "me superior": [MuscleGroup.CHEST, MuscleGroup.BACK, MuscleGroup.SHOULDERS, MuscleGroup.TRICEPS],
+    "de superior": [MuscleGroup.CHEST, MuscleGroup.BACK, MuscleGroup.SHOULDERS, MuscleGroup.TRICEPS],
+}
+
+# Levantamento PRINCIPAL de cada dia, quando o método define o dia por ele
+# (5/3/1, Juggernaut) ou pede um esforço máximo naquele padrão (Westside ME).
+# O motor força este exercício como o 1º da sessão — é o que faz o método ser
+# ele mesmo: um "dia de agachamento" tem que começar agachando.
+_FOCUS_PRIMARY_LIFT: dict[str, str] = {
+    "agachamento": "agachamento livre com barra",
+    "supino": "supino reto com barra",
+    "terra": "levantamento terra",
+    "desenvolvimento": "desenvolvimento militar com barra",
+    "me inferior": "agachamento livre com barra",
+    "me superior": "supino reto com barra",
+    "de inferior": "agachamento livre com barra",
+    "de superior": "supino reto com barra",
 }
 
 # Splits padrão por nº de dias, quando o método não fixa um.
@@ -111,9 +139,18 @@ def resolve_days(method: MethodSpec, available_days: int | None) -> int:
 
 
 def _split_for(method: MethodSpec, days: int) -> list[str]:
+    """Foco de cada dia da semana. Vários métodos descrevem o split como um
+    CICLO curto que se repete (ex: DC Training = A/B alternando, então 4 dias =
+    A,B,A,B). Antes devolvíamos só as entradas do ciclo (2), e o app criava 2
+    rotinas em vez de 4 — o resto dos dias sumia. Agora o ciclo é repetido até
+    cobrir todos os dias pedidos."""
     if days in method.split_by_days:
-        return [normalize_search_text(x) for x in method.split_by_days[days]]
-    return _DEFAULT_SPLITS.get(days, _DEFAULT_SPLITS[3])[:days] or _DEFAULT_SPLITS[3]
+        base = [normalize_search_text(x) for x in method.split_by_days[days]]
+    else:
+        base = list(_DEFAULT_SPLITS.get(days, _DEFAULT_SPLITS[3]))
+    if not base:
+        base = list(_DEFAULT_SPLITS[3])
+    return [base[i % len(base)] for i in range(days)]
 
 
 def _active_phase(method: MethodSpec, phase_index: int) -> Phase | None:
@@ -188,6 +225,16 @@ def _pick(
     return out
 
 
+def _find_exercise(db: Session, name_query: str) -> Exercise | None:
+    """Acha um exercício específico pelo nome (levantamento principal do dia).
+    Prefere o de menor id — a base curada (nomes limpos) vem antes da importada."""
+    return db.execute(
+        select(Exercise)
+        .where(Exercise.name.ilike(f"%{name_query}%"), Exercise.is_custom.is_(False))
+        .order_by(Exercise.id)
+    ).scalars().first()
+
+
 def build_plan(
     db: Session,
     method: MethodSpec,
@@ -232,11 +279,44 @@ def build_plan(
             "Ajuste a agenda ou considere um método de menor frequência."
         )
 
+    # Métodos HIT prescrevem UMA série de trabalho de propósito — sem explicar,
+    # o treino parece incompleto/quebrado ("só 1 série?"). Deixa explícito.
+    if str(sets).strip().startswith("1"):
+        plan.notes.append(
+            f"1 série de trabalho por exercício é intencional no {method.name}: a série é levada ao "
+            "limite, então volume extra atrapalharia a recuperação. Faça séries de aquecimento antes, "
+            "sem falhar — elas não contam como série de trabalho."
+        )
+
     used_ids: set[int] = set()
+    # Um foco que se repete na semana (ex: A,B,A,B do DC) é o MESMO treino —
+    # então a seleção de exercícios é feita UMA vez por foco e reaproveitada.
+    # Sem isso, o used_ids daria exercícios diferentes no segundo dia "A".
+    picked_by_focus: dict[str, list[tuple[Exercise, bool]]] = {}
+
     for i, focus in enumerate(split):
-        muscles = _FOCUS_MUSCLES.get(focus, [MuscleGroup.FULL_BODY])
-        n_compound = round(per_session * ratio)
-        n_isolation = per_session - n_compound
+        if focus not in picked_by_focus:
+            muscles = _FOCUS_MUSCLES.get(focus, [MuscleGroup.FULL_BODY])
+            n_compound = round(per_session * ratio)
+            n_isolation = per_session - n_compound
+
+            # Levantamento principal do dia primeiro (5/3/1: dia de agachamento
+            # começa agachando). Só quando o método define o dia pelo lift e a
+            # fase não proíbe composto pesado.
+            compounds: list[Exercise] = []
+            primary_query = _FOCUS_PRIMARY_LIFT.get(focus)
+            if primary_query and not forbid_heavy_week and n_compound > 0:
+                primary = _find_exercise(db, primary_query)
+                if primary is not None and primary.id not in used_ids:
+                    compounds.append(primary)
+                    used_ids.add(primary.id)
+
+            compounds += _pick(
+                db, muscles, True, n_compound - len(compounds), used_ids, forbid_heavy_week, False
+            )
+            isolations = _pick(db, muscles, False, n_isolation, used_ids, False, prefer_machines)
+            picked_by_focus[focus] = [(ex, True) for ex in compounds] + [(ex, False) for ex in isolations]
+
         session = PlannedSession(
             day_index=i,
             day_label=schedule[i] if i < len(schedule) else f"Dia {i + 1}",
@@ -244,15 +324,11 @@ def build_plan(
             phase_name=phase.name if phase else None,
         )
         order = 1
-        # Compostos primeiro (ordem correta), depois isolados.
-        for ex in _pick(db, muscles, True, n_compound, used_ids, forbid_heavy_week, False):
+        for ex, is_compound in picked_by_focus[focus]:
             session.slots.append(
-                PlannedSlot(order, ex.primary_muscle_group.value, True, ex.id, ex.name, sets, reps, tempo, rest, rir)
-            )
-            order += 1
-        for ex in _pick(db, muscles, False, n_isolation, used_ids, False, prefer_machines):
-            session.slots.append(
-                PlannedSlot(order, ex.primary_muscle_group.value, False, ex.id, ex.name, sets, reps, tempo, rest, rir)
+                PlannedSlot(
+                    order, ex.primary_muscle_group.value, is_compound, ex.id, ex.name, sets, reps, tempo, rest, rir
+                )
             )
             order += 1
         plan.sessions.append(session)

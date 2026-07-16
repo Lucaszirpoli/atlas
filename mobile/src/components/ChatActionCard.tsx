@@ -5,7 +5,7 @@ import { Text, View } from "react-native";
 import type { ProposedAction } from "../api/ai";
 import { applyManualGoal } from "../api/goals";
 import { listMealCategories, listMealsForDay, logMeal } from "../api/meals";
-import { archiveRoutine, createRoutine, listRoutines } from "../api/routines";
+import { createRoutine, createRoutinesBulk } from "../api/routines";
 import { logWeight } from "../api/weight";
 import { exportDietAsPdf } from "../utils/pdfExport";
 import { useTheme } from "../theme/ThemeProvider";
@@ -14,6 +14,22 @@ import { InfoDialog } from "./InfoDialog";
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/** A IA às vezes serializa a lista (rotinas/exercícios/refeições) como uma
+ * STRING de JSON em vez de array — o backend já se defende disso, e aqui a
+ * gente aceita os dois formatos pra a confirmação não quebrar calada. */
+function asArray(v: unknown): unknown[] {
+  if (Array.isArray(v)) return v;
+  if (typeof v === "string") {
+    try {
+      const parsed = JSON.parse(v);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
 }
 
 export function ChatActionCard({
@@ -88,29 +104,47 @@ export function ChatActionCard({
         setIsSubmitting(false);
         return; // fica aberto mostrando "Baixar PDF" — só fecha quando a pessoa tocar em "Concluir"
       } else if (action.tool === "criar_treino_personalizado") {
-        if (action.input.substituir_existentes) {
-          const existing = await listRoutines();
-          for (const r of existing) {
-            await archiveRoutine(r.id);
-          }
-        }
-        const rotinas = (action.input.rotinas as any[]) ?? [];
-        for (const rotina of rotinas) {
-          await createRoutine({
-            name: rotina.nome,
-            exercises: (rotina.exercicios as any[]).map((e) => ({
-              exercise_id: e.exercise_id,
-              target_sets: e.target_sets,
-              target_reps_min: e.target_reps_min,
-              target_reps_max: e.target_reps_max ?? null,
-              rest_seconds: e.rest_seconds ?? 90,
+        // UMA chamada atômica (arquiva + cria tudo). Antes eram N chamadas
+        // soltas: qualquer uma falhando deixava o treino pela metade e só
+        // aparecia "tente novamente", sem dizer o que quebrou.
+        const rotinas = (asArray(action.input.rotinas) as any[]).map((r) => ({
+          nome: String(r?.nome ?? "Treino"),
+          exercicios: (asArray(r?.exercicios) as any[])
+            .filter((e) => Number.isFinite(Number(e?.exercise_id)))
+            .map((e) => ({
+              exercise_id: Number(e.exercise_id),
+              target_sets: Number(e.target_sets) || 3,
+              target_reps_min: Number(e.target_reps_min) || 8,
+              target_reps_max: e.target_reps_max != null ? Number(e.target_reps_max) : null,
+              rest_seconds: Number(e.rest_seconds) || 90,
             })),
-          });
+        }));
+        if (rotinas.length === 0) {
+          setErrorMsg("Não recebi o treino da IA direito. Peça pra ela montar de novo.");
+          setIsSubmitting(false);
+          return;
+        }
+        const res = await createRoutinesBulk({
+          rotinas,
+          substituir_existentes: Boolean(action.input.substituir_existentes),
+        });
+        if (res.skipped_exercises.length > 0) {
+          setErrorMsg(
+            `Treino salvo (${res.created} ${res.created === 1 ? "rotina" : "rotinas"}), mas ${res.skipped_exercises.length} exercício(s) não existiam na base e ficaram de fora.`
+          );
         }
       }
       onResolved("confirmed");
     } catch (err: any) {
-      setErrorMsg(err?.response?.data?.detail ?? "Tente novamente.");
+      // Mostra a causa REAL (o backend manda um detail explicativo).
+      const detail = err?.response?.data?.detail;
+      setErrorMsg(
+        typeof detail === "string" && detail
+          ? detail
+          : err?.message
+            ? `Falhou: ${err.message}`
+            : "Tente novamente."
+      );
     } finally {
       setIsSubmitting(false);
     }

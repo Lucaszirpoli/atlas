@@ -76,3 +76,25 @@ export async function duplicateRoutine(id: number): Promise<Routine> {
   const { data } = await api.post<Routine>(`/routines/${id}/duplicate`);
   return data;
 }
+
+/** Cria várias rotinas de uma vez (o treino que a IA montou), opcionalmente
+ * arquivando as ativas antes. Uma chamada só e atômica — antes o app fazia N
+ * chamadas soltas e qualquer falha deixava o treino pela metade. Exercícios
+ * que a IA errou o id voltam em `skipped_exercises` em vez de derrubar tudo. */
+export async function createRoutinesBulk(payload: {
+  rotinas: {
+    nome: string;
+    exercicios: {
+      exercise_id: number;
+      target_sets?: number;
+      target_reps_min?: number;
+      target_reps_max?: number | null;
+      rest_seconds?: number;
+      notes?: string | null;
+    }[];
+  }[];
+  substituir_existentes?: boolean;
+}): Promise<{ created: number; archived: number; skipped_exercises: number[] }> {
+  const { data } = await api.post("/routines/bulk", payload, { timeout: 60000 });
+  return data;
+}
