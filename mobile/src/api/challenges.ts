@@ -13,7 +13,8 @@ export type Challenge = {
     | "sleep_nights"
     | "water_goal_days"
     | "protein_goal_days"
-    | "diet_logged_days";
+    | "diet_logged_days"
+    | "weight_loss_percent";
   start_date: string;
   end_date: string;
   creator_id: number;

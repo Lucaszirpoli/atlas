@@ -38,6 +38,11 @@ const METRIC_META: Record<
     icon: "restaurant",
     hint: "Dias em que registrou a alimentação — vale a constância, não a restrição.",
   },
+  weight_loss_percent: {
+    label: "% de peso perdido",
+    icon: "trending-down",
+    hint: "Quem perder a maior porcentagem do próprio peso. É em % (não kg) porque quem pesa mais perde kg mais rápido. Precisa se pesar no começo e no fim.",
+  },
 };
 
 // Agrupado por módulo: 9 opções soltas viram uma sopa de chips.
@@ -46,6 +51,7 @@ const METRIC_GROUPS: { title: string; metrics: Challenge["metric"][] }[] = [
   { title: "Consistência", metrics: ["streak_days", "gym_checkin"] },
   { title: "Saúde", metrics: ["sleep_nights", "water_goal_days"] },
   { title: "Dieta", metrics: ["protein_goal_days", "diet_logged_days"] },
+  { title: "Peso", metrics: ["weight_loss_percent"] },
 ];
 
 function isoInDays(days: number): string {

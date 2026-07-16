@@ -9,6 +9,31 @@ import { useTheme } from "../../theme/ThemeProvider";
 
 const MEDALS = ["🥇", "🥈", "🥉"];
 
+/** Mostra o placar na unidade certa de cada tipo — sem isso, "2.5" (que é 2,5%
+ * do peso) ou "156374" (que são kg de carga) apareciam como números soltos. */
+function formatValue(metric: Challenge["metric"], value: number): string {
+  const n = Math.round(value * 10) / 10;
+  switch (metric) {
+    case "weight_loss_percent":
+      return `${n.toLocaleString("pt-BR")}%`;
+    case "total_volume":
+      return `${Math.round(value).toLocaleString("pt-BR")} kg`;
+    case "workout_count":
+      return `${Math.round(value)} ${Math.round(value) === 1 ? "treino" : "treinos"}`;
+    case "pr_count":
+      return `${Math.round(value)} ${Math.round(value) === 1 ? "recorde" : "recordes"}`;
+    case "streak_days":
+    case "gym_checkin":
+    case "sleep_nights":
+    case "water_goal_days":
+    case "protein_goal_days":
+    case "diet_logged_days":
+      return `${Math.round(value)} ${Math.round(value) === 1 ? "dia" : "dias"}`;
+    default:
+      return String(n);
+  }
+}
+
 export function ChallengeDetailScreen() {
   const { colors, type, spacing } = useTheme();
   const route = useRoute<any>();
@@ -69,8 +94,14 @@ export function ChallengeDetailScreen() {
                 />
               </View>
             </View>
-            <Text style={[type.h2, { color: index === 0 ? colors.secondary : colors.textPrimary, marginLeft: spacing.sm }]}>
-              {Math.round(entry.value * 10) / 10}
+            <Text
+              numberOfLines={1}
+              style={[
+                type.h2,
+                { color: index === 0 ? colors.secondary : colors.textPrimary, marginLeft: spacing.sm, fontSize: 15 },
+              ]}
+            >
+              {formatValue(challenge.metric, entry.value)}
             </Text>
           </View>
         ))}

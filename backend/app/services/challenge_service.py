@@ -2,10 +2,7 @@
 histórico REAL da pessoa no período — nunca um contador incrementado à mão
 (assim ninguém "digita" pontos e o placar sempre reflete o que aconteceu).
 
-Os tipos cobrem os 4 módulos do app: treino, consistência, saúde (sono/água) e
-dieta. Nenhum tipo premia restrição ou perda de peso — decisão de produto
-(espec. 3.7, saúde mental): desafio de "quem emagrece mais" incentiva
-comportamento perigoso, então não existe aqui.
+Os tipos cobrem treino, consistência, saúde (sono/água), dieta e peso.
 """
 
 from collections import defaultdict
@@ -19,6 +16,7 @@ from app.models.gym import GymCheckIn
 from app.models.meal import MealLog, MealLogItem
 from app.models.sleep_log import SleepLog
 from app.models.water_log import WaterLog
+from app.models.weight_log import WeightLog
 from app.models.workout_session import SetType, WorkoutSession
 from app.services import goal_service, water_service, workout_service
 
@@ -161,6 +159,31 @@ def _days_with_diet_logged(db: Session, user_id: int, challenge: Challenge) -> i
     return len(_meal_totals_per_day(db, user_id, challenge))
 
 
+def _weight_loss_percent(db: Session, user_id: int, challenge: Challenge) -> float:
+    """% do próprio peso perdido no período: (primeiro - último) / primeiro.
+    Positivo = perdeu; negativo = ganhou. Usa % em vez de kg porque quem pesa
+    mais perde kg mais rápido — em kg o desafio seria injusto.
+    Precisa de pelo menos 2 pesagens no período (senão não dá pra comparar)."""
+    start, end = _period_bounds(challenge)
+    logs = list(
+        db.execute(
+            select(WeightLog)
+            .where(
+                WeightLog.user_id == user_id,
+                WeightLog.recorded_at >= start,
+                WeightLog.recorded_at <= end,
+            )
+            .order_by(WeightLog.recorded_at)
+        ).scalars()
+    )
+    if len(logs) < 2:
+        return 0.0
+    first, last = logs[0].weight_kg, logs[-1].weight_kg
+    if not first:
+        return 0.0
+    return round((first - last) / first * 100, 2)
+
+
 def _gym_checkins_in_period(db: Session, user_id: int, challenge: Challenge) -> int:
     """Check-ins com prova de localização. Conta também os feitos fora da
     academia cadastrada (marcados "fora") — quem viajou não perde o dia."""
@@ -191,6 +214,8 @@ def compute_metric_value(db: Session, user_id: int, challenge: Challenge) -> flo
         return float(_days_hitting_protein_goal(db, user_id, challenge))
     if m == ChallengeMetric.DIET_LOGGED_DAYS:
         return float(_days_with_diet_logged(db, user_id, challenge))
+    if m == ChallengeMetric.WEIGHT_LOSS_PERCENT:
+        return _weight_loss_percent(db, user_id, challenge)
 
     sessions = _sessions_in_period(db, user_id, challenge)
     if m == ChallengeMetric.WORKOUT_COUNT:

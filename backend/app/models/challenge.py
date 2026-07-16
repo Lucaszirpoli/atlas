@@ -25,6 +25,10 @@ class ChallengeMetric(str, enum.Enum):
     # --- Dieta ---
     PROTEIN_GOAL_DAYS = "protein_goal_days"  # dias batendo a meta de proteína
     DIET_LOGGED_DAYS = "diet_logged_days"    # dias com a dieta registrada
+    # --- Peso ---
+    # % do próprio peso perdido no período (não kg: quem é mais pesado perde kg
+    # mais rápido, então kg deixaria o desafio injusto).
+    WEIGHT_LOSS_PERCENT = "weight_loss_percent"
 
 
 class Challenge(Base):
