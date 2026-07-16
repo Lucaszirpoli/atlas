@@ -1,5 +1,11 @@
 import { api } from "./client";
 
+// Chamadas que passam pela IA (Claude) podem levar bem mais que o timeout
+// padrão de 15s do axios — gerar um treino/dieta com dica por item, ou uma
+// resposta de chat, às vezes leva 20-40s. Sem isto, o app abortava e mostrava
+// "não consegui gerar" mesmo com o backend respondendo. 90s é folga segura.
+const AI_TIMEOUT_MS = 90000;
+
 export type ProposedAction = {
   tool:
     | "registrar_refeicao"
@@ -23,7 +29,11 @@ export async function sendChatMessage(
   message: string,
   contextModule?: string
 ): Promise<{ reply: string; proposed_action: ProposedAction | null; free_credits_remaining: number | null }> {
-  const { data } = await api.post("/ai/chat", { message, context_module: contextModule });
+  const { data } = await api.post(
+    "/ai/chat",
+    { message, context_module: contextModule },
+    { timeout: AI_TIMEOUT_MS }
+  );
   return data;
 }
 
@@ -99,7 +109,9 @@ export async function generateTraining(payload: {
   available_days?: number | null;
   phase_index?: number;
 }): Promise<GenerateTrainingResult> {
-  const { data } = await api.post<GenerateTrainingResult>("/ai/training/generate", payload);
+  const { data } = await api.post<GenerateTrainingResult>("/ai/training/generate", payload, {
+    timeout: AI_TIMEOUT_MS,
+  });
   return data;
 }
 
@@ -157,7 +169,9 @@ export async function generateDiet(payload: {
   meals_per_day: number;
   variant?: number;
 }): Promise<GenerateDietResult> {
-  const { data } = await api.post<GenerateDietResult>("/ai/diet/generate", payload);
+  const { data } = await api.post<GenerateDietResult>("/ai/diet/generate", payload, {
+    timeout: AI_TIMEOUT_MS,
+  });
   return data;
 }
 
@@ -179,9 +193,10 @@ export async function analyzeMealPhoto(
   imageBase64: string,
   mediaType = "image/jpeg"
 ): Promise<{ itens: MealPhotoItem[]; aviso: string }> {
-  const { data } = await api.post("/ai/meal-photo", {
-    image_base64: imageBase64,
-    media_type: mediaType,
-  });
+  const { data } = await api.post(
+    "/ai/meal-photo",
+    { image_base64: imageBase64, media_type: mediaType },
+    { timeout: AI_TIMEOUT_MS }
+  );
   return data;
 }

@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from app.ai.diet_ai import enrich_plan
 from app.ai.diet_engine import MacroTarget, build_diet_plan
-from app.ai.methods import list_methods
+from app.ai.methods import get_method, list_methods, recommend_method_for_profile
 from app.ai.methods_ai import generate_method_plan
 from app.ai.orchestrator import run_chat_turn
 from app.ai.vision import analyze_meal_photo
@@ -81,6 +81,49 @@ def training_generate(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
+    if result.get("ai_used") and not is_pro:
+        current_user.ai_free_credits = max(current_user.ai_free_credits - 1, 0)
+        db.add(current_user)
+        db.commit()
+        result["free_credits_remaining"] = current_user.ai_free_credits
+    result["ai_locked"] = not can_use_ai
+    return result
+
+
+class PersonalizedTrainingRequest(BaseModel):
+    available_days: int | None = None
+
+
+@router.post("/training/personalized")
+def training_personalized(
+    payload: PersonalizedTrainingRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """"Monte um treino ideal pro seu perfil": escolhe automaticamente o método
+    que melhor casa com experiência/objetivo/frequência da pessoa e gera o plano
+    fiel a ele. Mesma isca de créditos do /training/generate."""
+    profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).one_or_none()
+    exp = profile.experience_level.value if profile else None
+    goal = profile.goal.value if profile else None
+    days = payload.available_days
+    if days is None and profile is not None and profile.available_days:
+        days = len(profile.available_days)
+
+    method_key = recommend_method_for_profile(exp, goal, days)
+    method = get_method(method_key)
+
+    is_pro = current_user.plan == Plan.PRO
+    can_use_ai = is_pro or current_user.ai_free_credits > 0
+    result = generate_method_plan(db, method_key, days, 0, use_ai=can_use_ai)
+
+    result["recommended"] = True
+    result["recommended_reason"] = (
+        f"Escolhemos {method.name} pelo seu perfil"
+        + (f" ({goal})" if goal else "")
+        + (f", {days}x/semana" if days else "")
+        + "."
+    )
     if result.get("ai_used") and not is_pro:
         current_user.ai_free_credits = max(current_user.ai_free_credits - 1, 0)
         db.add(current_user)
@@ -166,7 +209,7 @@ def diet_generate(
             ),
         )
 
-    meals = 3 if payload.meals_per_day <= 3 else 4
+    meals = max(3, min(payload.meals_per_day, 6))
     plan = build_diet_plan(db, target, payload.restrictions, meals_per_day=meals, variant=payload.variant)
 
     is_pro = current_user.plan == Plan.PRO

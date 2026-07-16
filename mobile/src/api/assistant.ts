@@ -15,6 +15,8 @@ export type AssistantReply = {
 /** Assistente híbrido: tenta o motor determinístico (grátis, sem token) e, se
  * ele não souber, cai na IA (Claude) — ilimitada no Pro, com créditos no Free. */
 export async function askAssistant(text: string): Promise<AssistantReply> {
-  const { data } = await api.post("/assistant/ask", { text });
+  // A IA (Claude) pode levar mais que os 15s padrão do axios — 90s de folga
+  // pra não abortar uma resposta que o backend ainda está gerando.
+  const { data } = await api.post("/assistant/ask", { text }, { timeout: 90000 });
   return data;
 }

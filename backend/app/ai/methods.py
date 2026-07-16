@@ -520,3 +520,47 @@ def get_method(key: str) -> MethodSpec | None:
 
 def list_methods() -> list[MethodSpec]:
     return list(METHODS.values())
+
+
+# --- Recomendação por perfil ("monte um treino ideal pro seu perfil") -------
+
+_EXP_RANK = {"beginner": 0, "intermediate": 1, "advanced": 2}
+
+# Mapeia a experiência do onboarding (PT) pro nível dos métodos (EN).
+_EXP_FROM_PROFILE = {"iniciante": "beginner", "intermediario": "intermediate", "avancado": "advanced"}
+
+# Por objetivo, a ordem de preferência das famílias de progressão (1ª = melhor).
+_GOAL_FAMILY_PREF: dict[str, tuple[str, ...]] = {
+    "hipertrofia": ("density_quality", "volume_landmarks", "load_or_reps", "tm_amrap"),
+    "recomposicao": ("volume_landmarks", "density_quality", "load_or_reps", "tm_amrap"),
+    "emagrecimento": ("volume_landmarks", "density_quality", "load_or_reps", "tm_amrap"),
+    "manutencao": ("volume_landmarks", "load_or_reps", "density_quality", "tm_amrap"),
+    "performance": ("tm_amrap", "load_or_reps", "volume_landmarks", "density_quality"),
+}
+
+
+def recommend_method_for_profile(
+    experience: str | None, goal: str | None, days: int | None
+) -> str:
+    """Escolhe (determinístico) o método que melhor casa com o perfil da pessoa:
+    respeita o nível mínimo de experiência, prefere a família de progressão do
+    objetivo e um método que suporte a frequência que a pessoa tem. Sempre
+    devolve uma chave válida (fallback seguro pra iniciante)."""
+    user_rank = _EXP_RANK.get(_EXP_FROM_PROFILE.get(experience or "", ""), 0)
+    fam_pref = _GOAL_FAMILY_PREF.get(goal or "", _GOAL_FAMILY_PREF["hipertrofia"])
+
+    def score(m: MethodSpec) -> tuple:
+        # 1) família do objetivo (menor índice = melhor); desconhecida vai pro fim
+        fam = m.progression_family.value
+        fam_score = fam_pref.index(fam) if fam in fam_pref else len(fam_pref)
+        # 2) suporta a frequência do usuário?
+        days_ok = 0 if (days is not None and days in m.days_per_week) else 1
+        # 3) método mais próximo (por baixo) do nível do usuário — não muito fácil
+        exp_gap = user_rank - _EXP_RANK[m.experience_min.value]
+        return (fam_score, days_ok, exp_gap, m.key)
+
+    eligible = [
+        m for m in METHODS.values()
+        if _EXP_RANK[m.experience_min.value] <= user_rank
+    ] or [METHODS["kuba"]]  # iniciante seguro se nada casar
+    return min(eligible, key=score).key

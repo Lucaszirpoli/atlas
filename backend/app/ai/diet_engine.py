@@ -65,6 +65,7 @@ class _Food:
     f100: float
     grams: float
     meals: tuple[str, ...]
+    slot: str = "main"        # "main" (prato: almoço/janta) ou "snack" (café/lanche/ceia)
     fixed: bool = False       # porção fixa (não é ajustada pelo solver)
 
     def contrib(self) -> tuple[float, float, float, float]:
@@ -118,14 +119,14 @@ def _resolve(db: Session, query: str) -> dict | None:
     return data
 
 
-def _mk_food(db: Session, role: fr.FoodRole, grams: float, fixed: bool) -> _Food | None:
+def _mk_food(db: Session, role: fr.FoodRole, grams: float, fixed: bool, slot: str = "main") -> _Food | None:
     data = _resolve(db, role.query)
     if data is None:
         return None
     return _Food(
         food_id=data["food_id"], name=data["name"], macro=role.macro,
         kcal100=data["kcal100"], p100=data["p100"], c100=data["c100"], f100=data["f100"],
-        grams=grams, meals=role.meals, fixed=fixed,
+        grams=grams, meals=role.meals, slot=slot, fixed=fixed,
     )
 
 
@@ -174,17 +175,36 @@ def _round_g(g: float) -> float:
     return max(0.0, round(g / 5.0) * 5.0)
 
 
+# Refeições canônicas em ordem, por quantidade escolhida (3 a 6). Sempre inclui
+# café/almoço/janta; as demais são lanches/ceia. Batem com as categorias padrão.
+_MEALS_BY_COUNT: dict[int, list[str]] = {
+    3: [fr.CAFE, fr.ALMOCO, fr.JANTAR],
+    4: [fr.CAFE, fr.ALMOCO, fr.LANCHE, fr.JANTAR],
+    5: [fr.CAFE, fr.ALMOCO, fr.LANCHE, fr.JANTAR, fr.CEIA],
+    6: [fr.CAFE, fr.LANCHE_MANHA, fr.ALMOCO, fr.LANCHE, fr.JANTAR, fr.CEIA],
+}
+
+
+def _meals_for_count(n: int) -> list[str]:
+    return _MEALS_BY_COUNT.get(max(3, min(n, 6)), _MEALS_BY_COUNT[4])
+
+
 def _distribute(foods: list[_Food], meal_names: list[str]) -> list[dict]:
-    """Distribui cada alimento pelas refeições preferidas dele (só as que
-    existem no plano do dia), dividindo as gramas igualmente entre elas."""
+    """Distribui os alimentos pelas refeições do dia por TIPO: pratos principais
+    (proteína/carbo/gordura/vegetal) vão pro almoço e jantar; lanches (fruta,
+    laticínio, whey, aveia) vão pro café e demais lanches/ceia. Assim a escolha
+    de 3–6 refeições muda a estrutura do dia, não só o número."""
+    main_meals = [m for m in meal_names if m in (fr.ALMOCO, fr.JANTAR)] or [meal_names[0]]
+    snack_meals = [m for m in meal_names if m not in (fr.ALMOCO, fr.JANTAR)] or [meal_names[0]]
     buckets: dict[str, list[dict]] = {m: [] for m in meal_names}
+
     for fd in foods:
         g = _round_g(fd.grams)
         if g <= 0:
             continue
-        slots = [m for m in fd.meals if m in buckets] or [meal_names[0]]
-        share = g / len(slots)
-        for m in slots:
+        targets = main_meals if fd.slot == "main" else snack_meals
+        share = g / len(targets)
+        for m in targets:
             gm = _round_g(share)
             if gm <= 0:
                 continue
@@ -211,73 +231,70 @@ def build_diet_plan(
     """Monta o dia inteiro batendo os macros. `variant` roda os alimentos
     escolhidos (mesma meta, cardápio diferente) para o botão 'gerar outra'."""
     rset = frozenset(restrictions or [])
-    meal_names = [fr.CAFE, fr.ALMOCO, fr.LANCHE, fr.JANTAR]
-    if meals_per_day <= 3:
-        meal_names = [fr.CAFE, fr.ALMOCO, fr.JANTAR]
+    meal_names = _meals_for_count(meals_per_day)
 
     foods: list[_Food] = []
 
-    # Alimentos de porção FIXA (base conhecida) -----------------------------
+    # Alimentos de porção FIXA (base conhecida). Vegetal = prato; fruta e
+    # laticínio = lanche.
     veg1 = fr.pick_allowed(fr.VEGGIES, rset, variant)
     veg2 = fr.pick_allowed(fr.VEGGIES, rset, variant + 1)
     for v in (veg1, veg2):
         if v is not None:
-            fd = _mk_food(db, v, VEG_G, fixed=True)
+            fd = _mk_food(db, v, VEG_G, fixed=True, slot="main")
             if fd:
                 foods.append(fd)
 
     fruit = fr.pick_allowed(fr.FRUITS, rset, variant)
     if fruit is not None:
-        fd = _mk_food(db, fruit, FRUIT_G, fixed=True)
+        fd = _mk_food(db, fruit, FRUIT_G, fixed=True, slot="snack")
         if fd:
             foods.append(fd)
 
     dairy = fr.pick_allowed(fr.DAIRY, rset, variant)
     if dairy is not None:
-        fd = _mk_food(db, dairy, DAIRY_G, fixed=True)
+        fd = _mk_food(db, dairy, DAIRY_G, fixed=True, slot="snack")
         if fd:
             foods.append(fd)
 
-    # Alimentos SOLUCIONADORES (gramas ajustadas pra bater a meta) ----------
-    # Proteína: 1 reforço denso (whey/ervilha) — bate metas altas sem estourar
-    # caloria — + 1 proteína "de verdade" no prato. Carbo: 1 do café + 1 do
-    # almoço/jantar (capacidade pra metas altas). Gordura: azeite (puro, preciso).
-    chosen: list[tuple[fr.FoodRole | None, float]] = []
+    # Alimentos SOLUCIONADORES (gramas ajustadas pra bater a meta). O slot diz
+    # onde caem: reforço proteico + carbo do café = lanche; proteína/carbo
+    # principal + gordura = prato (almoço/jantar).
+    chosen: list[tuple[fr.FoodRole | None, float, str]] = []
     booster = fr.pick_allowed(fr.PROTEIN_BOOSTERS, rset, variant)
     whole = fr.pick_allowed(fr.WHOLE_PROTEINS, rset, variant)
     if whole is not None and booster is not None and whole.query == booster.query:
         whole = fr.pick_allowed(fr.WHOLE_PROTEINS, rset, variant + 1)
-    chosen.append((booster, 30.0))
-    chosen.append((whole, 150.0))
+    chosen.append((booster, 30.0, "snack"))
+    chosen.append((whole, 150.0, "main"))
 
     # Até 3 carbos distintos pra dar capacidade (metas altas de bulking). Um do
-    # café (aveia/pão) quando permitido; o resto principais (arroz/tubérculo/
-    # macarrão de arroz — todos sem glúten, então quem não come trigo não perde
-    # capacidade). Pra metas baixas, o refinamento zera o excedente.
-    carb_roles: list[fr.FoodRole] = []
+    # café (aveia/pão → lanche); o resto principais (arroz/tubérculo/macarrão de
+    # arroz → prato). Pra metas baixas, o refinamento zera o excedente.
     bfast_carb = fr.pick_allowed(fr.BREAKFAST_CARBS, rset, variant)
+    carb_roles: list[tuple[fr.FoodRole, str]] = []
     if bfast_carb is not None:
-        carb_roles.append(bfast_carb)
+        carb_roles.append((bfast_carb, "snack"))
     off = 0
     while len(carb_roles) < 3:
         m = fr.pick_allowed(fr.MAIN_CARBS, rset, variant + off)
         off += 1
         if m is None:
             break
-        if all(m.query != c.query for c in carb_roles):
-            carb_roles.append(m)
+        if all(m.query != c.query for c, _ in carb_roles):
+            carb_roles.append((m, "main"))
         if off > len(fr.MAIN_CARBS) + 2:
             break
-    for role in carb_roles:
-        chosen.append((role, 120.0))
+    for role, slot in carb_roles:
+        chosen.append((role, 120.0, slot))
 
-    chosen.append((fr.pick_allowed(fr.FATS, rset, variant), 15.0))
+    chosen.append((fr.pick_allowed(fr.FATS, rset, variant), 15.0, "main"))
 
     seen_ids: set[str] = set()
-    for role, g0 in chosen:
+    for role, g0, slot in chosen:
         if role is None or role.query in seen_ids:
             continue
-        fd = _mk_food(db, role, g0, fixed=False)
+        fd = _mk_food(db, role, g0, fixed=False, slot=slot)
         if fd is not None:
             seen_ids.add(role.query)
             foods.append(fd)

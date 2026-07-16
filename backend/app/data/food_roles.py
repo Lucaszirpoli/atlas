@@ -24,9 +24,11 @@ from dataclasses import dataclass, field
 
 # Refeições canônicas (batem com meal_service.DEFAULT_MEAL_CATEGORY_NAMES).
 CAFE = "Café da manhã"
+LANCHE_MANHA = "Lanche da manhã"
 ALMOCO = "Almoço"
 LANCHE = "Lanche da tarde"
 JANTAR = "Jantar"
+CEIA = "Ceia"
 
 VEGANO = "vegano"
 VEGETARIANO = "vegetariano"

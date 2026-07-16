@@ -165,6 +165,32 @@ def complete_onboarding(
         )
     )
 
+    # Já cria a meta de calorias/macros automática (Mifflin) a partir dos dados
+    # do onboarding — sem isso, a pessoa terminava o cadastro SEM meta, e o
+    # dashboard/dieta ficavam sem kcal do dia até ela abrir a tela de meta
+    # (inconsistente: dava pra gerar/aplicar dieta sem ter meta definida).
+    from app.models.calorie_goal import CalorieGoal, GoalMode
+    from app.services.nutrition_calc import compute_auto_goal
+
+    auto = compute_auto_goal(
+        biological_sex=payload.biological_sex,
+        weight_kg=payload.current_weight_kg,
+        height_cm=payload.height_cm,
+        age=payload.age,
+        activity_level=payload.activity_level,
+        goal=payload.goal,
+    )
+    db.add(
+        CalorieGoal(
+            user_id=current_user.id,
+            mode=GoalMode.AUTO,
+            kcal=auto["kcal"],
+            protein_g=auto["protein_g"],
+            carbs_g=auto["carbs_g"],
+            fat_g=auto["fat_g"],
+        )
+    )
+
     current_user.onboarding_completed = True
     db.add(current_user)
     db.commit()
