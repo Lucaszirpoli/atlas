@@ -35,13 +35,30 @@ def run() -> None:
     en_by_slug = {row["id"]: row["name"] for row in json.loads(JSON_PATH.read_text(encoding="utf-8"))}
     db = SessionLocal()
     try:
+        # order_by(id): sem ordem fixa, o banco pode devolver os importados em
+        # ordem diferente a cada execução e o sufixo "(variação N)" cairia num
+        # exercício diferente a cada deploy — nome trocando sozinho.
         rows = list(
-            db.execute(select(Exercise).where(Exercise.video_url.like(f"{IMAGE_BASE}%"))).scalars()
+            db.execute(
+                select(Exercise)
+                .where(Exercise.video_url.like(f"{IMAGE_BASE}%"))
+                .order_by(Exercise.id)
+            ).scalars()
         )
+        # Nomes já "reservados" pelos curados — o importado que traduzir pra um
+        # deles vira "(variação N)".
+        #
+        # O `is_(None)` NÃO é redundante: em SQL, `NULL LIKE 'x%'` é NULL e
+        # `NOT NULL` também é NULL (não TRUE), então um curado com video_url
+        # nulo ficava FORA desta lista e o importado colidia com ele à vontade.
+        # Foi assim que a base ganhou 24 nomes duplicados ("Agachamento frontal"
+        # existindo duas vezes, uma curada e uma importada).
         taken = {
             n.lower()
             for (n,) in db.execute(
-                select(Exercise.name).where(~Exercise.video_url.like(f"{IMAGE_BASE}%"))
+                select(Exercise.name).where(
+                    (Exercise.video_url.is_(None)) | (~Exercise.video_url.like(f"{IMAGE_BASE}%"))
+                )
             )
         }
         changed = 0

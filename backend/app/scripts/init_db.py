@@ -13,6 +13,7 @@ from app.models.exercise import Exercise
 from app.models.food import Food
 from app.scripts import (
     backfill_exercise_category,
+    retranslate_exercises,
     seed_exercises,
     seed_exercises_open,
     seed_plant_based,
@@ -25,6 +26,14 @@ def run() -> None:
     print(f"Criando schema em {engine.url} ...")
     Base.metadata.create_all(bind=engine)
     print("Schema pronto.")
+
+    # ANTES de qualquer consulta a Exercise, e logo depois do create_all:
+    # create_all não adiciona coluna em tabela que já existe, então num banco
+    # antigo (produção) a coluna `category` não existiria — e QUALQUER
+    # select(Exercise) do ORM já pede essa coluna, estourando "no such column".
+    # Como o start é `init_db && uvicorn`, isso não seria um erro de seed: o
+    # backend inteiro não subiria. Este passo tem que vir primeiro.
+    backfill_exercise_category.run()
 
     db = SessionLocal()
     try:
@@ -52,10 +61,12 @@ def run() -> None:
 
     _wire_local_exercise_images()
 
-    # Idempotente e OBRIGATÓRIO em banco já existente: create_all não adiciona
-    # coluna em tabela que já existe, então a categoria (que separa musculação
-    # de alongamento/cardio) precisa deste passo explícito pra chegar na prod.
-    backfill_exercise_category.run()
+    # Aplica o tradutor atual aos nomes já importados. Sem isto as correções do
+    # tradutor só valeriam pra banco novo, e a produção ficaria com os nomes
+    # quebrados ("Jerk two braço com kettlebell") pra sempre. Também é o que
+    # desfaz os nomes duplicados (o importado que colide com um curado vira
+    # "(variação N)"). Idempotente: só grava quando o nome muda de verdade.
+    retranslate_exercises.run()
 
     print("init_db concluído.")
 
