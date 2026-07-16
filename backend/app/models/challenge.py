@@ -11,6 +11,9 @@ class ChallengeMetric(str, enum.Enum):
     WORKOUT_COUNT = "workout_count"
     TOTAL_VOLUME = "total_volume"
     STREAK_DAYS = "streak_days"
+    # "Quem vai mais à academia": conta check-ins com prova de localização
+    # (ver app/models/gym.py) — não treinos registrados à mão.
+    GYM_CHECKIN = "gym_checkin"
 
 
 class Challenge(Base):

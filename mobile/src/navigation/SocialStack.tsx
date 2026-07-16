@@ -4,6 +4,7 @@ import React from "react";
 import { ChallengeDetailScreen } from "../screens/social/ChallengeDetailScreen";
 import { ChallengesScreen } from "../screens/social/ChallengesScreen";
 import { FriendsScreen } from "../screens/social/FriendsScreen";
+import { GymScreen } from "../screens/social/GymScreen";
 import { PrivacyScreen } from "../screens/social/PrivacyScreen";
 import { SocialFeedScreen } from "../screens/social/SocialFeedScreen";
 import { useTheme } from "../theme/ThemeProvider";
@@ -26,6 +27,7 @@ export function SocialStack() {
       <Stack.Screen name="Friends" component={FriendsScreen} options={{ title: "Amigos" }} />
       <Stack.Screen name="Privacy" component={PrivacyScreen} options={{ title: "Privacidade" }} />
       <Stack.Screen name="Challenges" component={ChallengesScreen} options={{ title: "Desafios" }} />
+      <Stack.Screen name="Gym" component={GymScreen} options={{ title: "Minha academia" }} />
       <Stack.Screen
         name="ChallengeDetail"
         component={ChallengeDetailScreen}

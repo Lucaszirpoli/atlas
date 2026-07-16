@@ -4,7 +4,7 @@ import type { UserSummary } from "./friends";
 export type Challenge = {
   id: number;
   name: string;
-  metric: "workout_count" | "total_volume" | "streak_days";
+  metric: "workout_count" | "total_volume" | "streak_days" | "gym_checkin";
   start_date: string;
   end_date: string;
   creator_id: number;

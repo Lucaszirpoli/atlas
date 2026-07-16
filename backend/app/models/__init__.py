@@ -9,6 +9,7 @@ from app.models.exercise import Exercise
 from app.models.feed import FeedComment, FeedPost, FeedReaction
 from app.models.food import Food
 from app.models.friend_request import FriendRequest
+from app.models.gym import GymCheckIn, UserGym
 from app.models.meal import MealCategory, MealLog, MealLogItem
 from app.models.privacy_settings import UserPrivacySettings
 from app.models.routine import Routine, RoutineExercise
@@ -40,6 +41,8 @@ __all__ = [
     "Exercise",
     "Routine",
     "RoutineExercise",
+    "UserGym",
+    "GymCheckIn",
     "WorkoutSession",
     "WorkoutSetLog",
     "FriendRequest",

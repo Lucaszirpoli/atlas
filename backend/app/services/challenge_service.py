@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.challenge import Challenge, ChallengeMetric, ChallengeParticipant
+from app.models.gym import GymCheckIn
 from app.models.workout_session import WorkoutSession
 
 
@@ -36,7 +37,27 @@ def _longest_streak(sessions: list[WorkoutSession]) -> int:
     return longest
 
 
+def _gym_checkins_in_period(db: Session, user_id: int, challenge: Challenge) -> int:
+    """Check-ins com prova de localização dentro do período do desafio.
+    Conta também os feitos fora da academia cadastrada (marcados como "fora") —
+    quem viajou não perde o dia; a transparência fica no detalhe do check-in."""
+    return len(
+        list(
+            db.execute(
+                select(GymCheckIn).where(
+                    GymCheckIn.user_id == user_id,
+                    GymCheckIn.day >= challenge.start_date,
+                    GymCheckIn.day <= challenge.end_date,
+                )
+            ).scalars()
+        )
+    )
+
+
 def compute_metric_value(db: Session, user_id: int, challenge: Challenge) -> float:
+    if challenge.metric == ChallengeMetric.GYM_CHECKIN:
+        return float(_gym_checkins_in_period(db, user_id, challenge))
+
     sessions = _sessions_in_period(db, user_id, challenge)
     if challenge.metric == ChallengeMetric.WORKOUT_COUNT:
         return float(len(sessions))

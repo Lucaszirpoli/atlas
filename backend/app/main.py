@@ -19,6 +19,7 @@ from app.routers import (
     foods,
     friends,
     goals,
+    gyms,
     meals,
     measurements,
     privacy,
@@ -68,6 +69,7 @@ app.include_router(reports.router)
 app.include_router(privacy.router)
 app.include_router(feed.router)
 app.include_router(challenges.router)
+app.include_router(gyms.router)
 app.include_router(sleep.router)
 app.include_router(workout_insights.router)
 app.include_router(evolution.router)

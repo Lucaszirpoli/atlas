@@ -37,6 +37,15 @@
       "@react-native-community/datetimepicker",
       "expo-sharing",
       "expo-dev-client",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "O Atlas usa sua localização só quando você faz check-in na academia, para provar sua presença nos desafios com amigos.",
+          "locationWhenInUsePermission": "O Atlas usa sua localização só quando você faz check-in na academia, para provar sua presença nos desafios com amigos.",
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false
+        }
+      ],
       "./plugins/withCleartextTraffic"
     ],
     "extra": {
