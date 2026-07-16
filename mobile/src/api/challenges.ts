@@ -4,7 +4,16 @@ import type { UserSummary } from "./friends";
 export type Challenge = {
   id: number;
   name: string;
-  metric: "workout_count" | "total_volume" | "streak_days" | "gym_checkin";
+  metric:
+    | "workout_count"
+    | "total_volume"
+    | "pr_count"
+    | "streak_days"
+    | "gym_checkin"
+    | "sleep_nights"
+    | "water_goal_days"
+    | "protein_goal_days"
+    | "diet_logged_days";
   start_date: string;
   end_date: string;
   creator_id: number;

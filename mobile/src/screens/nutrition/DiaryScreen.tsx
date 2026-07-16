@@ -5,6 +5,7 @@ import { RefreshControl, ScrollView, Text, TouchableOpacity, View } from "react-
 
 import { getCurrentGoal, type CalorieGoal } from "../../api/goals";
 import { deleteMealLog, listMealCategories, listMealsForDay, type MealCategory, type MealLog } from "../../api/meals";
+import { getTodayWaterSummary, logWater, type WaterSummary } from "../../api/water";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
@@ -35,6 +36,7 @@ export function DiaryScreen() {
   const [categories, setCategories] = useState<MealCategory[]>([]);
   const [meals, setMeals] = useState<MealLog[]>([]);
   const [goal, setGoal] = useState<CalorieGoal | null>(null);
+  const [water, setWater] = useState<WaterSummary | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   // itemCount = quantos alimentos aquele registro tem. O backend só apaga a
   // REFEIÇÃO inteira (não item a item), então a confirmação precisa dizer isso
@@ -45,14 +47,27 @@ export function DiaryScreen() {
   >(null);
 
   async function loadAll() {
-    const [cats, mealsForDay, currentGoal] = await Promise.all([
+    const [cats, mealsForDay, currentGoal, waterToday] = await Promise.all([
       listMealCategories(),
       listMealsForDay(todayIso()),
       getCurrentGoal(),
+      getTodayWaterSummary(),
     ]);
     setCategories(cats);
     setMeals(mealsForDay);
     setGoal(currentGoal);
+    setWater(waterToday);
+  }
+
+  // Água mora aqui junto com as calorias: é o lugar que a pessoa abre pra
+  // anotar o que consumiu no dia.
+  async function handleAddWater(ml: number) {
+    setWater((prev) => (prev ? { ...prev, total_ml_today: prev.total_ml_today + ml } : prev));
+    try {
+      await logWater(ml);
+    } finally {
+      getTodayWaterSummary().then(setWater).catch(() => {});
+    }
   }
 
   async function confirmDeleteFood() {
@@ -200,6 +215,51 @@ export function DiaryScreen() {
             <Button title="Definir meta de calorias" onPress={() => navigation.navigate("GoalSettings")} />
           </View>
         ) : null}
+      </Card>
+
+      {/* Água — fica aqui junto das calorias, que é onde a pessoa anota o que
+          consumiu no dia. Toque nos atalhos pra registrar. */}
+      <Card style={{ marginBottom: spacing.md }}>
+        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
+          <Ionicons name="water" size={18} color={colors.info} />
+          <Text style={[type.h2, { color: colors.textPrimary, fontSize: 16, flex: 1, marginLeft: spacing.xs }]}>
+            Água
+          </Text>
+          <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "700" }]}>
+            {((water?.total_ml_today ?? 0) / 1000).toFixed(1)} L
+            <Text style={{ color: colors.textSecondary, fontWeight: "400" }}>
+              {" "}
+              / {((water?.goal_ml ?? 0) / 1000).toFixed(1)} L
+            </Text>
+          </Text>
+        </View>
+        <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.surfaceAlt, overflow: "hidden" }}>
+          <View
+            style={{
+              width: `${Math.min(((water?.total_ml_today ?? 0) / Math.max(water?.goal_ml ?? 1, 1)) * 100, 100)}%`,
+              height: "100%",
+              backgroundColor: colors.info,
+            }}
+          />
+        </View>
+        <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.md }}>
+          {[200, 300, 500].map((ml) => (
+            <TouchableOpacity
+              key={ml}
+              onPress={() => handleAddWater(ml)}
+              activeOpacity={0.7}
+              style={{
+                flex: 1,
+                alignItems: "center",
+                backgroundColor: colors.info + "1A",
+                borderRadius: radius.button,
+                paddingVertical: spacing.sm,
+              }}
+            >
+              <Text style={[type.bodySmall, { color: colors.info, fontWeight: "700" }]}>+{ml}ml</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </Card>
 
       {/* Refeições */}

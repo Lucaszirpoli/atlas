@@ -9,13 +9,44 @@ import { Card } from "../../components/Card";
 import { OptionButton } from "../../components/OptionButton";
 import { useTheme } from "../../theme/ThemeProvider";
 
-const METRIC_META: Record<Challenge["metric"], { label: string; icon: keyof typeof Ionicons.glyphMap }> = {
-  workout_count: { label: "Nº de treinos", icon: "checkbox" },
-  total_volume: { label: "Volume total", icon: "barbell" },
-  streak_days: { label: "Streak de dias", icon: "flame" },
-  // Conta check-ins com prova de localização na academia (ver GymScreen).
-  gym_checkin: { label: "Idas à academia", icon: "location" },
+const METRIC_META: Record<
+  Challenge["metric"],
+  { label: string; icon: keyof typeof Ionicons.glyphMap; hint: string }
+> = {
+  workout_count: { label: "Nº de treinos", icon: "checkbox", hint: "Quem treinar mais vezes no período vence." },
+  total_volume: {
+    label: "Carga total",
+    icon: "barbell",
+    hint: "Soma de peso × reps das séries válidas (aquecimento e preparatória não contam).",
+  },
+  pr_count: { label: "Recordes", icon: "trophy", hint: "Quem bater mais recordes pessoais de carga vence." },
+  streak_days: { label: "Sequência de dias", icon: "flame", hint: "A maior sequência de dias seguidos treinando." },
+  gym_checkin: {
+    label: "Idas à academia",
+    icon: "location",
+    hint: "Cada um cadastra a academia e faz check-in estando lá — a localização é a prova de presença.",
+  },
+  sleep_nights: { label: "Noites bem dormidas", icon: "moon", hint: "Quantas noites com 7h ou mais de sono." },
+  water_goal_days: { label: "Dias batendo a água", icon: "water", hint: "Dias em que bateu a meta de água." },
+  protein_goal_days: {
+    label: "Dias batendo proteína",
+    icon: "nutrition",
+    hint: "Dias em que atingiu sua meta de proteína.",
+  },
+  diet_logged_days: {
+    label: "Dias com dieta anotada",
+    icon: "restaurant",
+    hint: "Dias em que registrou a alimentação — vale a constância, não a restrição.",
+  },
 };
+
+// Agrupado por módulo: 9 opções soltas viram uma sopa de chips.
+const METRIC_GROUPS: { title: string; metrics: Challenge["metric"][] }[] = [
+  { title: "Treino", metrics: ["workout_count", "total_volume", "pr_count"] },
+  { title: "Consistência", metrics: ["streak_days", "gym_checkin"] },
+  { title: "Saúde", metrics: ["sleep_nights", "water_goal_days"] },
+  { title: "Dieta", metrics: ["protein_goal_days", "diet_logged_days"] },
+];
 
 function isoInDays(days: number): string {
   const d = new Date();
@@ -168,22 +199,43 @@ export function ChallengesScreen() {
         <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.xs }]}>
           Como vamos medir?
         </Text>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
-          {(Object.keys(METRIC_META) as Challenge["metric"][]).map((m) => (
-            <OptionButton
-              key={m}
-              compact
-              label={METRIC_META[m].label}
-              selected={metric === m}
-              onPress={() => setMetric(m)}
-            />
-          ))}
+        {METRIC_GROUPS.map((group) => (
+          <View key={group.title} style={{ marginBottom: spacing.sm }}>
+            <Text
+              style={[
+                type.caption,
+                { color: colors.textSecondary, fontWeight: "700", fontSize: 11, marginBottom: 4 },
+              ]}
+            >
+              {group.title.toUpperCase()}
+            </Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
+              {group.metrics.map((m) => (
+                <OptionButton
+                  key={m}
+                  compact
+                  label={METRIC_META[m].label}
+                  selected={metric === m}
+                  onPress={() => setMetric(m)}
+                />
+              ))}
+            </View>
+          </View>
+        ))}
+        {/* Explica em uma linha o que o tipo escolhido mede. */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "flex-start",
+            gap: 6,
+            backgroundColor: colors.surfaceAlt,
+            borderRadius: radius.button,
+            padding: spacing.sm,
+          }}
+        >
+          <Ionicons name={METRIC_META[metric].icon} size={15} color={colors.moduleSocial} style={{ marginTop: 1 }} />
+          <Text style={[type.caption, { color: colors.textSecondary, flex: 1 }]}>{METRIC_META[metric].hint}</Text>
         </View>
-        {metric === "gym_checkin" ? (
-          <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.xs }]}>
-            Cada pessoa cadastra a academia dela e faz check-in estando lá — a localização é a prova de presença.
-          </Text>
-        ) : null}
         <TextInput
           value={invite}
           onChangeText={setInvite}

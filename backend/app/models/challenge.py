@@ -8,12 +8,23 @@ from app.core.db import Base
 
 
 class ChallengeMetric(str, enum.Enum):
-    WORKOUT_COUNT = "workout_count"
-    TOTAL_VOLUME = "total_volume"
-    STREAK_DAYS = "streak_days"
-    # "Quem vai mais à academia": conta check-ins com prova de localização
-    # (ver app/models/gym.py) — não treinos registrados à mão.
-    GYM_CHECKIN = "gym_checkin"
+    """Tipos de desafio, cobrindo os 4 módulos do app. Todos são calculados do
+    histórico real (ver challenge_service). Não existe desafio de perda de peso
+    de propósito — premiar isso incentiva comportamento perigoso (espec. 3.7)."""
+
+    # --- Treino ---
+    WORKOUT_COUNT = "workout_count"        # quem treina mais vezes
+    TOTAL_VOLUME = "total_volume"          # carga total (peso × reps) das séries VÁLIDAS
+    PR_COUNT = "pr_count"                  # quem bate mais recordes pessoais
+    # --- Consistência ---
+    STREAK_DAYS = "streak_days"            # maior sequência de dias treinando
+    GYM_CHECKIN = "gym_checkin"            # idas à academia com prova de localização
+    # --- Saúde ---
+    SLEEP_NIGHTS = "sleep_nights"          # noites bem dormidas (7h+)
+    WATER_GOAL_DAYS = "water_goal_days"    # dias batendo a meta de água
+    # --- Dieta ---
+    PROTEIN_GOAL_DAYS = "protein_goal_days"  # dias batendo a meta de proteína
+    DIET_LOGGED_DAYS = "diet_logged_days"    # dias com a dieta registrada
 
 
 class Challenge(Base):
