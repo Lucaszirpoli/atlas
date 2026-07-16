@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
 import React, { useCallback, useEffect, useState } from "react";
 import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { getRoutine, type Routine } from "../../api/routines";
 import {
@@ -73,6 +74,7 @@ export function WorkoutExecutionScreen() {
   const { colors, type, spacing, radius } = useTheme();
   const navigation = useNavigation<any>();
   const { active, endWorkout, setOnWorkoutScreen } = useActiveWorkout();
+  const insets = useSafeAreaInsets();
   const route = useRoute<any>();
 
   // Enquanto esta tela está em foco, o indicador flutuante some (a pessoa já
@@ -220,7 +222,10 @@ export function WorkoutExecutionScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl + insets.bottom }}
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={[type.h1, { color: colors.textPrimary }]}>{routine.name}</Text>
         <View style={{ flexDirection: "row", alignItems: "center", marginTop: spacing.xs, marginBottom: spacing.md }}>
           <View style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: "hidden" }}>
@@ -432,14 +437,16 @@ export function WorkoutExecutionScreen() {
           );
         })}
 
-        <View style={{ flexDirection: "row", gap: spacing.sm }}>
-          <View style={{ flex: 1 }}>
-            <Button title="Descartar" variant="ghost" onPress={() => setConfirmDiscard(true)} />
-          </View>
-          <View style={{ flex: 2 }}>
-            <Button title="Concluir treino" variant="secondary" onPress={handleFinishWorkout} loading={isCompleting} />
-          </View>
-        </View>
+        {/* Concluir em destaque (largura cheia) e Descartar embaixo, discreto —
+            lado a lado o "Descartar" ficava espremido e quebrava em 2 linhas. */}
+        <Button title="Concluir treino" variant="secondary" onPress={handleFinishWorkout} loading={isCompleting} />
+        <TouchableOpacity
+          onPress={() => setConfirmDiscard(true)}
+          disabled={isCompleting}
+          style={{ alignItems: "center", paddingVertical: spacing.md, marginTop: spacing.xs }}
+        >
+          <Text style={[type.bodySmall, { color: colors.textSecondary, fontWeight: "700" }]}>Descartar treino</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       {restSeconds !== null ? (

@@ -115,11 +115,14 @@ export function ChallengesScreen() {
         Criar desafio (30 dias)
       </Text>
       <Card>
+        {/* Placeholders curtos + numberOfLines=1: os longos quebravam em duas
+            linhas dentro da altura fixa e apareciam cortados no meio. */}
         <TextInput
           value={name}
           onChangeText={setName}
-          placeholder="Nome do desafio, ex: Quem treina mais em julho"
+          placeholder="Nome do desafio"
           placeholderTextColor={colors.textSecondary}
+          numberOfLines={1}
           style={[
             type.body,
             {
@@ -132,6 +135,12 @@ export function ChallengesScreen() {
             },
           ]}
         />
+        <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
+          Ex: "Quem treina mais em julho"
+        </Text>
+        <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.xs }]}>
+          Como vamos medir?
+        </Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
           {(Object.keys(METRIC_META) as Challenge["metric"][]).map((m) => (
             <OptionButton
@@ -146,9 +155,10 @@ export function ChallengesScreen() {
         <TextInput
           value={invite}
           onChangeText={setInvite}
-          placeholder="Convidar: @handle1, @handle2..."
+          placeholder="Convidar amigos"
           placeholderTextColor={colors.textSecondary}
           autoCapitalize="none"
+          numberOfLines={1}
           style={[
             type.body,
             {
@@ -157,10 +167,13 @@ export function ChallengesScreen() {
               borderRadius: radius.button,
               height: 50,
               paddingHorizontal: spacing.md,
-              marginVertical: spacing.sm,
+              marginTop: spacing.md,
             },
           ]}
         />
+        <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.xs, marginBottom: spacing.md }]}>
+          Separe por vírgula: @joao, @maria
+        </Text>
         <Button title="Criar desafio" icon="🏆" onPress={handleCreate} loading={isSubmitting} />
       </Card>
     </ScrollView>

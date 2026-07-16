@@ -60,7 +60,11 @@ export function Button({
       ) : (
         <View style={styles.row}>
           {icon ? <Text style={[styles.icon, { color: textColor }]}>{icon}</Text> : null}
-          <Text style={[type.body, styles.text, { color: textColor }]}>{title}</Text>
+          {/* numberOfLines=1: rótulo de botão nunca quebra em duas linhas
+              ("Desca/rtar") quando o botão fica estreito — encolhe o texto. */}
+          <Text numberOfLines={1} style={[type.body, styles.text, { color: textColor }]}>
+            {title}
+          </Text>
         </View>
       )}
     </Pressable>

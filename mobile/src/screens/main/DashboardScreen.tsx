@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import React, { useCallback, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, useWindowDimensions, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { getConsistency, type ConsistencyHistory } from "../../api/evolution";
 import { getCurrentGoal, type CalorieGoal } from "../../api/goals";
@@ -38,6 +39,7 @@ export function DashboardScreen() {
   const navigation = useNavigation<any>();
   const { user } = useAuth();
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
   const [goal, setGoal] = useState<CalorieGoal | null>(null);
   const [meals, setMeals] = useState<MealLog[]>([]);
@@ -134,7 +136,10 @@ export function DashboardScreen() {
         contentContainerStyle={{
           padding: spacing.lg,
           paddingTop: spacing.xl + spacing.md,
-          paddingBottom: spacing.lg,
+          // Folga embaixo pra o conteúdo não encostar na barra de navegação do
+          // Android (a pessoa acabava tocando nos botões do sistema) nem ficar
+          // atrás dos botões flutuantes (FAB da IA / treino em andamento).
+          paddingBottom: spacing.lg + insets.bottom + 96,
           alignItems: "center",
           flexGrow: 1,
         }}

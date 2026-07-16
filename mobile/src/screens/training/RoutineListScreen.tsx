@@ -108,6 +108,15 @@ export function RoutineListScreen() {
             {routines.length} {routines.length === 1 ? "rotina" : "rotinas"}
           </Text>
         </View>
+        {/* Histórico: onde a pessoa exclui um treino salvo por engano. */}
+        <TouchableOpacity
+          onPress={() => navigation.navigate("WorkoutHistory")}
+          style={{ flexDirection: "row", alignItems: "center", gap: 4, marginLeft: "auto" }}
+          hitSlop={8}
+        >
+          <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
+          <Text style={[type.caption, { color: colors.textSecondary, fontWeight: "700" }]}>Histórico</Text>
+        </TouchableOpacity>
       </View>
 
       <FlatList

@@ -6,6 +6,7 @@ import { ExercisePickerScreen } from "../screens/training/ExercisePickerScreen";
 import { RoutineBuilderScreen } from "../screens/training/RoutineBuilderScreen";
 import { RoutineListScreen } from "../screens/training/RoutineListScreen";
 import { WorkoutExecutionScreen } from "../screens/training/WorkoutExecutionScreen";
+import { WorkoutHistoryScreen } from "../screens/training/WorkoutHistoryScreen";
 import { WorkoutInsightsScreen } from "../screens/training/WorkoutInsightsScreen";
 import { WorkoutPreviewScreen } from "../screens/training/WorkoutPreviewScreen";
 import { WorkoutSummaryScreen } from "../screens/training/WorkoutSummaryScreen";
@@ -44,6 +45,11 @@ export function TrainingStack() {
         name="WorkoutPreview"
         component={WorkoutPreviewScreen}
         options={{ title: "Prévia do treino" }}
+      />
+      <Stack.Screen
+        name="WorkoutHistory"
+        component={WorkoutHistoryScreen}
+        options={{ title: "Histórico de treinos" }}
       />
       <Stack.Screen
         name="WorkoutExecution"

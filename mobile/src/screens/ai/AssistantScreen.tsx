@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { ProposedAction } from "../../api/ai";
 import { getChatHistory } from "../../api/ai";
@@ -46,6 +47,7 @@ export function AssistantScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const headerHeight = useHeaderHeight();
+  const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const autoSentRef = useRef(false);
 
@@ -186,6 +188,9 @@ export function AssistantScreen() {
           alignItems: "flex-end",
           gap: spacing.sm,
           padding: spacing.md,
+          // Sobe o campo/botão pra fora da barra de navegação do Android —
+          // estava colado embaixo e difícil de tocar.
+          paddingBottom: spacing.md + insets.bottom,
           borderTopWidth: 1,
           borderTopColor: colors.border,
           backgroundColor: colors.bg,

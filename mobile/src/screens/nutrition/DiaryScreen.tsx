@@ -36,7 +36,13 @@ export function DiaryScreen() {
   const [meals, setMeals] = useState<MealLog[]>([]);
   const [goal, setGoal] = useState<CalorieGoal | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<{ mealLogId: number; foodName: string } | null>(null);
+  // itemCount = quantos alimentos aquele registro tem. O backend só apaga a
+  // REFEIÇÃO inteira (não item a item), então a confirmação precisa dizer isso
+  // quando o registro tem mais de um alimento — antes dizia "remover <alimento>"
+  // e levava os outros junto sem avisar.
+  const [deleteTarget, setDeleteTarget] = useState<
+    { mealLogId: number; foodName: string; itemCount: number } | null
+  >(null);
 
   async function loadAll() {
     const [cats, mealsForDay, currentGoal] = await Promise.all([
@@ -238,7 +244,16 @@ export function DiaryScreen() {
                       <Text style={[type.bodySmall, { color: colors.textSecondary, marginRight: spacing.md }]}>
                         {Math.round(item.kcal)} kcal
                       </Text>
-                      <TouchableOpacity onPress={() => setDeleteTarget({ mealLogId, foodName: item.food.name })} hitSlop={8}>
+                      <TouchableOpacity
+                        onPress={() =>
+                          setDeleteTarget({
+                            mealLogId,
+                            foodName: item.food.name,
+                            itemCount: meals.find((m) => m.id === mealLogId)?.items.length ?? 1,
+                          })
+                        }
+                        hitSlop={8}
+                      >
                         <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
                       </TouchableOpacity>
                     </View>
@@ -269,8 +284,14 @@ export function DiaryScreen() {
       <ConfirmDialog
         visible={deleteTarget !== null}
         onClose={() => setDeleteTarget(null)}
-        title="Remover alimento"
-        message={deleteTarget ? `Remover "${deleteTarget.foodName}" do seu diário?` : undefined}
+        title={deleteTarget && deleteTarget.itemCount > 1 ? "Remover esta refeição" : "Remover alimento"}
+        message={
+          deleteTarget
+            ? deleteTarget.itemCount > 1
+              ? `Este registro tem ${deleteTarget.itemCount} alimentos (incluindo "${deleteTarget.foodName}") e será removido inteiro do seu diário.`
+              : `Remover "${deleteTarget.foodName}" do seu diário?`
+            : undefined
+        }
         confirmLabel="Remover"
         destructive
         onConfirm={confirmDeleteFood}
