@@ -631,31 +631,62 @@ export function AddFoodScreen() {
                 data={cesta}
                 keyExtractor={(i) => String(i.food.id)}
                 renderItem={({ item }) => (
-                  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.xs }}>
-                    <Text style={[type.bodySmall, { color: colors.textPrimary, flex: 1 }]} numberOfLines={1}>
-                      {item.food.name}
-                    </Text>
-                    <TextInput
-                      value={String(item.quantity_g)}
-                      onChangeText={(v) => mudarQuantidade(item.food.id, Number(v.replace(/[^0-9]/g, "")) || 0)}
-                      keyboardType="number-pad"
-                      style={[
-                        type.bodySmall,
-                        {
-                          color: colors.textPrimary,
-                          backgroundColor: colors.surfaceAlt,
-                          borderRadius: 8,
-                          paddingHorizontal: 8,
-                          paddingVertical: 4,
-                          width: 58,
-                          textAlign: "right",
-                        },
-                      ]}
-                    />
-                    <Text style={[type.caption, { color: colors.textSecondary, width: 20, marginLeft: 4 }]}>g</Text>
-                    <TouchableOpacity onPress={() => alternarNaCesta(item.food)} hitSlop={8} style={{ marginLeft: 4 }}>
-                      <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
-                    </TouchableOpacity>
+                  <View style={{ marginBottom: spacing.sm }}>
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                      <Text style={[type.bodySmall, { color: colors.textPrimary, flex: 1 }]} numberOfLines={1}>
+                        {item.food.name}
+                      </Text>
+                      <TextInput
+                        value={String(item.quantity_g)}
+                        onChangeText={(v) => mudarQuantidade(item.food.id, Number(v.replace(/[^0-9]/g, "")) || 0)}
+                        keyboardType="number-pad"
+                        style={[
+                          type.bodySmall,
+                          {
+                            color: colors.textPrimary,
+                            backgroundColor: colors.surfaceAlt,
+                            borderRadius: 8,
+                            paddingHorizontal: 8,
+                            paddingVertical: 4,
+                            width: 58,
+                            textAlign: "right",
+                          },
+                        ]}
+                      />
+                      <Text style={[type.caption, { color: colors.textSecondary, width: 20, marginLeft: 4 }]}>g</Text>
+                      <TouchableOpacity onPress={() => alternarNaCesta(item.food)} hitSlop={8} style={{ marginLeft: 4 }}>
+                        <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* MEDIDA CASEIRA. 999 dos 1001 alimentos já trazem a porção
+                        nomeada ("1 concha" = 100g) e a tela ignorava, exigindo
+                        que a pessoa adivinhasse gramas. Ninguém pesa a comida:
+                        pensa em concha, colher, fatia, unidade. */}
+                    {item.food.default_portion_label && item.food.default_portion_g ? (
+                      <View style={{ flexDirection: "row", gap: 6, marginTop: 4 }}>
+                        {[0.5, 1, 2].map((mult) => {
+                          const g = Math.round(item.food.default_portion_g * mult);
+                          const on = item.quantity_g === g;
+                          return (
+                            <Pressable
+                              key={mult}
+                              onPress={() => mudarQuantidade(item.food.id, g)}
+                              style={{
+                                backgroundColor: on ? colors.primary : colors.surfaceAlt,
+                                borderRadius: 999,
+                                paddingVertical: 3,
+                                paddingHorizontal: 9,
+                              }}
+                            >
+                              <Text style={[type.caption, { color: on ? colors.textOnPrimary : colors.textSecondary, fontSize: 11 }]}>
+                                {rotuloPorcao(item.food.default_portion_label ?? "", mult)} · {g}g
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    ) : null}
                   </View>
                 )}
               />
@@ -736,6 +767,42 @@ export function AddFoodScreen() {
       ) : null}
     </View>
   );
+}
+
+/** "1 concha" + 2x -> "2 conchas"; + 0.5x -> "½ concha".
+ *
+ * Os rótulos vêm da base já com quantidade embutida ("1 concha", "3 colheres
+ * de sopa"), então multiplicar exige reescrever o número, não só prefixar. O
+ * plural é ingênuo de propósito (o "s" cobre concha/colher/fatia/unidade, que
+ * é o que a base usa) — errar um plural é bem menos grave que fazer a pessoa
+ * adivinhar gramas.
+ */
+function rotuloPorcao(label: string, mult: number): string {
+  const m = label.match(/^(\d+(?:[.,]\d+)?)\s+(.*)$/);
+  if (!m) return mult === 1 ? label : `${mult}x ${label}`;
+  const base = Number(m[1].replace(",", "."));
+  const nome = m[2];
+  const qtd = base * mult;
+  if (qtd === 0.5) return `½ ${nome}`;
+  const inteiro = Number.isInteger(qtd) ? String(qtd) : qtd.toFixed(1).replace(".", ",");
+  return `${inteiro} ${qtd > 1 ? pluralizar(nome) : nome}`;
+}
+
+/** Pluraliza a PRIMEIRA palavra da medida, não o fim da frase.
+ *
+ * Testado com os rótulos reais da base: pluralizar o fim dava "2 colher de
+ * servirs" e "6 colheres de sopas". O substantivo que varia é o primeiro
+ * ("colher de servir" -> "colheres de servir"); o resto é complemento e fica
+ * parado. Palavra já no plural não é mexida ("3 colheres de sopa").
+ */
+function pluralizar(medida: string): string {
+  const [primeira, ...resto] = medida.split(" ");
+  let p = primeira;
+  if (primeira.endsWith("s")) p = primeira; // já plural
+  else if (primeira.endsWith("ão")) p = primeira.slice(0, -2) + "ões";
+  else if (/[rz]$/.test(primeira)) p = primeira + "es"; // colher -> colheres
+  else p = primeira + "s"; // concha -> conchas, fatia -> fatias
+  return [p, ...resto].join(" ");
 }
 
 /** Cabeçalho de seção da busca (receitas / recentes / favoritos). */
