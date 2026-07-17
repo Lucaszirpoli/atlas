@@ -109,10 +109,13 @@ export function RoutineBuilderScreen() {
         <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.xs }]}>
           Nome da rotina
         </Text>
+        {/* Placeholder curto de propósito: o campo usa type.h2 (18px) e num
+            celular de 375px sobram ~263px aqui dentro — "Ex: Treino A - Peito
+            e Tríceps" pedia ~285px e aparecia cortado no meio, ilegível. */}
         <TextInput
           value={name}
           onChangeText={setName}
-          placeholder="Ex: Treino A - Peito e Tríceps"
+          placeholder="Ex: Treino A - Peito"
           placeholderTextColor={colors.textSecondary}
           style={[
             type.h2,

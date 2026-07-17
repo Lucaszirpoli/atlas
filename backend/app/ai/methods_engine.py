@@ -54,7 +54,11 @@ _FOCUS_MUSCLES: dict[str, list[MuscleGroup]] = {
     # genérico (burpee, kettlebell swing) num treino de powerlifting.
     "agachamento": [MuscleGroup.QUADS, MuscleGroup.GLUTES, MuscleGroup.HAMSTRINGS],
     "supino": [MuscleGroup.CHEST, MuscleGroup.TRICEPS, MuscleGroup.SHOULDERS],
-    "terra": [MuscleGroup.BACK, MuscleGroup.HAMSTRINGS, MuscleGroup.GLUTES],
+    # BICEPS no dia de terra: é o dia de puxada, e tanto o 5/3/1 (assistência
+    # "Boring But Big"/Triumvirate) quanto o Juggernaut prescrevem rosca como
+    # acessório. Sem isto, os dois métodos inteiros saíam sem um exercício de
+    # bíceps em nenhum dos 4 dias.
+    "terra": [MuscleGroup.BACK, MuscleGroup.HAMSTRINGS, MuscleGroup.GLUTES, MuscleGroup.BICEPS],
     "desenvolvimento": [MuscleGroup.SHOULDERS, MuscleGroup.TRICEPS, MuscleGroup.TRAPS],
     "me inferior": [MuscleGroup.QUADS, MuscleGroup.GLUTES, MuscleGroup.HAMSTRINGS],
     "de inferior": [MuscleGroup.QUADS, MuscleGroup.GLUTES, MuscleGroup.HAMSTRINGS],
@@ -198,6 +202,7 @@ def _pick(
     used_ids: set[int],
     forbid_heavy: bool,
     equipment_pref_machines: bool,
+    covered: frozenset[MuscleGroup] = frozenset(),
 ) -> list[Exercise]:
     """Escolhe `count` exercícios (determinístico) dos músculos dados, do tipo
     composto/isolado pedido, evitando repetição e respeitando proibições."""
@@ -237,7 +242,13 @@ def _pick(
         for m in by_muscle:
             by_muscle[m].sort(key=lambda e: 0 if e.equipment in (Equipment.MACHINE, Equipment.CABLE) else 1)
     idx = 0
-    muscle_cycle = list(muscles)
+    # Músculo que AINDA não tem exercício nesta sessão vem primeiro. Girar a
+    # lista por contagem (o que eu fazia antes) não bastava: bíceps não tem
+    # exercício COMPOSTO nenhum, então ele era pulado na passada dos compostos
+    # e o deslocamento da passada dos isolados caía no lugar errado — o dia de
+    # "ombros/braços" do Mentzer e o A/B do DC saíam sem UMA rosca sequer.
+    # sorted é estável, então quem está descoberto mantém a ordem original.
+    muscle_cycle = sorted(muscles, key=lambda m: m in covered)
     while len(out) < count and any(by_muscle[m] for m in muscle_cycle):
         m = muscle_cycle[idx % len(muscle_cycle)]
         if by_muscle[m]:
@@ -250,13 +261,24 @@ def _pick(
     return out
 
 
-def _rotate(muscles: list[MuscleGroup], n: int) -> list[MuscleGroup]:
-    """Gira a lista de músculos em n posições, pra próxima seleção continuar o
-    rodízio de onde a anterior parou (e não recomeçar sempre no primeiro)."""
-    if not muscles:
-        return muscles
-    k = n % len(muscles)
-    return muscles[k:] + muscles[:k]
+def _so_existe_isolado(db: Session, muscles: list[MuscleGroup]) -> bool:
+    """True se algum músculo do foco não tem NENHUM exercício composto — caso
+    do bíceps. Serve pra garantir uma vaga de isolado quando o método pediria
+    só composto, senão esse músculo nunca é treinado."""
+    for m in muscles:
+        tem = db.execute(
+            select(Exercise.id)
+            .where(
+                Exercise.primary_muscle_group == m,
+                Exercise.is_compound.is_(True),
+                Exercise.is_custom.is_(False),
+                Exercise.category.in_(STRENGTH_CATEGORIES),
+            )
+            .limit(1)
+        ).first()
+        if tem is None:
+            return True
+    return False
 
 
 def _find_exercise(db: Session, name_query: str) -> Exercise | None:
@@ -343,6 +365,17 @@ def build_plan(
             n_compound = round(per_session * ratio)
             n_isolation = per_session - n_compound
 
+            # Bíceps não existe como exercício COMPOSTO. Num método de
+            # proporção quase toda composta (Mentzer HIT: 0.9 -> 4 compostos e
+            # 0 isolados em 4 vagas), ele fica matematicamente inalcançável e o
+            # dia de "ombros/braços" sai sem uma rosca sequer — sendo que é
+            # justamente o dia mais isolado do Heavy Duty original. Reservar
+            # UMA vaga cabe na tolerância de 1 da validate_plan, então o método
+            # continua fiel.
+            if n_isolation == 0 and n_compound > 1 and _so_existe_isolado(db, muscles):
+                n_compound -= 1
+                n_isolation = 1
+
             # Levantamento principal do dia primeiro (5/3/1: dia de agachamento
             # começa agachando). Só quando o método define o dia pelo lift e a
             # fase não proíbe composto pesado.
@@ -354,29 +387,30 @@ def build_plan(
                     compounds.append(primary)
                     used_ids.add(primary.id)
 
-            # A rotação de músculos CONTINUA de onde parou, em vez de reiniciar
-            # a cada chamada. Sem isso os músculos no fim da lista morriam de
-            # fome: em "me superior" ([peito, costas, ombro, tríceps, bíceps]),
-            # os compostos pegavam peito/costas/ombro e os isolados voltavam pro
-            # peito — o Westside inteiro saía sem UM bíceps, e o dia vinha com
-            # três exercícios de peito.
+            # Cada passada mira o que ainda está descoberto, em vez de recomeçar
+            # a lista do zero. Sem isso os músculos do fim morriam de fome: em
+            # "me superior" ([peito, costas, ombro, tríceps, bíceps]) os
+            # compostos pegavam peito/costas/ombro e os isolados voltavam pro
+            # peito — o dia saía com três peitos e zero braço.
             compounds += _pick(
                 db,
-                _rotate(muscles, len(compounds)),
+                muscles,
                 True,
                 n_compound - len(compounds),
                 used_ids,
                 forbid_heavy_week,
                 False,
+                covered=frozenset(e.primary_muscle_group for e in compounds),
             )
             isolations = _pick(
                 db,
-                _rotate(muscles, len(compounds)),
+                muscles,
                 False,
                 n_isolation,
                 used_ids,
                 False,
                 prefer_machines,
+                covered=frozenset(e.primary_muscle_group for e in compounds),
             )
             picked_by_focus[focus] = [(ex, True) for ex in compounds] + [(ex, False) for ex in isolations]
 

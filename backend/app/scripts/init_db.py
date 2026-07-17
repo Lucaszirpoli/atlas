@@ -13,6 +13,7 @@ from app.models.exercise import Exercise
 from app.models.food import Food
 from app.scripts import (
     backfill_exercise_category,
+    grant_comp_pro,
     retranslate_exercises,
     seed_exercises,
     seed_exercises_open,
@@ -67,6 +68,9 @@ def run() -> None:
     # desfaz os nomes duplicados (o importado que colide com um curado vira
     # "(variação N)"). Idempotente: só grava quando o nome muda de verdade.
     retranslate_exercises.run()
+
+    # Pro de cortesia (testadores) via env PRO_COMP_EMAILS. Só concede.
+    grant_comp_pro.run()
 
     print("init_db concluído.")
 

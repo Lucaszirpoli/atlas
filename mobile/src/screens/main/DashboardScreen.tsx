@@ -384,15 +384,15 @@ function TileHeader({
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
       <View
         style={{
-          width: 30,
-          height: 30,
-          borderRadius: 10,
+          width: 34,
+          height: 34,
+          borderRadius: 11,
           backgroundColor: tint + "22",
           alignItems: "center",
           justifyContent: "center",
         }}
       >
-        <Ionicons name={icon} size={17} color={tint} />
+        <Ionicons name={icon} size={20} color={tint} />
       </View>
       <Text style={[type.h2, { color: colors.textPrimary, fontSize: 16 }]}>{title}</Text>
     </View>

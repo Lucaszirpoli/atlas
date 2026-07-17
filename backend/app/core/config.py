@@ -40,6 +40,16 @@ class Settings(BaseSettings):
     pro_price_brl: float = 20.0
     billing_dev_mode: bool = True
 
+    # E-mails com Pro liberado de cortesia (testador, amigo, imprensa),
+    # separados por vírgula. Aplicado a cada deploy pelo init_db — é o jeito de
+    # liberar Pro sem tocar no banco de produção na mão. Só CONCEDE, nunca tira:
+    # remover daqui não rebaixa ninguém (quem paga de verdade continua Pro).
+    pro_comp_emails: str = ""
+
+    @property
+    def pro_comp_email_list(self) -> list[str]:
+        return [e.strip().lower() for e in self.pro_comp_emails.split(",") if e.strip()]
+
     # ExerciseDB (RapidAPI) — fonte de GIF/imagem demonstrativa por exercício.
     # Cache permanente em Exercise.video_url após a primeira busca (ver
     # scripts/backfill_exercise_images.py) pra não estourar a cota do plano.
