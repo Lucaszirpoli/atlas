@@ -305,7 +305,13 @@ def build_plan(
     method: MethodSpec,
     available_days: int | None = None,
     phase_index: int = 0,
+    weak_point: MuscleGroup | None = None,
 ) -> WorkoutPlan:
+    """weak_point: músculo a priorizar nos acessórios. Só faz sentido nos
+    métodos desenhados pra isso (Westside: "3-5 acessórios de 10-20 reps para
+    pontos fracos"; Mountain Dog). Quando informado, o músculo entra no início
+    do rodízio de TODO dia que o treine — é o que faz a escolha mudar o treino
+    de verdade em vez de virar enfeite na tela."""
     days = resolve_days(method, available_days)
     split = _split_for(method, days)
     phase = _active_phase(method, phase_index)
@@ -362,6 +368,11 @@ def build_plan(
     for i, focus in enumerate(split):
         if focus not in picked_by_focus:
             muscles = _FOCUS_MUSCLES.get(focus, [MuscleGroup.FULL_BODY])
+            # Ponto fraco primeiro no rodízio, nos dias que já treinam esse
+            # músculo. Não o enfia num dia que não é dele (perna no dia de
+            # supino não vira "prioridade", vira treino incoerente).
+            if weak_point is not None and weak_point in muscles:
+                muscles = [weak_point] + [m for m in muscles if m != weak_point]
             n_compound = round(per_session * ratio)
             n_isolation = per_session - n_compound
 

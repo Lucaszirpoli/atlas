@@ -20,6 +20,7 @@ from app.ai.client import get_client
 from app.ai.methods import MethodSpec, get_method
 from app.ai.methods_engine import WorkoutPlan, build_plan, validate_plan
 from app.core.config import settings
+from app.models.exercise import MuscleGroup
 
 _MODEL = "claude-sonnet-5"
 
@@ -72,14 +73,29 @@ def generate_method_plan(
     available_days: int | None,
     phase_index: int = 0,
     use_ai: bool = True,
+    weak_point: str | None = None,
 ) -> dict:
     """Gera o plano fiel do método. `use_ai=True` tenta enriquecer com a IA
-    sandbox; qualquer falha cai no plano determinístico puro."""
+    sandbox; qualquer falha cai no plano determinístico puro.
+
+    `weak_point` (nome do grupo muscular) prioriza esse músculo nos acessórios —
+    só nos métodos desenhados pra isso. Valor inválido é ignorado em silêncio:
+    é preferência de treino, não vale derrubar a geração inteira por causa dela.
+    """
     method = get_method(method_key)
     if method is None:
         raise ValueError(f"Método desconhecido: {method_key}")
 
-    plan = build_plan(db, method, available_days=available_days, phase_index=phase_index)
+    wp: MuscleGroup | None = None
+    if weak_point:
+        try:
+            wp = MuscleGroup(weak_point)
+        except ValueError:
+            wp = None
+
+    plan = build_plan(
+        db, method, available_days=available_days, phase_index=phase_index, weak_point=wp
+    )
     problems = validate_plan(method, plan)
 
     intro: str | None = None

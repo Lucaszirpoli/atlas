@@ -43,6 +43,9 @@ class GenerateTrainingRequest(BaseModel):
     method_key: str
     available_days: int | None = None
     phase_index: int = 0
+    # Grupo muscular a priorizar nos acessórios. Só tem efeito nos métodos com
+    # targets_weak_point (Westside, Mountain Dog); nos outros é ignorado.
+    weak_point: str | None = None
 
 
 @router.get("/training/methods", response_model=list[MethodSummary])
@@ -62,6 +65,96 @@ def training_methods() -> list[dict]:
     ]
 
 
+class MethodPhaseOut(BaseModel):
+    name: str
+    reps: str | None = None
+    sets: str | None = None
+    note: str | None = None
+
+
+class MethodDetail(BaseModel):
+    """Ficha completa do método, pra tela de detalhe.
+
+    O MethodSpec já guardava tudo isto (progressão, frequência, séries, RIR,
+    fases, deload, proibições) e nada disso chegava ao app: a tela mostrava só
+    a frase de `goal` e já pulava pro "quantos dias?". Quem vai escolher entre
+    10 metodologias precisa saber no que está se metendo.
+    """
+
+    key: str
+    name: str
+    author: str
+    goal: str
+    experience_min: str
+    days_per_week: list[int]
+    guide_excerpt: str
+    progression_family: str | None = None
+    frequency_per_muscle: str | None = None
+    exercises_per_session: str | None = None
+    sets_per_exercise: str | None = None
+    reps: str | None = None
+    tempo: str | None = None
+    rest_seconds: str | None = None
+    rir: str | None = None
+    mesocycle_weeks: str | None = None
+    deload_rule: str | None = None
+    progression_rule: str | None = None
+    forbidden: list[str] = []
+    phases: list[MethodPhaseOut] = []
+    # Alguns métodos existem justamente pra atacar ponto fraco (Westside). Só
+    # nesses o app oferece a escolha do ponto fraco.
+    targets_weak_point: bool = False
+
+
+# Métodos cujo desenho é atacar ponto fraco: o Westside monta os acessórios em
+# volta disso ("3-5 acessórios de 10-20 reps para pontos fracos"), e o Mountain
+# Dog do John Meadows idem. Nos outros, perguntar seria enfeite sem efeito.
+_WEAK_POINT_METHODS = {"westside", "mountain_dog"}
+
+
+def _as_str(v) -> str | None:
+    return None if v is None else str(v)
+
+
+@router.get("/training/methods/{method_key}", response_model=MethodDetail)
+def training_method_detail(method_key: str) -> dict:
+    """Ficha completa de um método. Livre (não usa IA)."""
+    m = next((x for x in list_methods() if x.key == method_key), None)
+    if m is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Método não encontrado.")
+    return {
+        "key": m.key,
+        "name": m.name,
+        "author": m.author,
+        "goal": m.goal,
+        "experience_min": m.experience_min.value,
+        "days_per_week": list(m.days_per_week),
+        "guide_excerpt": m.guide_excerpt,
+        "progression_family": _as_str(getattr(m, "progression_family", None)),
+        "frequency_per_muscle": _as_str(m.frequency_per_muscle),
+        "exercises_per_session": _as_str(m.exercises_per_session),
+        "sets_per_exercise": _as_str(m.sets_per_exercise),
+        "reps": _as_str(m.reps),
+        "tempo": _as_str(m.tempo),
+        "rest_seconds": _as_str(m.rest_seconds),
+        "rir": _as_str(m.rir),
+        "mesocycle_weeks": _as_str(m.mesocycle_weeks),
+        "deload_rule": _as_str(m.deload_rule),
+        "progression_rule": _as_str(m.progression_rule),
+        "forbidden": list(m.forbidden or []),
+        "phases": [
+            {
+                "name": p.name,
+                "reps": _as_str(getattr(p, "reps", None)),
+                "sets": _as_str(getattr(p, "sets", None)),
+                "note": _as_str(getattr(p, "note", None)),
+            }
+            for p in (m.phases or [])
+        ],
+        "targets_weak_point": m.key in _WEAK_POINT_METHODS,
+    }
+
+
 @router.post("/training/generate")
 def training_generate(
     payload: GenerateTrainingRequest,
@@ -76,7 +169,12 @@ def training_generate(
     can_use_ai = is_pro or current_user.ai_free_credits > 0
     try:
         result = generate_method_plan(
-            db, payload.method_key, payload.available_days, payload.phase_index, use_ai=can_use_ai
+            db,
+            payload.method_key,
+            payload.available_days,
+            payload.phase_index,
+            use_ai=can_use_ai,
+            weak_point=payload.weak_point,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
