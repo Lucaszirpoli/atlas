@@ -1,7 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system";
+// "/legacy" é OBRIGATÓRIO: no SDK 57 o readAsStringAsync importado do pacote
+// raiz foi descontinuado e LANÇA ERRO na hora da chamada, no aparelho real —
+// compila limpo e funciona na web, então só o celular revela. Foi exatamente
+// o "Não consegui ler o arquivo" da importação (v16-v18). O photoStorage.ts
+// já usava /legacy pelo mesmo motivo.
+import * as FileSystem from "expo-file-system/legacy";
 import React, { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 
