@@ -54,6 +54,39 @@ export type TrainingMethod = {
   guide_excerpt: string;
 };
 
+export type MethodPhase = {
+  name: string;
+  reps: string | null;
+  sets: string | null;
+  note: string | null;
+};
+
+/** Ficha completa de um método (tela de detalhe). O resumo da lista é o
+ *  TrainingMethod acima; isto aqui só é buscado quando a pessoa abre um. */
+export type TrainingMethodDetail = TrainingMethod & {
+  progression_family: string | null;
+  frequency_per_muscle: string | null;
+  exercises_per_session: string | null;
+  sets_per_exercise: string | null;
+  reps: string | null;
+  tempo: string | null;
+  rest_seconds: string | null;
+  rir: string | null;
+  mesocycle_weeks: string | null;
+  deload_rule: string | null;
+  progression_rule: string | null;
+  forbidden: string[];
+  phases: MethodPhase[];
+  /** Só os métodos desenhados pra atacar ponto fraco (Westside, Mountain Dog)
+   *  oferecem a escolha — nos outros seria enfeite sem efeito no treino. */
+  targets_weak_point: boolean;
+};
+
+export async function getTrainingMethodDetail(key: string): Promise<TrainingMethodDetail> {
+  const { data } = await api.get<TrainingMethodDetail>(`/ai/training/methods/${key}`);
+  return data;
+}
+
 export type PlanSlot = {
   order: number;
   muscle_group: string;
@@ -110,6 +143,9 @@ export async function generateTraining(payload: {
   method_key: string;
   available_days?: number | null;
   phase_index?: number;
+  /** Grupo muscular a priorizar nos acessórios. Só tem efeito nos métodos com
+   *  targets_weak_point; nos outros o backend ignora. */
+  weak_point?: string | null;
 }): Promise<GenerateTrainingResult> {
   const { data } = await api.post<GenerateTrainingResult>("/ai/training/generate", payload, {
     timeout: AI_TIMEOUT_MS,

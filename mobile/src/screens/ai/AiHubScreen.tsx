@@ -5,9 +5,11 @@ import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "rea
 
 import {
   generateTraining,
+  getTrainingMethodDetail,
   getTrainingMethods,
   type GenerateTrainingResult,
   type TrainingMethod,
+  type TrainingMethodDetail,
 } from "../../api/ai";
 import { createRoutinesBulk, listRoutines } from "../../api/routines";
 import { Button } from "../../components/Button";
@@ -21,6 +23,35 @@ const EXP_LABEL: Record<string, string> = {
   intermediate: "Intermediário+",
   advanced: "Avançado",
 };
+
+// Os valores batem com o enum MuscleGroup do backend. Só músculos que fazem
+// sentido como "ponto fraco" de quem treina — nada de full_body/cardio.
+const WEAK_POINT_OPTIONS: { value: string | null; label: string }[] = [
+  { value: null, label: "Nenhum" },
+  { value: "chest", label: "Peito" },
+  { value: "back", label: "Costas" },
+  { value: "shoulders", label: "Ombros" },
+  { value: "biceps", label: "Bíceps" },
+  { value: "triceps", label: "Tríceps" },
+  { value: "quads", label: "Quadríceps" },
+  { value: "hamstrings", label: "Posterior" },
+  { value: "glutes", label: "Glúteos" },
+  { value: "calves", label: "Panturrilha" },
+  { value: "abs", label: "Abdômen" },
+];
+
+/** Linha "rótulo: valor" da ficha do método. Some quando o método não define
+ *  aquele parâmetro (ex: Westside não fixa séries/reps — quem manda é a fase). */
+function SpecRow({ label, value }: { label: string; value: string | null }) {
+  const { colors, type, spacing } = useTheme();
+  if (!value) return null;
+  return (
+    <View style={{ flexDirection: "row", marginBottom: spacing.xs }}>
+      <Text style={[type.caption, { color: colors.textSecondary, width: 116 }]}>{label}</Text>
+      <Text style={[type.bodySmall, { color: colors.textPrimary, flex: 1, lineHeight: 19 }]}>{value}</Text>
+    </View>
+  );
+}
 
 /** Extrai o primeiro inteiro de um texto ("2 séries" -> 2, "6-8" -> 6). */
 function firstInt(s: string, fallback: number): number {
@@ -66,6 +97,11 @@ export function AiHubScreen() {
 
   const [methods, setMethods] = useState<TrainingMethod[]>([]);
   const [selected, setSelected] = useState<TrainingMethod | null>(null);
+  // Ficha completa do método aberto. Buscada só ao abrir (a lista continua
+  // leve) — é o que dá a explicação detalhada e diz se o método aceita ponto
+  // fraco. Null enquanto carrega: a tela mostra o resumo que já tem.
+  const [detail, setDetail] = useState<TrainingMethodDetail | null>(null);
+  const [weakPoint, setWeakPoint] = useState<string | null>(null);
   const [days, setDays] = useState<number | null>(null);
   const [result, setResult] = useState<GenerateTrainingResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -85,13 +121,31 @@ export function AiHubScreen() {
   // usuário automaticamente. Dedup por nome: se ele já tinha salvado esse
   // método antes e só excluiu o treino de algum dia, só o(s) dia(s) que
   // faltam são recriados — os que já existem não duplicam.
+  // Abre a ficha do método. A explicação detalhada e a opção de ponto fraco só
+  // existem aqui — a lista fica com o resumo, pra carregar rápido.
+  function openMethod(m: TrainingMethod) {
+    setSelected(m);
+    setDetail(null);
+    setWeakPoint(null);
+    getTrainingMethodDetail(m.key)
+      .then(setDetail)
+      // Sem a ficha, a tela ainda funciona com o resumo da lista: dá pra
+      // escolher os dias e gerar. Não vale bloquear o treino por causa do texto.
+      .catch(() => {});
+  }
+
   async function handleGenerate(method: TrainingMethod, d: number) {
     setLoading(true);
     setResult(null);
     setSavedIndices(new Set());
     setSaveSummary(null);
     try {
-      const r = await generateTraining({ method_key: method.key, available_days: d });
+      const r = await generateTraining({
+        method_key: method.key,
+        available_days: d,
+        // Só manda quando o método aceita — nos outros o backend ignora.
+        weak_point: detail?.targets_weak_point ? weakPoint : null,
+      });
       setResult(r);
       await autoSavePlan(r);
     } catch (err: any) {
@@ -373,7 +427,134 @@ export function AiHubScreen() {
         </Text>
         <Card style={{ marginTop: spacing.md }}>
           <Text style={[type.body, { color: colors.textPrimary }]}>{selected.goal}</Text>
+          {detail?.guide_excerpt ? (
+            <Text style={[type.bodySmall, { color: colors.textSecondary, marginTop: spacing.sm, lineHeight: 20 }]}>
+              {detail.guide_excerpt}
+            </Text>
+          ) : null}
         </Card>
+
+        {/* Ficha do método. Antes a tela mostrava só a frase do goal e já
+            pulava pro "quantos dias?" — quem escolhe entre 10 metodologias
+            precisa saber o que cada uma cobra dele. */}
+        {detail ? (
+          <>
+            <Text style={[type.h2, { color: colors.textPrimary, marginTop: spacing.lg, marginBottom: spacing.sm }]}>
+              Como funciona
+            </Text>
+            <Card>
+              <SpecRow label="Frequência" value={detail.frequency_per_muscle} />
+              <SpecRow label="Por sessão" value={detail.exercises_per_session} />
+              <SpecRow label="Séries" value={detail.sets_per_exercise} />
+              <SpecRow label="Repetições" value={detail.reps} />
+              <SpecRow label="Cadência" value={detail.tempo} />
+              <SpecRow label="Descanso" value={detail.rest_seconds} />
+              <SpecRow label="Intensidade (RIR)" value={detail.rir} />
+              <SpecRow label="Ciclo" value={detail.mesocycle_weeks} />
+            </Card>
+
+            {detail.progression_rule ? (
+              <>
+                <Text style={[type.h2, { color: colors.textPrimary, marginTop: spacing.lg, marginBottom: spacing.sm }]}>
+                  Como progredir
+                </Text>
+                <Card>
+                  <Text style={[type.bodySmall, { color: colors.textPrimary, lineHeight: 20 }]}>
+                    {detail.progression_rule}
+                  </Text>
+                  {detail.deload_rule ? (
+                    <Text style={[type.bodySmall, { color: colors.textSecondary, marginTop: spacing.sm, lineHeight: 20 }]}>
+                      Deload: {detail.deload_rule}
+                    </Text>
+                  ) : null}
+                </Card>
+              </>
+            ) : null}
+
+            {detail.phases.length > 0 ? (
+              <>
+                <Text style={[type.h2, { color: colors.textPrimary, marginTop: spacing.lg, marginBottom: spacing.sm }]}>
+                  Fases
+                </Text>
+                {detail.phases.map((p, i) => (
+                  <Card key={i} style={{ marginBottom: spacing.sm }}>
+                    <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>{p.name}</Text>
+                    {p.sets || p.reps ? (
+                      <Text style={[type.caption, { color: colors.textSecondary, marginTop: 2 }]}>
+                        {[p.sets, p.reps].filter(Boolean).join(" · ")}
+                      </Text>
+                    ) : null}
+                    {p.note ? (
+                      <Text style={[type.bodySmall, { color: colors.textSecondary, marginTop: spacing.xs, lineHeight: 19 }]}>
+                        {p.note}
+                      </Text>
+                    ) : null}
+                  </Card>
+                ))}
+              </>
+            ) : null}
+
+            {detail.forbidden.length > 0 ? (
+              <>
+                <Text style={[type.h2, { color: colors.textPrimary, marginTop: spacing.lg, marginBottom: spacing.sm }]}>
+                  O que não fazer
+                </Text>
+                <Card>
+                  {detail.forbidden.map((f, i) => (
+                    <View key={i} style={{ flexDirection: "row", marginBottom: i === detail.forbidden.length - 1 ? 0 : spacing.xs }}>
+                      <Ionicons name="close-circle" size={15} color={colors.warning} style={{ marginTop: 2, marginRight: 6 }} />
+                      <Text style={[type.bodySmall, { color: colors.textPrimary, flex: 1, lineHeight: 19 }]}>{f}</Text>
+                    </View>
+                  ))}
+                </Card>
+              </>
+            ) : null}
+
+            {/* Ponto fraco: só nos métodos desenhados pra isso. Perguntar num
+                método que ignora a resposta seria enganar a pessoa. */}
+            {detail.targets_weak_point ? (
+              <>
+                <Text style={[type.h2, { color: colors.textPrimary, marginTop: spacing.lg, marginBottom: 2 }]}>
+                  Algum ponto fraco?
+                </Text>
+                <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
+                  Este método monta os acessórios em volta do seu ponto fraco. O músculo escolhido vem
+                  logo depois dos exercícios pesados, quando você ainda está descansado.
+                </Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
+                  {WEAK_POINT_OPTIONS.map((o) => {
+                    const on = weakPoint === o.value;
+                    return (
+                      <TouchableOpacity
+                        key={o.value ?? "nenhum"}
+                        onPress={() => setWeakPoint(o.value)}
+                        style={{
+                          backgroundColor: on ? colors.primary : colors.surface,
+                          borderWidth: 1,
+                          borderColor: on ? colors.primary : colors.border,
+                          borderRadius: 999,
+                          paddingVertical: 8,
+                          paddingHorizontal: 14,
+                        }}
+                      >
+                        <Text
+                          style={[
+                            type.caption,
+                            { color: on ? colors.textOnPrimary : colors.textPrimary, fontWeight: on ? "700" : "400" },
+                          ]}
+                        >
+                          {o.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            ) : null}
+          </>
+        ) : (
+          <ActivityIndicator color={colors.textSecondary} style={{ marginTop: spacing.lg }} />
+        )}
 
         <Text style={[type.h2, { color: colors.textPrimary, marginTop: spacing.lg, marginBottom: spacing.sm }]}>
           Quantos dias por semana você treina?
@@ -463,7 +644,7 @@ export function AiHubScreen() {
       </Text>
 
       {methods.map((m) => (
-        <TouchableOpacity key={m.key} activeOpacity={0.8} onPress={() => setSelected(m)}>
+        <TouchableOpacity key={m.key} activeOpacity={0.8} onPress={() => openMethod(m)}>
           <Card style={{ marginTop: spacing.md }}>
             <View style={{ flexDirection: "row", alignItems: "center" }}>
               <View style={{ flex: 1 }}>
@@ -474,8 +655,12 @@ export function AiHubScreen() {
               </View>
               <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
             </View>
-            <Text style={[type.bodySmall, { color: colors.textSecondary, marginTop: spacing.sm }]} numberOfLines={2}>
+            {/* Explicação curta na lista; a ficha completa vem ao abrir. */}
+            <Text style={[type.bodySmall, { color: colors.textSecondary, marginTop: spacing.sm, lineHeight: 19 }]}>
               {m.goal}
+            </Text>
+            <Text style={[type.caption, { color: colors.primary, marginTop: spacing.xs, fontWeight: "600" }]}>
+              Ver como funciona
             </Text>
           </Card>
         </TouchableOpacity>
