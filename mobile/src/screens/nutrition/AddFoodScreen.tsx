@@ -21,11 +21,13 @@ import {
   searchFoods,
   type Food,
 } from "../../api/foods";
-import { logMeal } from "../../api/meals";
+import { createSavedMeal, listSavedMeals, logMeal, type SavedMeal } from "../../api/meals";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
+import { InfoDialog } from "../../components/InfoDialog";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
+import { addRecentFood, listRecentFoods } from "../../utils/recentFoods";
 
 export function AddFoodScreen() {
   const { colors, type, spacing, radius } = useTheme();
@@ -51,6 +53,116 @@ export function AddFoodScreen() {
   // Favoritos: reuso em 1 toque, reduz a fricção do registro diário.
   const [favorites, setFavorites] = useState<Food[]>([]);
   const [favIds, setFavIds] = useState<Set<number>>(new Set());
+
+  // CESTA (multi-seleção). Antes era um alimento por vez: pra registrar um pão
+  // com ovo e queijo a pessoa fazia buscar→escolher→adicionar TRÊS vezes,
+  // voltando à busca no meio. Agora marca os três e adiciona de uma vez.
+  const [cesta, setCesta] = useState<{ food: Food; quantity_g: number }[]>([]);
+  const [verCesta, setVerCesta] = useState(false);
+  const cestaIds = new Set(cesta.map((i) => i.food.id));
+
+  // Últimos usados: atalho pra quem come quase sempre as mesmas coisas.
+  const [recentes, setRecentes] = useState<Food[]>([]);
+  // Receitas (SavedMeal). O backend e o cliente da API já existiam há tempos e
+  // NENHUMA tela chamava — a pessoa não tinha como salvar "meu café da manhã".
+  const [receitas, setReceitas] = useState<SavedMeal[]>([]);
+  const [salvandoReceita, setSalvandoReceita] = useState(false);
+  const [nomeReceita, setNomeReceita] = useState("");
+  const [pedindoNome, setPedindoNome] = useState(false);
+  const [aviso, setAviso] = useState<{ title: string; message: string } | null>(null);
+
+  function alternarNaCesta(food: Food) {
+    setCesta((c) =>
+      c.some((i) => i.food.id === food.id)
+        ? c.filter((i) => i.food.id !== food.id)
+        : [...c, { food, quantity_g: food.default_portion_g ?? 100 }]
+    );
+  }
+
+  function mudarQuantidade(foodId: number, g: number) {
+    setCesta((c) => c.map((i) => (i.food.id === foodId ? { ...i, quantity_g: g } : i)));
+  }
+
+  const totalCesta = cesta.reduce(
+    (acc, i) => {
+      const f = i.quantity_g / 100;
+      return {
+        kcal: acc.kcal + i.food.kcal_per_100g * f,
+        prot: acc.prot + i.food.protein_g_per_100g * f,
+        carb: acc.carb + i.food.carbs_g_per_100g * f,
+        gord: acc.gord + i.food.fat_g_per_100g * f,
+      };
+    },
+    { kcal: 0, prot: 0, carb: 0, gord: 0 }
+  );
+
+  async function registrarCesta() {
+    if (cesta.length === 0) return;
+    setIsSubmitting(true);
+    try {
+      // UMA chamada com todos os itens: o endpoint já aceita lista, era a tela
+      // que mandava um por vez.
+      await logMeal({
+        meal_category_id: categoryId,
+        logged_at: new Date().toISOString(),
+        items: cesta.map((i) => ({ food_id: i.food.id, quantity_g: i.quantity_g })),
+      });
+    } catch (err: any) {
+      Alert.alert("Não foi possível registrar", err?.response?.data?.detail ?? "Tente novamente.");
+      setIsSubmitting(false);
+      return;
+    }
+    // Guardar os recentes é atalho: se falhar, não afeta o registro.
+    await Promise.all(cesta.map((i) => addRecentFood(i.food))).catch(() => {});
+    setIsSubmitting(false);
+    navigation.goBack();
+  }
+
+  async function salvarComoReceita() {
+    const nome = nomeReceita.trim();
+    if (!nome || cesta.length === 0) return;
+    setSalvandoReceita(true);
+    try {
+      await createSavedMeal({
+        name: nome,
+        items: cesta.map((i) => ({ food_id: i.food.id, quantity_g: i.quantity_g })),
+      });
+    } catch (err: any) {
+      setAviso({
+        title: "Não consegui salvar a receita",
+        message: err?.response?.data?.detail ?? "Tente novamente.",
+      });
+      setSalvandoReceita(false);
+      return;
+    }
+    setSalvandoReceita(false);
+    setPedindoNome(false);
+    setNomeReceita("");
+    listSavedMeals().then(setReceitas).catch(() => {});
+    setAviso({
+      title: "Receita salva!",
+      message: `"${nome}" agora aparece aqui na busca — é só tocar pra usar de novo.`,
+    });
+  }
+
+  /** Joga todos os itens da receita na cesta, já com as quantidades salvas. */
+  function usarReceita(r: SavedMeal) {
+    setCesta((c) => {
+      const jaTem = new Set(c.map((i) => i.food.id));
+      const novos = r.items
+        .filter((i) => !jaTem.has(i.food_id))
+        .map((i) => ({ food: i.food, quantity_g: i.quantity_g }));
+      return [...c, ...novos];
+    });
+    setVerCesta(true);
+  }
+
+  useEffect(() => {
+    listRecentFoods().then(setRecentes);
+    listSavedMeals()
+      .then(setReceitas)
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     listFavoriteFoods()
@@ -334,45 +446,112 @@ export function AddFoodScreen() {
         keyExtractor={(item) => String(item.id)}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
-          query.trim().length < 2 && favorites.length > 0 ? (
-            <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.sm, letterSpacing: 1, textTransform: "uppercase" }]}>
-              ⭐ Seus favoritos — 1 toque para adicionar
-            </Text>
+          query.trim().length < 2 ? (
+            <View>
+              {/* Receitas salvas: um toque traz todos os itens de uma vez. */}
+              {receitas.length > 0 ? (
+                <>
+                  <Secao titulo="🍽️ Suas receitas" />
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginBottom: spacing.md }}>
+                    {receitas.map((r) => (
+                      <Pressable
+                        key={r.id}
+                        onPress={() => usarReceita(r)}
+                        style={{
+                          backgroundColor: colors.surface,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          borderRadius: 999,
+                          paddingVertical: 8,
+                          paddingHorizontal: 13,
+                        }}
+                      >
+                        <Text style={[type.caption, { color: colors.textPrimary }]}>
+                          {r.name} · {r.items.length} itens
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </>
+              ) : null}
+
+              {/* Últimos usados: quem come quase sempre o mesmo não deveria
+                  digitar de novo. */}
+              {recentes.length > 0 ? (
+                <>
+                  <Secao titulo="🕐 Últimos que você usou" />
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginBottom: spacing.md }}>
+                    {recentes.map((f) => {
+                      const on = cestaIds.has(f.id);
+                      return (
+                        <Pressable
+                          key={f.id}
+                          onPress={() => alternarNaCesta(f)}
+                          style={{
+                            backgroundColor: on ? colors.primary : colors.surface,
+                            borderWidth: 1,
+                            borderColor: on ? colors.primary : colors.border,
+                            borderRadius: 999,
+                            paddingVertical: 8,
+                            paddingHorizontal: 13,
+                          }}
+                        >
+                          <Text style={[type.caption, { color: on ? colors.textOnPrimary : colors.textPrimary }]} numberOfLines={1}>
+                            {f.name.length > 22 ? f.name.slice(0, 22) + "…" : f.name}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </>
+              ) : null}
+
+              {favorites.length > 0 ? <Secao titulo="⭐ Seus favoritos" /> : null}
+            </View>
           ) : null
         }
-        renderItem={({ item }) => (
-          <Pressable
-            onPress={() => {
-              setSelectedFood(item);
-              setQuantityG(String(item.default_portion_g));
-            }}
-            style={({ pressed }) => ({
-              flexDirection: "row",
-              alignItems: "center",
-              backgroundColor: colors.surface,
-              borderRadius: radius.button,
-              padding: spacing.md,
-              marginBottom: spacing.sm,
-              opacity: pressed ? 0.8 : 1,
-            })}
-          >
-            <TouchableOpacity onPress={() => toggleFavorite(item)} hitSlop={8} style={{ marginRight: spacing.sm }}>
+        renderItem={({ item }) => {
+          const marcado = cestaIds.has(item.id);
+          return (
+            <Pressable
+              // Toque = marcar/desmarcar. O fluxo de um alimento só continua
+              // igual (marca, "Adicionar" e pronto), mas agora dá pra marcar
+              // pão, ovo e queijo e mandar os três de uma vez.
+              onPress={() => alternarNaCesta(item)}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: marcado ? colors.primarySoft ?? colors.surfaceAlt : colors.surface,
+                borderRadius: radius.button,
+                borderWidth: 1,
+                borderColor: marcado ? colors.primary : "transparent",
+                padding: spacing.md,
+                marginBottom: spacing.sm,
+                opacity: pressed ? 0.8 : 1,
+              })}
+            >
+              <TouchableOpacity onPress={() => toggleFavorite(item)} hitSlop={8} style={{ marginRight: spacing.sm }}>
+                <Ionicons
+                  name={favIds.has(item.id) ? "star" : "star-outline"}
+                  size={22}
+                  color={favIds.has(item.id) ? colors.warning : colors.textSecondary}
+                />
+              </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <Text style={[type.body, { color: colors.textPrimary, fontWeight: "600" }]}>{item.name}</Text>
+                <Text style={[type.caption, { color: colors.textSecondary, marginTop: 1 }]}>
+                  {item.brand ? `${item.brand} · ` : ""}
+                  {Math.round(item.kcal_per_100g)} kcal/100g
+                </Text>
+              </View>
               <Ionicons
-                name={favIds.has(item.id) ? "star" : "star-outline"}
-                size={22}
-                color={favIds.has(item.id) ? colors.warning : colors.textSecondary}
+                name={marcado ? "checkmark-circle" : "add-circle-outline"}
+                size={26}
+                color={marcado ? colors.primary : colors.textSecondary}
               />
-            </TouchableOpacity>
-            <View style={{ flex: 1 }}>
-              <Text style={[type.body, { color: colors.textPrimary, fontWeight: "600" }]}>{item.name}</Text>
-              <Text style={[type.caption, { color: colors.textSecondary, marginTop: 1 }]}>
-                {item.brand ? `${item.brand} · ` : ""}
-                {Math.round(item.kcal_per_100g)} kcal/100g
-              </Text>
-            </View>
-            <Ionicons name="add-circle" size={26} color={colors.primary} />
-          </Pressable>
-        )}
+            </Pressable>
+          );
+        }}
         ListFooterComponent={
           query.trim().length >= 2 ? (
             <>
@@ -419,7 +598,158 @@ export function AddFoodScreen() {
           ) : null
         }
       />
+
+      {/* Barra da cesta: só aparece com algo marcado. É o que fecha o fluxo
+          "marco pão, ovo e queijo e adiciono os três de uma vez". */}
+      {cesta.length > 0 ? (
+        <View
+          style={{
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+            backgroundColor: colors.surface,
+            paddingTop: spacing.md,
+            marginHorizontal: -spacing.lg,
+            paddingHorizontal: spacing.lg,
+          }}
+        >
+          <Pressable onPress={() => setVerCesta((v) => !v)} style={{ flexDirection: "row", alignItems: "center" }}>
+            <View style={{ flex: 1 }}>
+              <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>
+                {cesta.length} {cesta.length === 1 ? "item" : "itens"} · {Math.round(totalCesta.kcal)} kcal
+              </Text>
+              <Text style={[type.caption, { color: colors.textSecondary }]}>
+                P {totalCesta.prot.toFixed(0)}g · C {totalCesta.carb.toFixed(0)}g · G {totalCesta.gord.toFixed(0)}g
+                {"  ·  "}toque pra ajustar
+              </Text>
+            </View>
+            <Ionicons name={verCesta ? "chevron-down" : "chevron-up"} size={20} color={colors.textSecondary} />
+          </Pressable>
+
+          {verCesta ? (
+            <View style={{ marginTop: spacing.sm, maxHeight: 190 }}>
+              <FlatList
+                data={cesta}
+                keyExtractor={(i) => String(i.food.id)}
+                renderItem={({ item }) => (
+                  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.xs }}>
+                    <Text style={[type.bodySmall, { color: colors.textPrimary, flex: 1 }]} numberOfLines={1}>
+                      {item.food.name}
+                    </Text>
+                    <TextInput
+                      value={String(item.quantity_g)}
+                      onChangeText={(v) => mudarQuantidade(item.food.id, Number(v.replace(/[^0-9]/g, "")) || 0)}
+                      keyboardType="number-pad"
+                      style={[
+                        type.bodySmall,
+                        {
+                          color: colors.textPrimary,
+                          backgroundColor: colors.surfaceAlt,
+                          borderRadius: 8,
+                          paddingHorizontal: 8,
+                          paddingVertical: 4,
+                          width: 58,
+                          textAlign: "right",
+                        },
+                      ]}
+                    />
+                    <Text style={[type.caption, { color: colors.textSecondary, width: 20, marginLeft: 4 }]}>g</Text>
+                    <TouchableOpacity onPress={() => alternarNaCesta(item.food)} hitSlop={8} style={{ marginLeft: 4 }}>
+                      <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              />
+            </View>
+          ) : null}
+
+          <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm, marginBottom: spacing.md }}>
+            <View style={{ flex: 1 }}>
+              <Button
+                title={`Adicionar ${cesta.length > 1 ? `os ${cesta.length}` : ""}`}
+                compact
+                onPress={registrarCesta}
+                loading={isSubmitting}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              {/* Salvar como receita: a cesta JÁ É o gesto de montar uma. */}
+              <Button title="Salvar receita" variant="ghost" compact onPress={() => setPedindoNome(true)} />
+            </View>
+          </View>
+        </View>
+      ) : null}
+
+      <InfoDialog
+        visible={aviso != null}
+        onClose={() => setAviso(null)}
+        title={aviso?.title ?? ""}
+        message={aviso?.message}
+      />
+
+      {pedindoNome ? (
+        <View
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.55)",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: spacing.lg,
+          }}
+        >
+          <Card style={{ width: "100%" }}>
+            <Text style={[type.h2, { color: colors.textPrimary }]}>Salvar como receita</Text>
+            <Text style={[type.caption, { color: colors.textSecondary, marginTop: 2, marginBottom: spacing.md }]}>
+              Os {cesta.length} itens viram um atalho só. Ex: "meu café da manhã".
+            </Text>
+            <TextInput
+              value={nomeReceita}
+              onChangeText={setNomeReceita}
+              placeholder="Nome da receita"
+              placeholderTextColor={colors.textSecondary}
+              autoFocus
+              style={[
+                type.body,
+                {
+                  color: colors.textPrimary,
+                  backgroundColor: colors.surfaceAlt,
+                  borderRadius: radius.button,
+                  paddingHorizontal: spacing.md,
+                  height: 50,
+                  marginBottom: spacing.md,
+                },
+              ]}
+            />
+            <View style={{ flexDirection: "row", gap: spacing.sm }}>
+              <View style={{ flex: 1 }}>
+                <Button title="Salvar" compact onPress={salvarComoReceita} loading={salvandoReceita} disabled={!nomeReceita.trim()} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Button title="Cancelar" variant="ghost" compact onPress={() => setPedindoNome(false)} />
+              </View>
+            </View>
+          </Card>
+        </View>
+      ) : null}
     </View>
+  );
+}
+
+/** Cabeçalho de seção da busca (receitas / recentes / favoritos). */
+function Secao({ titulo }: { titulo: string }) {
+  const { colors, type, spacing } = useTheme();
+  return (
+    <Text
+      style={[
+        type.caption,
+        { color: colors.textSecondary, marginBottom: spacing.sm, letterSpacing: 1, textTransform: "uppercase" },
+      ]}
+    >
+      {titulo}
+    </Text>
   );
 }
 
