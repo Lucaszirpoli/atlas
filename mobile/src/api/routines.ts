@@ -81,6 +81,37 @@ export async function duplicateRoutine(id: number): Promise<Routine> {
  * arquivando as ativas antes. Uma chamada só e atômica — antes o app fazia N
  * chamadas soltas e qualquer falha deixava o treino pela metade. Exercícios
  * que a IA errou o id voltam em `skipped_exercises` em vez de derrubar tudo. */
+export type ImportedExercise = {
+  nome_original: string;
+  exercise_id: number | null;
+  exercise_nome: string | null;
+  confianca: number;
+  /** true = casou com pouca certeza (ou nem casou): a tela pede conferência. */
+  revisar: boolean;
+  series: number;
+  reps_min: number;
+  reps_max: number | null;
+};
+
+export type ImportedRoutine = { nome: string; exercicios: ImportedExercise[] };
+
+export type ImportPreview = {
+  rotinas: ImportedRoutine[];
+  total_exercicios: number;
+  casados: number;
+  para_revisar: number;
+  sem_par: number;
+};
+
+/** Lê o CSV exportado de outro app (Hevy, Strong, Jefit) e PROPÕE as rotinas.
+ *  Não grava — quem grava é o createRoutinesBulk, depois da sua conferência. */
+export async function previewRoutineImport(csvContent: string): Promise<ImportPreview> {
+  const { data } = await api.post<ImportPreview>("/routines/import/preview", {
+    csv_content: csvContent,
+  });
+  return data;
+}
+
 export async function createRoutinesBulk(payload: {
   rotinas: {
     nome: string;

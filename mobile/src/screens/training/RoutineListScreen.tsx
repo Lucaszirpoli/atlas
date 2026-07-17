@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import React, { useCallback, useState } from "react";
-import { Alert, FlatList, Text, TouchableOpacity, View } from "react-native";
+import { Alert, FlatList, Pressable, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -214,6 +214,19 @@ export function RoutineListScreen() {
       />
 
       <Button title="Nova rotina" icon="+" onPress={() => navigation.navigate("RoutineBuilder", {})} />
+
+      {/* Importar fica logo abaixo do "Nova rotina": é aqui que quem chegou de
+          outro app procura, e redigitar tudo é o motivo nº1 de desistir de
+          trocar. Discreto de propósito — serve uma vez na vida do usuário. */}
+      <Pressable
+        onPress={() => navigation.navigate("ImportRoutines")}
+        style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingTop: spacing.md }}
+      >
+        <Ionicons name="download-outline" size={17} color={colors.textSecondary} />
+        <Text style={[type.bodySmall, { color: colors.textSecondary, marginLeft: 6 }]}>
+          Já treina no Hevy ou Strong? Importar treinos
+        </Text>
+      </Pressable>
 
       <ActionSheet
         visible={optionsRoutine != null}

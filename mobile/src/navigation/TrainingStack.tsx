@@ -3,6 +3,7 @@ import React from "react";
 
 import { HeaderBack } from "../components/HeaderBack";
 import { ExercisePickerScreen } from "../screens/training/ExercisePickerScreen";
+import { ImportRoutinesScreen } from "../screens/training/ImportRoutinesScreen";
 import { RoutineBuilderScreen } from "../screens/training/RoutineBuilderScreen";
 import { RoutineListScreen } from "../screens/training/RoutineListScreen";
 import { WorkoutExecutionScreen } from "../screens/training/WorkoutExecutionScreen";
@@ -40,6 +41,11 @@ export function TrainingStack() {
         name="ExercisePicker"
         component={ExercisePickerScreen}
         options={{ title: "Escolher exercício" }}
+      />
+      <Stack.Screen
+        name="ImportRoutines"
+        component={ImportRoutinesScreen}
+        options={{ title: "Importar treinos" }}
       />
       <Stack.Screen
         name="WorkoutPreview"
