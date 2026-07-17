@@ -37,8 +37,13 @@ MOVEMENT_QUERY: list[tuple[re.Pattern, str]] = [
     (re.compile(r"supino declinado", re.I), "decline bench press"),
     (re.compile(r"supino inclinado", re.I), "incline bench press"),
     (re.compile(r"supino", re.I), "bench press"),
+    # "peck deck" antes de "crucifixo|voador": o peck deck é MÁQUINA e buscar
+    # "fly" trazia crucifixo no cabo — outro exercício, outro equipamento.
+    (re.compile(r"peck deck|pec deck", re.I), "pec deck"),
     (re.compile(r"crucifixo|voador", re.I), "fly"),
-    (re.compile(r"crossover", re.I), "cable crossover"),
+    # "cable crossover" não retorna nada na ExerciseDB; o termo indexado é
+    # só "crossover".
+    (re.compile(r"crossover", re.I), "crossover"),
     (re.compile(r"puxada frontal|puxada supinada|puxada tri[aâ]ngulo|pulldown|lat pull", re.I), "lat pulldown"),
     (re.compile(r"barra fixa|pull.?up", re.I), "pull up"),
     (re.compile(r"remada", re.I), "row"),
@@ -54,7 +59,11 @@ MOVEMENT_QUERY: list[tuple[re.Pattern, str]] = [
     (re.compile(r"eleva[çc][ãa]o frontal", re.I), "front raise"),
     (re.compile(r"encolhimento", re.I), "shrug"),
     (re.compile(r"agachamento frontal", re.I), "front squat"),
-    (re.compile(r"agachamento|hack|leg press", re.I), "squat"),
+    # "leg press" ANTES do agachamento e com termo próprio: estava agrupado no
+    # regex do agachamento e buscava "squat", então "Leg press 45" recebia
+    # candidatos de agachamento com barra — exercício e equipamento errados.
+    (re.compile(r"leg press", re.I), "leg press"),
+    (re.compile(r"agachamento|hack", re.I), "squat"),
     (re.compile(r"afundo|passada|b[uú]lgaro|lunge", re.I), "lunge"),
     (re.compile(r"levantamento terra|stiff|deadlift", re.I), "deadlift"),
     (re.compile(r"hip thrust|eleva[çc][ãa]o p[eé]lvica", re.I), "hip thrust"),
@@ -129,6 +138,27 @@ MUSCLE_HINT = {
     MuscleGroup.FULL_BODY: (),
     MuscleGroup.CARDIO: ("cardio",),
 }
+
+
+def get_with_retry(client: httpx.Client, url: str, params: dict, tentativas: int = 5):
+    """GET com recuo progressivo no 429.
+
+    O plano pago tem cota MENSAL folgada mas limita a taxa POR SEGUNDO: um
+    sleep fixo de 0.3s levava 429 em rajada e a execução inteira falhava
+    ("46 erros, 0 imagens salvas") mesmo com 2.164 requisições disponíveis no
+    mês. O 429 aqui não significa cota esgotada — significa "espere um pouco".
+    """
+    espera = 1.0
+    for tentativa in range(tentativas):
+        resp = client.get(url, params=params)
+        if resp.status_code != 429:
+            resp.raise_for_status()
+            return resp
+        if tentativa < tentativas - 1:
+            time.sleep(espera)
+            espera *= 2  # 1s, 2s, 4s, 8s
+    resp.raise_for_status()
+    return resp
 
 
 def guess_query(name_pt: str) -> str | None:
@@ -211,6 +241,10 @@ def run(limit: int | None = None) -> None:
 
         print(f"{len(exercises)} exercícios sem imagem. Buscando na ExerciseDB...")
         matched, skipped_no_query, skipped_low_score, errors = 0, 0, 0, 0
+        # Um GIF só pode ilustrar UM exercício. Sem isto, "Crossover no cabo
+        # (polia alta)" e "Crossover na polia baixa" recebiam o mesmo candidato
+        # (são movimentos distintos) e a mesma imagem apareceria nos dois.
+        candidatos_usados: set[str] = set()
 
         for ex in exercises:
             dest = STATIC_DIR / f"{ex.id}.gif"
@@ -226,8 +260,7 @@ def run(limit: int | None = None) -> None:
                 continue
 
             try:
-                resp = client.get(f"https://{API_HOST}/exercises/name/{query}")
-                resp.raise_for_status()
+                resp = get_with_retry(client, f"https://{API_HOST}/exercises/name/{query}", {})
                 candidates = resp.json()
             except Exception as exc:  # noqa: BLE001 — só queremos logar e seguir
                 print(f"  [erro busca] {ex.name}: {exc}")
@@ -238,7 +271,12 @@ def run(limit: int | None = None) -> None:
                 skipped_low_score += 1
                 continue
 
-            best = max(candidates, key=lambda c: score_candidate(ex, c))
+            # Melhor candidato AINDA NÃO usado por outro exercício.
+            livres = [c for c in candidates if str(c.get("id")) not in candidatos_usados]
+            if not livres:
+                skipped_low_score += 1
+                continue
+            best = max(livres, key=lambda c: score_candidate(ex, c))
             # Duas barreiras: a nota geral E um piso só do nome. O piso é o que
             # impede equipamento+músculo de aprovarem um movimento diferente.
             if score_candidate(ex, best) < MATCH_THRESHOLD or name_ratio(ex, best) < NAME_FLOOR:
@@ -246,11 +284,11 @@ def run(limit: int | None = None) -> None:
                 continue
 
             try:
-                img = client.get(
+                img = get_with_retry(
+                    client,
                     f"https://{API_HOST}/image",
-                    params={"exerciseId": best["id"], "resolution": 180},
+                    {"exerciseId": best["id"], "resolution": 180},
                 )
-                img.raise_for_status()
                 dest.write_bytes(img.content)
             except Exception as exc:  # noqa: BLE001
                 print(f"  [erro imagem] {ex.name} -> {best['name']}: {exc}")
@@ -258,6 +296,7 @@ def run(limit: int | None = None) -> None:
                 continue
 
             ex.video_url = f"{settings.public_base_url}/static/exercise_images/{ex.id}.gif"
+            candidatos_usados.add(str(best.get("id")))
             matched += 1
             db.commit()
             print(f"  OK: {ex.name} -> {best['name']} ({best['id']})")
