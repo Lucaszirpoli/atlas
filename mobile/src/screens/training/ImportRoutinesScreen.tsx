@@ -37,25 +37,64 @@ export function ImportRoutinesScreen() {
   const [info, setInfo] = useState<{ title: string; message: string } | null>(null);
 
   async function escolherArquivo() {
-    const res = await DocumentPicker.getDocumentAsync({
-      // text/comma-separated-values e text/plain entram porque vários apps
-      // exportam com o MIME errado; filtrar só por text/csv perde arquivo bom.
-      type: ["text/csv", "text/comma-separated-values", "text/plain", "*/*"],
-      copyToCacheDirectory: true,
-    });
+    // Fora do try: se o próprio seletor falhar (ex: permissão do Android
+    // negada), a pessoa via a tela travar sem explicação nenhuma — nem esse
+    // catch existia antes.
+    let res: DocumentPicker.DocumentPickerResult;
+    try {
+      res = await DocumentPicker.getDocumentAsync({
+        // text/comma-separated-values e text/plain entram porque vários apps
+        // exportam com o MIME errado; filtrar só por text/csv perde arquivo bom.
+        type: ["text/csv", "text/comma-separated-values", "text/plain", "*/*"],
+        copyToCacheDirectory: true,
+      });
+    } catch (err: any) {
+      setInfo({
+        title: "Não consegui abrir o seletor de arquivo",
+        message: String(err?.message ?? err),
+      });
+      return;
+    }
     if (res.canceled || !res.assets?.[0]) return;
 
     setLoading(true);
+
+    // Ler o arquivo e chamar o servidor eram o MESMO try/catch, com UMA
+    // mensagem genérica pros dois — não dava pra saber qual dos dois
+    // realmente falhou (a pessoa via "não consegui ler o arquivo" mesmo
+    // quando o arquivo tinha sido lido certo e o problema era na rede, ou
+    // vice-versa). Agora cada passo tem seu próprio erro, mostrando a causa
+    // real em vez de um texto fixo — é o que vai apontar exatamente onde
+    // quebra na próxima tentativa.
+    let conteudo: string;
     try {
-      const conteudo = await FileSystem.readAsStringAsync(res.assets[0].uri);
+      conteudo = await FileSystem.readAsStringAsync(res.assets[0].uri);
+    } catch (err: any) {
+      setInfo({
+        title: "Não consegui ler o arquivo",
+        message: `Erro ao abrir "${res.assets[0].name}": ${String(err?.message ?? err)}`,
+      });
+      setLoading(false);
+      return;
+    }
+    if (!conteudo.trim()) {
+      setInfo({
+        title: "Arquivo vazio",
+        message: `"${res.assets[0].name}" não tem conteúdo. Exporte de novo no outro app.`,
+      });
+      setLoading(false);
+      return;
+    }
+
+    try {
       const p = await previewRoutineImport(conteudo);
       setPreview(p);
     } catch (err: any) {
       setInfo({
-        title: "Não consegui ler o arquivo",
+        title: "Não consegui enviar pro servidor",
         message:
           err?.response?.data?.detail ??
-          "Exporte o CSV de treinos do outro app e tente de novo.",
+          `Erro de conexão: ${String(err?.message ?? err)}. Tente de novo.`,
       });
     } finally {
       setLoading(false);
