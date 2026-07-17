@@ -25,7 +25,11 @@ from app.models.exercise import Equipment, Exercise, MuscleGroup
 
 API_HOST = "exercisedb.p.rapidapi.com"
 STATIC_DIR = Path(__file__).parent.parent / "static" / "exercise_images"
-MATCH_THRESHOLD = 0.45
+MATCH_THRESHOLD = 0.60
+# Piso de semelhança do NOME, cobrado à parte da nota. Sem ele, equipamento +
+# músculo bastavam pra aprovar um exercício de nome totalmente diferente —
+# imagem errada é pior que imagem nenhuma, porque ensina o movimento errado.
+NAME_FLOOR = 0.55
 
 # Termo de busca em inglês por padrão de movimento — usado só pra achar
 # candidatos na ExerciseDB, não precisa ser uma tradução perfeita.
@@ -134,18 +138,57 @@ def guess_query(name_pt: str) -> str | None:
     return None
 
 
+def name_ratio(exercise: Exercise, candidate: dict) -> float:
+    """Semelhança entre o nome do nosso exercício e o do candidato.
+
+    Compara contra o candidato TRADUZIDO **e** contra o inglês cru, ficando com
+    o maior. Só o traduzido não serve: metade do vocabulário de academia no
+    Brasil já é inglês ("Kettlebell swing", "Leg press", "Face pull",
+    "Turkish get-up"), e nesses casos a tradução AFASTA os textos — "Kettlebell
+    swing" contra o candidato idêntico "kettlebell swing" dava 0.53 e reprovava
+    um casamento perfeito.
+    """
+    ours = exercise.name.lower()
+    raw = (candidate.get("name") or "").lower()
+    pt = translate_exercise_name(candidate.get("name", "")).lower()
+    return max(
+        difflib.SequenceMatcher(None, ours, pt).ratio(),
+        difflib.SequenceMatcher(None, ours, raw).ratio(),
+    )
+
+
 def score_candidate(exercise: Exercise, candidate: dict) -> float:
-    score = 0.0
+    """Pontua um candidato da ExerciseDB. O NOME manda.
+
+    A versão anterior somava 0.4 por equipamento + 0.2 por músculo e só 0.4x a
+    semelhança do nome, com limite de 0.45 — ou seja, equipamento e músculo
+    sozinhos (0.6) já passavam o corte e o candidato entrava com semelhança de
+    nome ZERO. Na prática, QUALQUER exercício de barra+bíceps servia como
+    "Rosca direta com barra", e o GIF vinha de outro movimento. É por isso que
+    havia GIF no exercício errado.
+
+    Agora nome é a base da nota (e há um piso separado, NAME_FLOOR, cobrado no
+    chamador); equipamento e músculo apenas desempatam entre candidatos que já
+    passaram no nome.
+    """
+    ratio = name_ratio(exercise, candidate)
+    score = ratio * 0.7
     equip_hint = EQUIPMENT_HINT.get(exercise.equipment, "")
-    if equip_hint and equip_hint in (candidate.get("equipment") or "").lower():
-        score += 0.4
+    cand_equip = (candidate.get("equipment") or "").lower()
+    if equip_hint:
+        if equip_hint in cand_equip:
+            score += 0.2
+        elif cand_equip:
+            # PUNE equipamento diferente, não só premia o igual. É o que separa
+            # "Agachamento com faixa elástica" de "barbell full squat": os nomes
+            # se parecem o bastante pra passar (0.64), mas faixa não é barra —
+            # o GIF mostraria outro exercício. Sem esta punição, metade dos
+            # exercícios com faixa/máquina herdava o GIF da versão com barra.
+            score -= 0.35
     hints = MUSCLE_HINT.get(exercise.primary_muscle_group, ())
     body = f"{candidate.get('bodyPart', '')} {candidate.get('target', '')}".lower()
     if any(h in body for h in hints):
-        score += 0.2
-    candidate_pt = translate_exercise_name(candidate.get("name", ""))
-    ratio = difflib.SequenceMatcher(None, exercise.name.lower(), candidate_pt.lower()).ratio()
-    score += ratio * 0.4
+        score += 0.1
     return score
 
 
@@ -196,7 +239,9 @@ def run(limit: int | None = None) -> None:
                 continue
 
             best = max(candidates, key=lambda c: score_candidate(ex, c))
-            if score_candidate(ex, best) < MATCH_THRESHOLD:
+            # Duas barreiras: a nota geral E um piso só do nome. O piso é o que
+            # impede equipamento+músculo de aprovarem um movimento diferente.
+            if score_candidate(ex, best) < MATCH_THRESHOLD or name_ratio(ex, best) < NAME_FLOOR:
                 skipped_low_score += 1
                 continue
 
