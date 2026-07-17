@@ -10,8 +10,97 @@ from app.models.routine import Routine, RoutineExercise
 from app.models.user import User
 from app.schemas.routine import RoutineCreate, RoutineRead, RoutineUpdate
 from app.services import routine_service
+from app.services.routine_import import parse_csv
 
 router = APIRouter(prefix="/routines", tags=["routines"])
+
+
+class ImportPreviewRequest(BaseModel):
+    # Conteúdo do CSV exportado do outro app. Vem como texto: o app lê o
+    # arquivo escolhido e manda — evita lidar com multipart no mobile.
+    csv_content: str
+
+
+class ImportedExerciseOut(BaseModel):
+    nome_original: str
+    exercise_id: int | None
+    exercise_nome: str | None
+    confianca: float
+    revisar: bool
+    series: int
+    reps_min: int
+    reps_max: int | None
+
+
+class ImportedRoutineOut(BaseModel):
+    nome: str
+    exercicios: list[ImportedExerciseOut]
+
+
+class ImportPreviewResponse(BaseModel):
+    rotinas: list[ImportedRoutineOut]
+    total_exercicios: int
+    casados: int
+    para_revisar: int
+    sem_par: int
+
+
+@router.post("/import/preview", response_model=ImportPreviewResponse)
+def import_preview(
+    payload: ImportPreviewRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Lê o CSV de outro app (Hevy, Strong, Jefit) e PROPÕE as rotinas.
+
+    Não grava nada de propósito. Casar "Bench Press (Barbell)" com "Supino reto
+    com barra" é palpite, e palpite errado aqui bagunçaria o treino da pessoa em
+    silêncio — a confirmação é feita na tela, com o que ficou duvidoso marcado.
+    """
+    rotinas = parse_csv(db, payload.csv_content)
+    if not rotinas:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Não reconheci esse arquivo. Exporte o CSV de treinos do outro app "
+                "(no Hevy: Perfil → Configurações → Exportar dados)."
+            ),
+        )
+
+    saida, casados, revisar, sem_par = [], 0, 0, 0
+    for r in rotinas:
+        for e in r.exercicios:
+            if e.exercise_id is None:
+                sem_par += 1
+            elif e.revisar:
+                revisar += 1
+            else:
+                casados += 1
+        saida.append(
+            {
+                "nome": r.nome,
+                "exercicios": [
+                    {
+                        "nome_original": e.nome_original,
+                        "exercise_id": e.exercise_id,
+                        "exercise_nome": e.exercise_nome,
+                        "confianca": e.confianca,
+                        "revisar": e.revisar,
+                        "series": e.series,
+                        "reps_min": e.reps_min,
+                        "reps_max": e.reps_max,
+                    }
+                    for e in r.exercicios
+                ],
+            }
+        )
+    return {
+        "rotinas": saida,
+        "total_exercicios": casados + revisar + sem_par,
+        "casados": casados,
+        "para_revisar": revisar,
+        "sem_par": sem_par,
+    }
 
 
 def _validate_exercises_exist(db: Session, payload_exercises: list) -> None:
