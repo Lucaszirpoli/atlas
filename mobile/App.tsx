@@ -6,6 +6,7 @@ import { StatusBar } from "expo-status-bar";
 import React, { useEffect } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { ErrorBoundary } from "./src/components/ErrorBoundary";
 import { ActiveWorkoutProvider } from "./src/context/ActiveWorkoutContext";
 import { AuthProvider } from "./src/context/AuthContext";
 import { RootNavigator } from "./src/navigation/RootNavigator";
@@ -34,15 +35,20 @@ export default function App() {
   }
 
   return (
-    <SafeAreaProvider>
-      <ThemeProvider>
-        <AuthProvider>
-          <ActiveWorkoutProvider>
-            <RootNavigator />
-            <StatusBar style="auto" />
-          </ActiveWorkoutProvider>
-        </AuthProvider>
-      </ThemeProvider>
-    </SafeAreaProvider>
+    // ErrorBoundary por FORA de tudo: se qualquer provider ou tela quebrar no
+    // render, mostra o erro em vez de tela branca. Foi o que faltou quando um
+    // amigo criou conta nova e viu só branco, sem pista nenhuma.
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <ActiveWorkoutProvider>
+              <RootNavigator />
+              <StatusBar style="auto" />
+            </ActiveWorkoutProvider>
+          </AuthProvider>
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }
