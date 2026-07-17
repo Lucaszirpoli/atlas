@@ -41,14 +41,19 @@ export function FriendsScreen() {
     if (!handleInput.trim()) return;
     setIsSending(true);
     try {
+      // Só o envio no try: o load() ficava aqui e, se falhasse, o catch dizia
+      // "não foi possível enviar" com o pedido JÁ enviado — a pessoa mandava
+      // de novo e o amigo recebia dois convites.
       await sendFriendRequest(handleInput.trim().toLowerCase().replace(/^@/, ""));
-      setHandleInput("");
-      await load();
     } catch (err: any) {
       Alert.alert("Não foi possível enviar", err?.response?.data?.detail ?? "Tente novamente.");
-    } finally {
       setIsSending(false);
+      return;
     }
+    setHandleInput("");
+    // Recarregar a lista é cosmético: falhou, a próxima abertura da tela pega.
+    await load().catch(() => {});
+    setIsSending(false);
   }
 
   const receivedRequests = requests.filter((r) => r.direction === "received");

@@ -79,6 +79,9 @@ export function OnboardingScreen() {
   async function handleFinish() {
     setIsSubmitting(true);
     try {
+      // Só o envio no try. O refreshUser() ficava aqui e, se falhasse, o catch
+      // mandava a pessoa refazer o onboarding INTEIRO — com o cadastro já
+      // salvo no servidor.
       await submitOnboarding({
         ...form,
         age: Number(form.age),
@@ -87,15 +90,18 @@ export function OnboardingScreen() {
         injuries_limitations: null,
         partner_handle: null,
       });
-      await refreshUser();
     } catch (err: any) {
       Alert.alert(
         "Não foi possível concluir o onboarding",
         err?.response?.data?.detail ?? "Tente novamente em instantes."
       );
-    } finally {
       setIsSubmitting(false);
+      return;
     }
+    // Já cadastrado. O refresh é o que troca a tela pro app; se a rede cair
+    // aqui, a próxima abertura resolve — nunca mandar refazer.
+    await refreshUser().catch(() => {});
+    setIsSubmitting(false);
   }
 
   function goNext() {

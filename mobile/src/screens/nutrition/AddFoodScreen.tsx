@@ -72,13 +72,19 @@ export function AddFoodScreen() {
     try {
       if (isFav) await removeFavoriteFood(food.id);
       else await addFavoriteFood(food.id);
-      setFavorites(await listFavoriteFoods());
     } catch {
-      /* rollback silencioso: recarrega do servidor */
+      /* rollback: a gravação em si falhou, então desfaz a marcação otimista */
       const f = await listFavoriteFoods().catch(() => favorites);
       setFavorites(f);
       setFavIds(new Set(f.map((x) => x.id)));
+      return;
     }
+    // Recarregar a lista ficava DENTRO do try acima: falhando, o rollback
+    // desmarcava o favorito na tela mesmo com ele já salvo no servidor — a tela
+    // passava a mentir até a próxima abertura. Aqui é só atualização de vitrine.
+    await listFavoriteFoods()
+      .then(setFavorites)
+      .catch(() => {});
   }
 
   function openCustom() {
@@ -170,17 +176,23 @@ export function AddFoodScreen() {
     }
     setIsSubmitting(true);
     try {
+      // Só a gravação fica no try. O goBack() ficava aqui dentro e, se
+      // falhasse, o catch acusava "não foi possível registrar" DEPOIS de a
+      // refeição já estar salva — a pessoa via o erro, voltava, e o alimento
+      // estava lá. Fora isso, o timeout curto do axios fazia o mesmo estrago
+      // (ver REQUEST_TIMEOUT_MS em api/client.ts).
       await logMeal({
         meal_category_id: categoryId,
         logged_at: new Date().toISOString(),
         items: [{ food_id: selectedFood.id, quantity_g: qty }],
       });
-      navigation.goBack();
     } catch (err: any) {
       Alert.alert("Não foi possível registrar", err?.response?.data?.detail ?? "Tente novamente.");
-    } finally {
       setIsSubmitting(false);
+      return;
     }
+    setIsSubmitting(false);
+    navigation.goBack();
   }
 
   if (customMode) {
