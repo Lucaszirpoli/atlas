@@ -5,7 +5,7 @@ import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "rea
 import type { PurchasesPackage } from "react-native-purchases";
 
 import { getOffering, restorePro, subscribePro, type Offering } from "../../api/billing";
-import { getCurrentOffering, isNativePurchasesAvailable } from "../../api/purchases";
+import { configurePurchases, getCurrentOffering, isNativePurchasesAvailable } from "../../api/purchases";
 import { AtlasLogo } from "../../components/AtlasLogo";
 import { Button } from "../../components/Button";
 import { InfoDialog } from "../../components/InfoDialog";
@@ -15,7 +15,7 @@ import { useTheme } from "../../theme/ThemeProvider";
 export function PaywallScreen() {
   const { colors, type, spacing, radius } = useTheme();
   const navigation = useNavigation<any>();
-  const { refreshUser } = useAuth();
+  const { user, refreshUser } = useAuth();
 
   const [offering, setOffering] = useState<Offering | null>(null);
   const [nativePackage, setNativePackage] = useState<PurchasesPackage | null>(null);
@@ -29,12 +29,21 @@ export function PaywallScreen() {
       .then(setOffering)
       .finally(() => setLoading(false));
 
-    if (isNativePurchasesAvailable()) {
-      getCurrentOffering()
-        .then((o) => setNativePackage(o?.monthly ?? o?.availablePackages[0] ?? null))
-        .catch(() => {});
+    // configurePurchases() só roda AQUI agora, não mais em todo login (ver
+    // AuthContext.tsx) — só quem abre a tela de assinatura toca no SDK nativo
+    // do RevenueCat. try/catch: erro de módulo nativo não pode travar a tela.
+    if (isNativePurchasesAvailable() && user) {
+      try {
+        configurePurchases(String(user.id));
+        getCurrentOffering()
+          .then((o) => setNativePackage(o?.monthly ?? o?.availablePackages[0] ?? null))
+          .catch(() => {});
+      } catch {
+        // RevenueCat indisponível/mal configurado neste aparelho — a tela
+        // segue mostrando o preço; só a compra nativa fica bloqueada.
+      }
     }
-  }, []);
+  }, [user?.id]);
 
   async function handleSubscribe() {
     setSubscribing(true);

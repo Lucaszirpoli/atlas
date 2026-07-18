@@ -2,9 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useContext, useEffect, useState } from "react";
 
 import * as authApi from "../api/auth";
-import { syncPlan } from "../api/billing";
 import { TOKEN_STORAGE_KEY } from "../api/client";
-import { configurePurchases, getEntitlementActive } from "../api/purchases";
 
 type AuthContextValue = {
   isLoading: boolean;
@@ -65,33 +63,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loadFromStoredToken();
   }, []);
 
-  useEffect(() => {
-    if (!user) return;
-    // TODO o bloco de billing é envolto em try/catch: mexe com o módulo NATIVO
-    // do RevenueCat, que pode se comportar diferente em cada aparelho/config.
-    // Um erro aqui NUNCA pode impedir a pessoa de usar o app — billing é
-    // secundário ao registro de treino/dieta. (Este caminho roda sobretudo
-    // pra conta Free; quem é Pro nem entra no if abaixo.)
-    try {
-      configurePurchases(String(user.id));
-      // Se a pessoa já é Pro na loja mas o backend ainda mostra Free (ex:
-      // comprou antes do webhook existir, ou o webhook falhou), sincroniza ao
-      // abrir o app e recarrega o usuário pra refletir o Pro na hora.
-      if (user.plan !== "pro") {
-        getEntitlementActive()
-          .then((active) => {
-            if (active) {
-              syncPlan(true)
-                .then(() => refreshUser())
-                .catch(() => {});
-            }
-          })
-          .catch(() => {}); // faltava: sem isto, uma rejeição virava erro solto
-      }
-    } catch {
-      // RevenueCat indisponível/mal configurado neste aparelho — segue a vida.
-    }
-  }, [user?.id]);
+  // O boot/login NÃO chama mais o RevenueCat. Antes, configurePurchases()
+  // rodava aqui pra TODO login — inclusive de conta recém-criada, no
+  // primeiríssimo instante de uso. Um amigo do usuário via tela branca bem
+  // nessa janela; o try/catch (v20) não resolveu porque um crash NATIVO em
+  // thread de segundo plano do SDK (ex: inicializando o Billing Library do
+  // Google pela primeira vez naquele aparelho/conta) não é interceptável por
+  // try/catch do JS — a ponte já morreu antes de qualquer exceção chegar ao
+  // React. Mover pra ProfileScreen/PaywallScreen (only-when-needed) tira o
+  // RevenueCat inteiro do caminho crítico do primeiro login — quem nunca abre
+  // a tela de assinatura nunca toca nesse SDK. Ver purchases.ts e
+  // ProfileScreen/PaywallScreen para onde isso agora roda.
 
   async function persistTokenAndLoadUser(accessToken: string) {
     await AsyncStorage.setItem(TOKEN_STORAGE_KEY, accessToken);

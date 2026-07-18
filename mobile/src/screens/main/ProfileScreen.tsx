@@ -3,6 +3,8 @@ import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import React, { useCallback } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
+import { syncPlan } from "../../api/billing";
+import { configurePurchases, getEntitlementActive, isNativePurchasesAvailable } from "../../api/purchases";
 import { Avatar } from "../../components/Avatar";
 import { Card } from "../../components/Card";
 import { useAuth } from "../../context/AuthContext";
@@ -16,10 +18,31 @@ export function ProfileScreen() {
   // Sempre que a tela ganha foco, revalida o plano — assim, se a compra do Pro
   // foi confirmada pelo webhook depois que a pessoa saiu do paywall, o status
   // Pro aparece aqui sem precisar reabrir o app.
+  //
+  // O sync com a LOJA (getEntitlementActive) morou no boot/login até a v20 —
+  // rodava pra todo mundo, na cara do primeiro login, e é suspeito de causar
+  // tela branca em conta nova (crash nativo do RevenueCat, não capturável por
+  // try/catch). Mudou pra cá: só quem abre o Perfil toca no SDK nativo, bem
+  // longe da janela crítica de quem acabou de criar conta.
   useFocusEffect(
     useCallback(() => {
       refreshUser().catch(() => {});
-    }, [])
+      if (user && user.plan !== "pro" && isNativePurchasesAvailable()) {
+        try {
+          configurePurchases(String(user.id));
+          getEntitlementActive()
+            .then((active) => {
+              if (active) {
+                syncPlan(true).then(() => refreshUser()).catch(() => {});
+              }
+            })
+            .catch(() => {});
+        } catch {
+          // RevenueCat indisponível neste aparelho — o Perfil segue normal.
+        }
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user?.id, user?.plan])
   );
 
   return (
