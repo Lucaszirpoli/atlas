@@ -6,11 +6,18 @@ import { StatusBar } from "expo-status-bar";
 import React, { useEffect } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { View } from "react-native";
+
 import { ErrorBoundary } from "./src/components/ErrorBoundary";
 import { ActiveWorkoutProvider } from "./src/context/ActiveWorkoutContext";
 import { AuthProvider } from "./src/context/AuthContext";
 import { RootNavigator } from "./src/navigation/RootNavigator";
 import { ThemeProvider } from "./src/theme/ThemeProvider";
+import { instalarCrashLogger } from "./src/utils/crashLog";
+
+// No topo do módulo (antes de qualquer render): captura erro nativo/async que
+// escapa do ErrorBoundary e grava pra mostrar na próxima abertura.
+instalarCrashLogger();
 
 SplashScreen.preventAutoHideAsync();
 
@@ -31,7 +38,11 @@ export default function App() {
   }, [fontsLoaded]);
 
   if (!fontsLoaded) {
-    return null;
+    // NUNCA retornar null aqui: null renderiza NADA e o Android mostra o fundo
+    // nativo BRANCO — indistinguível de um crash. Uma View escura mantém o
+    // splash coerente e garante que "branco total" só possa significar erro
+    // de verdade, não "fontes carregando".
+    return <View style={{ flex: 1, backgroundColor: "#0A0A0B" }} />;
   }
 
   return (

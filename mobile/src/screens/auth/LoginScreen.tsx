@@ -1,9 +1,10 @@
 import { useNavigation } from "@react-navigation/native";
 import React, { useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
 
 import { AtlasLogo } from "../../components/AtlasLogo";
 import { Button } from "../../components/Button";
+import { InfoDialog } from "../../components/InfoDialog";
 import { TextField } from "../../components/TextField";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
@@ -16,15 +17,17 @@ export function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
 
   async function handleSubmit() {
     setIsSubmitting(true);
     try {
       await signIn(email.trim().toLowerCase(), password);
     } catch (err: any) {
-      Alert.alert(
-        "Não foi possível entrar",
-        err?.response?.data?.detail ?? "Verifique seus dados e tente novamente."
+      // Alert.alert nativo (a "tela feia") -> InfoDialog com o visual do ATLAS.
+      setErro(
+        err?.response?.data?.detail ??
+          "E-mail ou senha incorretos. Confira e tente de novo."
       );
     } finally {
       setIsSubmitting(false);
@@ -74,10 +77,10 @@ export function LoginScreen() {
           </Text>
 
           <TextField
-            label="E-mail"
+            label="E-mail ou usuário"
             autoCapitalize="none"
             keyboardType="email-address"
-            placeholder="voce@email.com"
+            placeholder="voce@email.com ou @seuusuario"
             value={email}
             onChangeText={setEmail}
           />
@@ -104,6 +107,13 @@ export function LoginScreen() {
           </Text>
         </View>
       </ScrollView>
+
+      <InfoDialog
+        visible={erro !== null}
+        onClose={() => setErro(null)}
+        title="Não foi possível entrar"
+        message={erro ?? undefined}
+      />
     </KeyboardAvoidingView>
   );
 }
