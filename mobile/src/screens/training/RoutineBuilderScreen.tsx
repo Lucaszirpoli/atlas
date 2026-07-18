@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
-import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 import type { Exercise } from "../../api/exercises";
 import { createRoutine, getRoutine, updateRoutine } from "../../api/routines";
@@ -101,10 +101,20 @@ export function RoutineBuilderScreen() {
   }
 
   return (
+    // KeyboardAvoidingView + keyboardShouldPersistTaps + o padding grande no fim:
+    // sem isso, ao focar o peso/reps de um exercício lá embaixo (a partir do 4º),
+    // o teclado cobria o campo e não dava pra ver o que digitava. O padding extra
+    // garante espaço pra rolar o último exercício acima do teclado.
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
     <ScrollView
       style={{ backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
+      contentContainerStyle={{ padding: spacing.lg, paddingBottom: 340 }}
       showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
     >
       <Card style={{ marginBottom: spacing.lg }}>
         <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.xs }]}>
@@ -186,6 +196,7 @@ export function RoutineBuilderScreen() {
 
       <Button title="Salvar rotina" onPress={handleSave} loading={isSubmitting} />
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

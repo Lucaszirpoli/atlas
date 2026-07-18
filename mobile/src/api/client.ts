@@ -60,6 +60,30 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
+// RETRY AUTOMÁTICO do "primeiro request depois que o Railway dormiu". O backend
+// hiberna por inatividade e acorda em alguns segundos; a PRIMEIRA chamada nesse
+// intervalo falha com erro de gateway (502/503/504) ou conexão recusada/resetada
+// (sem resposta, mas NÃO timeout). Era exatamente o "de primeira dá erro, tento
+// de novo e vai" — a pessoa fazia na mão o que isto agora faz sozinho: espera um
+// respiro e retenta UMA vez. NÃO retenta em timeout (a escrita pode ter chegado
+// ao servidor e retentar duplicaria) nem em erro 4xx (é do request, não do wake).
+api.interceptors.response.use(
+  (r) => r,
+  async (error) => {
+    const cfg = error?.config ?? {};
+    const status = error?.response?.status;
+    const semResposta = !error?.response;
+    const ehTimeout = error?.code === "ECONNABORTED" || /timeout/i.test(error?.message ?? "");
+    const ehColdStart = status === 502 || status === 503 || status === 504 || (semResposta && !ehTimeout);
+    if (ehColdStart && !cfg.__retried) {
+      cfg.__retried = true;
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      return api(cfg);
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Timeout numa ESCRITA não significa "não salvou": o axios aborta só no
 // celular, e o servidor termina o trabalho sem saber que alguém desistiu. As
 // telas leem err.response.data.detail e, num timeout, response nem existe —

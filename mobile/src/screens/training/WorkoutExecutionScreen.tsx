@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
 import React, { useCallback, useEffect, useState } from "react";
-import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { getRoutine, type Routine } from "../../api/routines";
@@ -222,10 +222,15 @@ export function WorkoutExecutionScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
       <ScrollView
-        contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl + insets.bottom }}
+        contentContainerStyle={{ padding: spacing.lg, paddingBottom: 340 + insets.bottom }}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
       >
         <Text style={[type.h1, { color: colors.textPrimary }]}>{routine.name}</Text>
         <View style={{ flexDirection: "row", alignItems: "center", marginTop: spacing.xs, marginBottom: spacing.md }}>
@@ -471,7 +476,7 @@ export function WorkoutExecutionScreen() {
         onKeepMeasured={() => finishWith(durationCheck ?? undefined)}
         saving={isCompleting}
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
