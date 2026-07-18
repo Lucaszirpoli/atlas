@@ -27,6 +27,7 @@ from app.models.exercise import (
     STRENGTH_CATEGORIES,
     Exercise,
     MuscleGroup,
+    quality_order,
 )
 
 # Grupos musculares treinados por cada rótulo de "foco" usado nos splits.
@@ -223,7 +224,7 @@ def _pick(
             # o que gerou o "treino de perna" com três alongamentos dentro.
             Exercise.category.in_(STRENGTH_CATEGORIES),
         )
-        .order_by(Exercise.video_url.is_(None), Exercise.id)
+        .order_by(*quality_order())
     )
     candidates = list(db.execute(stmt).scalars())
     out: list[Exercise] = []
@@ -299,7 +300,7 @@ def _find_exercise(db: Session, name_query: str) -> Exercise | None:
             Exercise.is_hidden.is_(False),
             Exercise.category.in_(EXTENDED_STRENGTH_CATEGORIES),
         )
-        .order_by(Exercise.id)
+        .order_by(*quality_order())
     ).scalars().first()
 
 

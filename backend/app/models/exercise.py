@@ -132,6 +132,61 @@ class Exercise(Base):
     )
 
 
+def quality_order():
+    """Ordena exercícios do MAIS CONSAGRADO pro mais obscuro — pra a engine dos
+    métodos e a IA escolherem os básicos da ciência (supino, agachamento,
+    remada, rosca) em vez de variações esquisitas (arranco unilateral, mergulho
+    assistido, agachamento frankenstein) que só vinham na frente por terem id
+    baixo na ExerciseDB (a base começa em '3/4 sit-up', 'assisted...', 'band...').
+
+    Devolve uma lista de cláusulas pra `.order_by(*quality_order())`. Ascendente:
+    o menor valor vem primeiro.
+    """
+    from sqlalchemy import case, func
+
+    # 1) tem GIF vem antes (None -> True=1 fica por último).
+    tem_gif = Exercise.video_url.is_(None)
+    # 2) variações obscuras/avançadas pro fim: "assistida" (regressão pra quem
+    #    não consegue o movimento), levantamentos olímpicos usados como acessório
+    #    (clean/arranco/snatch), "complex", ângulos de câmera.
+    en = func.lower(func.coalesce(Exercise.name_en, ""))
+    obscuro = case(
+        (en.like("%assist%"), 4),
+        (en.like("%pov%"), 4),
+        (en.like("%clean%"), 3),
+        (en.like("%snatch%"), 3),
+        (en.like("%complex%"), 3),
+        (en.like("%bosu%"), 3),
+        (en.like("%sled%"), 2),
+        (en.like("%frankenstein%"), 2),
+        else_=0,
+    )
+    # 2b) nome PT que COMEÇA com o equipamento ("Com barra skier", "Na máquina
+    #     ...") = o tradutor não reconheceu o movimento -> nome torto e exercício
+    #     geralmente obscuro. Empurra pro fim, atrás dos nomes limpos ("Supino").
+    pt = func.lower(Exercise.name)
+    nome_torto = case(
+        (pt.like("com %"), 1),
+        (pt.like("na %"), 1),
+        (pt.like("no %"), 1),
+        (pt.like("de %"), 1),
+        else_=0,
+    )
+    # 3) equipamento consagrado primeiro (barra/halter/máquina/cabo), faixa/etc. no fim.
+    equip = case(
+        (Exercise.equipment == Equipment.BARBELL, 0),
+        (Exercise.equipment == Equipment.DUMBBELL, 1),
+        (Exercise.equipment == Equipment.MACHINE, 2),
+        (Exercise.equipment == Equipment.CABLE, 3),
+        (Exercise.equipment == Equipment.SMITH_MACHINE, 4),
+        (Exercise.equipment == Equipment.BODYWEIGHT, 5),
+        else_=7,
+    )
+    # 4) nome mais curto = movimento-base ("Supino com barra" < "Elevação frontal
+    #    pullover com barra"). 5) desempate estável por id.
+    return [tem_gif, obscuro, nome_torto, equip, func.length(Exercise.name), Exercise.id]
+
+
 @event.listens_for(Exercise, "before_insert")
 @event.listens_for(Exercise, "before_update")
 def _populate_is_compound(_mapper, _connection, target: "Exercise") -> None:

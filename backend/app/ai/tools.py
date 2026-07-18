@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.models.exercise import EXTENDED_STRENGTH_CATEGORIES, Exercise, MuscleGroup
+from app.models.exercise import EXTENDED_STRENGTH_CATEGORIES, Exercise, MuscleGroup, quality_order
 from app.models.meal import MealLog, MealLogItem
 from app.models.routine import Routine
 from app.models.sleep_log import SleepLog
@@ -342,7 +342,7 @@ def execute_read_tool(db: Session, user_id: int, tool_name: str, tool_input: dic
             stmt = stmt.where(
                 Exercise.primary_muscle_group == MuscleGroup(tool_input["grupo_muscular"])
             )
-        stmt = stmt.order_by(Exercise.video_url.is_(None), Exercise.id)
+        stmt = stmt.order_by(*quality_order())
         exercises = list(db.execute(stmt.limit(25)).scalars())
         return {"resultados": [_serialize_exercise(e) for e in exercises]}
 
