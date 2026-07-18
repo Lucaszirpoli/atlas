@@ -77,14 +77,27 @@ _MOVEMENTS: dict[str, tuple[str, str]] = {
     "row": ("Remada", "f"),
     "deadlift": ("Levantamento terra", "m"),
     "romanian deadlift": ("Levantamento terra romeno", "m"),
-    "stiff leg deadlift": ("Levantamento terra pernas retas", "m"),
+    # "Stiff" é O nome brasileiro — enterrar como "Levantamento terra pernas
+    # retas" fazia ninguém achar procurando "stiff".
+    "stiff leg deadlift": ("Stiff", "m"),
+    "straight leg deadlift": ("Stiff", "m"),
     "sumo deadlift": ("Levantamento terra sumô", "m"),
     "squat": ("Agachamento", "m"),
     "front squat": ("Agachamento frontal", "m"),
     "hack squat": ("Agachamento hack", "m"),
     "goblet squat": ("Agachamento goblet", "m"),
+    "sumo squat": ("Agachamento sumô", "m"),
     "split squat": ("Agachamento búlgaro", "m"),
     "bulgarian split squat": ("Agachamento búlgaro", "m"),
+    # Adutora/abdutora — o nome que o brasileiro USA e PROCURA (a "cadeira
+    # abdutora"). O "abduction"/"adduction" cru era um dos nomes esquisitos, e
+    # "Abdução de quadril" ninguém achava procurando "abdutora".
+    "hip abduction": ("Abdutora", "f"),
+    "hip adduction": ("Adutora", "f"),
+    "hip abductor": ("Abdutora", "f"),
+    "hip adductor": ("Adutora", "f"),
+    "abduction": ("Abdutora", "f"),
+    "adduction": ("Adutora", "f"),
     "lunge": ("Afundo", "m"),
     "walking lunge": ("Afundo caminhando", "m"),
     "step up": ("Subida no banco", "f"),
@@ -326,6 +339,23 @@ _LEFTOVER_TERMS: dict[str, str] = {
     "negative": "negativa",
     "partial": "parcial",
     "isometric": "isométrico",
+    # Palavras que ainda apareciam cruas nos nomes traduzidos (round 2).
+    "abduction": "abdução",
+    "adduction": "adução",
+    "abductor": "abdutora",
+    "adductor": "adutora",
+    "flexion": "flexão",
+    "flexor": "flexora",
+    "inverse": "inversa",
+    "wall": "na parede",
+    "sled": "",
+    "version": "",
+    "scapular": "escapular",
+    "self": "",
+    "eccentric": "excêntrica",
+    "prisoner": "",
+    "pov": "",
+    "goblet": "goblet",
     # Movimentos que aparecem como SECUNDÁRIOS num nome composto (o núcleo já
     # foi casado antes): sem isto vazavam em inglês ("... twist row" -> "row").
     "row": "remada",

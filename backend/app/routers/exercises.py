@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, status
-from sqlalchemy import or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -36,7 +36,43 @@ def list_exercises(
         stmt = stmt.where(Exercise.equipment == equipment)
     if difficulty:
         stmt = stmt.where(Exercise.difficulty == difficulty)
-    return list(db.execute(stmt.order_by(Exercise.name)).scalars())
+
+    if q:
+        # Ordem por RELEVÂNCIA, não alfabética: quem digita "supino" quer ver
+        # "Supino" primeiro, não "Abdominal supino". Ranqueia match exato ->
+        # começa-com -> contém; desempata por quem tem GIF e por nome mais curto
+        # (os exercícios famosos têm nome simples: "Supino", "Agachamento").
+        ql = q.strip().lower()
+        relevancia = case(
+            (func.lower(Exercise.name) == ql, 0),
+            (func.lower(Exercise.name_en) == ql, 0),
+            (func.lower(Exercise.name).like(f"{ql}%"), 1),
+            (func.lower(Exercise.name_en).like(f"{ql}%"), 1),
+            else_=2,
+        )
+        # Entre empates, o exercício "principal" primeiro: barra/halter/livre
+        # (os famosos) antes de cabo/máquina/etc. "Supino com barra" vem antes de
+        # "Supino no cabo".
+        equip_rank = case(
+            (Exercise.equipment == Equipment.BARBELL, 0),
+            (Exercise.equipment == Equipment.DUMBBELL, 1),
+            (Exercise.equipment == Equipment.BODYWEIGHT, 2),
+            (Exercise.equipment == Equipment.MACHINE, 3),
+            (Exercise.equipment == Equipment.SMITH_MACHINE, 4),
+            (Exercise.equipment == Equipment.CABLE, 5),
+            else_=6,
+        )
+        order = [
+            relevancia,
+            Exercise.video_url.is_(None),
+            equip_rank,
+            func.length(Exercise.name),
+            Exercise.name,
+        ]
+    else:
+        # Sem busca (navegando por grupo muscular): quem tem GIF primeiro, depois nome.
+        order = [Exercise.video_url.is_(None), Exercise.name]
+    return list(db.execute(stmt.order_by(*order)).scalars())
 
 
 @router.post("", response_model=ExerciseRead, status_code=status.HTTP_201_CREATED)

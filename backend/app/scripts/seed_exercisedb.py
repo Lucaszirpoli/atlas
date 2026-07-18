@@ -11,6 +11,7 @@ Uso: python -m app.scripts.seed_exercisedb
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from sqlalchemy import inspect, select, text
@@ -71,6 +72,58 @@ def _gif_url(ex_id: str) -> str | None:
     return f"/static/exercisedb/{ex_id}.gif" if (GIF_DIR / f"{ex_id}.gif").exists() else None
 
 
+# Lixo do catálogo: variações de ÂNGULO DE CÂMERA ("(back pov)", "(side pov)")
+# e versões numeradas ("v. 2") — mesmo movimento, poluíam a lista com nomes
+# repetidos. `\bpov\b` cobre "(back pov)"; `v\.?\s*\d` cobre "v. 2"/"v2".
+_JUNK_RE = re.compile(r"\bpov\b|\bv\.?\s*\d\b", re.I)
+
+
+def _curar_visiveis(db: Session) -> tuple[int, int]:
+    """Esconde o lixo e as duplicatas ENTRE os visíveis do ExerciseDB.
+
+    Devolve (qtd_lixo, qtd_duplicatas). Idempotente: o upsert reabre todos como
+    visíveis a cada deploy, e isto re-esconde — o estado final é sempre o mesmo.
+    """
+    visiveis = list(
+        db.execute(
+            select(Exercise).where(
+                Exercise.source_external_id.is_not(None),
+                Exercise.is_hidden.is_(False),
+            )
+        ).scalars()
+    )
+
+    junk = 0
+    for ex in visiveis:
+        if _JUNK_RE.search(ex.name_en or ""):
+            ex.is_hidden = True
+            junk += 1
+
+    # Dedup por NOME EXIBIDO: variações do mesmo movimento que traduzem igual
+    # apareciam repetidas ("Agachamento full com barra" 3×). Mantém UMA — a de
+    # name_en mais curto (o movimento-base, não a variante) e que tem GIF —,
+    # esconde as outras. A tradução preserva modificadores que importam
+    # (inclinado/alternado/etc.), então nomes idênticos são de fato redundantes.
+    por_nome: dict[str, list[Exercise]] = {}
+    for ex in visiveis:
+        if ex.is_hidden:
+            continue
+        por_nome.setdefault(ex.name, []).append(ex)
+
+    dedup = 0
+    for grupo in por_nome.values():
+        if len(grupo) < 2:
+            continue
+        grupo.sort(
+            key=lambda e: (e.video_url is None, len(e.name_en or ""), e.source_external_id or "")
+        )
+        for ex in grupo[1:]:
+            ex.is_hidden = True
+            dedup += 1
+
+    return junk, dedup
+
+
 def run() -> None:
     ensure_columns()
 
@@ -128,11 +181,15 @@ def run() -> None:
             .filter(Exercise.source_external_id.is_(None), Exercise.is_custom.is_(False))
             .update({Exercise.is_hidden: True}, synchronize_session=False)
         )
+        db.flush()
+
+        junk, dedup = _curar_visiveis(db)
 
         db.commit()
         print(
             f"ExerciseDB: {inseridos} inseridos, {atualizados} atualizados, "
-            f"{aposentados} antigos escondidos."
+            f"{aposentados} antigos escondidos, {junk} lixo (POV/vN) + {dedup} "
+            f"duplicatas escondidos."
         )
     finally:
         db.close()
