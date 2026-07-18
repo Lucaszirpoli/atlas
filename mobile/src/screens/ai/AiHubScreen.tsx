@@ -17,6 +17,7 @@ import { Card } from "../../components/Card";
 import { InfoDialog } from "../../components/InfoDialog";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
+import { mensagemDeErro } from "../../utils/errorMessage";
 
 const EXP_LABEL: Record<string, string> = {
   beginner: "Iniciante+",
@@ -149,7 +150,7 @@ export function AiHubScreen() {
       setResult(r);
       await autoSavePlan(r);
     } catch (err: any) {
-      setInfo({ title: "Não consegui gerar", message: err?.response?.data?.detail ?? "Tente novamente." });
+      setInfo({ title: "Não consegui gerar", message: mensagemDeErro(err, "Tente novamente.") });
     } finally {
       setLoading(false);
     }
@@ -219,7 +220,7 @@ export function AiHubScreen() {
       setSavedIndices(saved);
       setSaveSummary({ created: 0, existing: already });
     } catch (err: any) {
-      setInfo({ title: "Não consegui salvar os treinos", message: err?.response?.data?.detail ?? "Tente novamente." });
+      setInfo({ title: "Não consegui salvar os treinos", message: mensagemDeErro(err, "Tente novamente.") });
     }
   }
 

@@ -21,6 +21,7 @@ import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { HelpDot } from "../../components/HelpDot";
 import { useTheme } from "../../theme/ThemeProvider";
+import { mensagemDeErro } from "../../utils/errorMessage";
 
 const GOAL_OPTIONS: [Goal, string][] = [
   ["emagrecimento", "Emagrecimento"],
@@ -117,7 +118,7 @@ export function GoalSettingsScreen() {
       setCurrentGoal(await applyAutoGoal());
       Alert.alert("Meta atualizada", "Sua meta calórica foi recalculada com seus dados.");
     } catch (err: any) {
-      Alert.alert("Não foi possível calcular", err?.response?.data?.detail ?? "Tente novamente.");
+      Alert.alert("Não foi possível calcular", mensagemDeErro(err, "Tente novamente."));
     } finally {
       setIsSubmitting(false);
     }

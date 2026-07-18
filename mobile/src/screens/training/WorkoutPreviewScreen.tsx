@@ -14,6 +14,7 @@ import { Card } from "../../components/Card";
 import { ExerciseThumb } from "../../components/ExerciseThumb";
 import { useActiveWorkout } from "../../context/ActiveWorkoutContext";
 import { useTheme } from "../../theme/ThemeProvider";
+import { mensagemDeErro } from "../../utils/errorMessage";
 
 /** Prévia do treino: mostra os exercícios, séries e os pesos/reps da última vez
  * — igual à tela de execução, mas SEM iniciar a sessão. A pessoa vê o que vai
@@ -54,7 +55,7 @@ export function WorkoutPreviewScreen() {
       });
       navigation.replace("WorkoutExecution", { sessionId: session.id, routineId: routine.id, prefill: pf });
     } catch (err: any) {
-      Alert.alert("Não foi possível iniciar", err?.response?.data?.detail ?? "Tente novamente.");
+      Alert.alert("Não foi possível iniciar", mensagemDeErro(err, "Tente novamente."));
       setStarting(false);
     }
   }

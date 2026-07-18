@@ -21,6 +21,7 @@ import { Card } from "../../components/Card";
 import { InfoDialog } from "../../components/InfoDialog";
 import { useTheme } from "../../theme/ThemeProvider";
 import { exercisePickBus } from "./exercisePickBus";
+import { mensagemDeErro } from "../../utils/errorMessage";
 
 /**
  * Importa as rotinas de outro app (Hevy, Strong, Jefit) a partir do CSV que
@@ -97,9 +98,10 @@ export function ImportRoutinesScreen() {
     } catch (err: any) {
       setInfo({
         title: "Não consegui enviar pro servidor",
-        message:
-          err?.response?.data?.detail ??
-          `Erro de conexão: ${String(err?.message ?? err)}. Tente de novo.`,
+        message: mensagemDeErro(
+          err,
+          `Erro de conexão: ${String(err?.message ?? err)}. Tente de novo.`
+        ),
       });
     } finally {
       setLoading(false);
@@ -170,7 +172,7 @@ export function ImportRoutinesScreen() {
       setSaving(false);
       setInfo({
         title: "Não consegui importar",
-        message: err?.response?.data?.detail ?? "Tente novamente.",
+        message: mensagemDeErro(err, "Tente novamente."),
       });
     }
   }

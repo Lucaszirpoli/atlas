@@ -16,6 +16,7 @@ import {
 import { Avatar } from "../../components/Avatar";
 import { Card } from "../../components/Card";
 import { useTheme } from "../../theme/ThemeProvider";
+import { mensagemDeErro } from "../../utils/errorMessage";
 
 export function FriendsScreen() {
   const { colors, type, spacing, radius } = useTheme();
@@ -46,7 +47,7 @@ export function FriendsScreen() {
       // de novo e o amigo recebia dois convites.
       await sendFriendRequest(handleInput.trim().toLowerCase().replace(/^@/, ""));
     } catch (err: any) {
-      Alert.alert("Não foi possível enviar", err?.response?.data?.detail ?? "Tente novamente.");
+      Alert.alert("Não foi possível enviar", mensagemDeErro(err, "Tente novamente."));
       setIsSending(false);
       return;
     }

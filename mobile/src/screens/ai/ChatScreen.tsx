@@ -17,6 +17,7 @@ import { getChatHistory, sendChatMessage, type ChatMessage } from "../../api/ai"
 import { ChatActionCard } from "../../components/ChatActionCard";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
+import { mensagemDeErro } from "../../utils/errorMessage";
 
 type DisplayMessage = ChatMessage & { resolvedAction?: "confirmed" | "cancelled"; isError?: boolean };
 
@@ -78,8 +79,7 @@ export function ChatScreen() {
     } catch (err: any) {
       // Alert não aparece na web — mostramos o erro como bolha no próprio chat.
       const detail =
-        err?.response?.data?.detail ??
-        "Não consegui falar com o servidor. Verifique sua conexão e tente de novo.";
+        mensagemDeErro(err, "Não consegui falar com o servidor. Verifique sua conexão e tente de novo.");
       setMessages((prev) => [
         ...prev,
         {

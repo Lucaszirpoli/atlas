@@ -28,6 +28,7 @@ import { InfoDialog } from "../../components/InfoDialog";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
 import { addRecentFood, listRecentFoods } from "../../utils/recentFoods";
+import { mensagemDeErro } from "../../utils/errorMessage";
 
 export function AddFoodScreen() {
   const { colors, type, spacing, radius } = useTheme();
@@ -108,7 +109,7 @@ export function AddFoodScreen() {
         items: cesta.map((i) => ({ food_id: i.food.id, quantity_g: i.quantity_g })),
       });
     } catch (err: any) {
-      Alert.alert("Não foi possível registrar", err?.response?.data?.detail ?? "Tente novamente.");
+      Alert.alert("Não foi possível registrar", mensagemDeErro(err, "Tente novamente."));
       setIsSubmitting(false);
       return;
     }
@@ -130,7 +131,7 @@ export function AddFoodScreen() {
     } catch (err: any) {
       setAviso({
         title: "Não consegui salvar a receita",
-        message: err?.response?.data?.detail ?? "Tente novamente.",
+        message: mensagemDeErro(err, "Tente novamente."),
       });
       setSalvandoReceita(false);
       return;
@@ -223,7 +224,7 @@ export function AddFoodScreen() {
       setSelectedFood(food);
       setQuantityG(String(food.default_portion_g ?? 100));
     } catch (err: any) {
-      Alert.alert("Não foi possível cadastrar", err?.response?.data?.detail ?? "Tente novamente.");
+      Alert.alert("Não foi possível cadastrar", mensagemDeErro(err, "Tente novamente."));
     } finally {
       setIsCreating(false);
     }
@@ -299,7 +300,7 @@ export function AddFoodScreen() {
         items: [{ food_id: selectedFood.id, quantity_g: qty }],
       });
     } catch (err: any) {
-      Alert.alert("Não foi possível registrar", err?.response?.data?.detail ?? "Tente novamente.");
+      Alert.alert("Não foi possível registrar", mensagemDeErro(err, "Tente novamente."));
       setIsSubmitting(false);
       return;
     }

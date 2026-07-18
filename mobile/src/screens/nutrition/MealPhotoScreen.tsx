@@ -7,6 +7,7 @@ import { analyzeMealPhoto, type MealPhotoItem } from "../../api/ai";
 import { logMeal } from "../../api/meals";
 import { Button } from "../../components/Button";
 import { useTheme } from "../../theme/ThemeProvider";
+import { mensagemDeErro } from "../../utils/errorMessage";
 
 export function MealPhotoScreen() {
   const { colors, type, spacing, radius } = useTheme();
@@ -33,7 +34,7 @@ export function MealPhotoScreen() {
         result.itens.map((i) => ({ ...i, quantidade_editada: String(i.quantidade_estimada_g) }))
       );
     } catch (err: any) {
-      Alert.alert("Não foi possível analisar a foto", err?.response?.data?.detail ?? "Tente novamente.");
+      Alert.alert("Não foi possível analisar a foto", mensagemDeErro(err, "Tente novamente."));
     } finally {
       setIsAnalyzing(false);
     }
@@ -61,7 +62,7 @@ export function MealPhotoScreen() {
       });
       navigation.navigate("Diary");
     } catch (err: any) {
-      Alert.alert("Não foi possível registrar", err?.response?.data?.detail ?? "Tente novamente.");
+      Alert.alert("Não foi possível registrar", mensagemDeErro(err, "Tente novamente."));
     } finally {
       setIsSubmitting(false);
     }

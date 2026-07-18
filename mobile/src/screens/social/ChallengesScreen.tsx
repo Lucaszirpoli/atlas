@@ -8,6 +8,7 @@ import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { OptionButton } from "../../components/OptionButton";
 import { useTheme } from "../../theme/ThemeProvider";
+import { mensagemDeErro } from "../../utils/errorMessage";
 
 const METRIC_META: Record<
   Challenge["metric"],
@@ -97,7 +98,7 @@ export function ChallengesScreen() {
       setInvite("");
       listMyChallenges().then(setChallenges);
     } catch (err: any) {
-      Alert.alert("Não foi possível criar", err?.response?.data?.detail ?? "Tente novamente.");
+      Alert.alert("Não foi possível criar", mensagemDeErro(err, "Tente novamente."));
     } finally {
       setIsSubmitting(false);
     }

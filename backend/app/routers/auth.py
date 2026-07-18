@@ -44,14 +44,18 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> TokenRe
 
 @router.post("/login", response_model=TokenResponse)
 def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
-    user = user_service.get_by_email(db, payload.email)
+    # A tela diz "E-mail ou usuário": aceita as duas formas. Antes só olhava
+    # e-mail, então quem digitava o @handle (o amigo que tentou "gabe") sempre
+    # levava "senha inválida" mesmo com a senha certa.
+    user = user_service.get_by_email_or_handle(db, payload.email)
     if (
         user is None
         or user.password_hash is None
         or not verify_password(payload.password, user.password_hash)
     ):
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="E-mail ou senha inválidos"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="E-mail/usuário ou senha incorretos.",
         )
     return TokenResponse(access_token=create_access_token(str(user.id)))
 

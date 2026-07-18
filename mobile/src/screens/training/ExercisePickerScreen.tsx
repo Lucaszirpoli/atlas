@@ -18,6 +18,7 @@ import { OptionButton } from "../../components/OptionButton";
 import { useTheme } from "../../theme/ThemeProvider";
 import { classifyMovementPattern } from "../../utils/exercisePattern";
 import { exercisePickBus } from "./exercisePickBus";
+import { mensagemDeErro } from "../../utils/errorMessage";
 
 const MUSCLE_LABELS: Partial<Record<MuscleGroup, string>> = {
   chest: "Peito",
@@ -84,7 +85,7 @@ export function ExercisePickerScreen() {
       exercisePickBus.pick(ex);
       navigation.goBack();
     } catch (err: any) {
-      setError(err?.response?.data?.detail ?? "Não consegui cadastrar agora.");
+      setError(mensagemDeErro(err, "Não consegui cadastrar agora."));
     } finally {
       setSaving(false);
     }

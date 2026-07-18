@@ -18,6 +18,7 @@ import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { InfoDialog } from "../../components/InfoDialog";
 import { useTheme } from "../../theme/ThemeProvider";
+import { mensagemDeErro } from "../../utils/errorMessage";
 
 /** Academia da pessoa + check-in com prova de localização (base do desafio
  * "quem vai mais à academia"). Na primeira vez ela busca a academia no mapa;
@@ -88,7 +89,7 @@ export function GymScreen() {
       const found = await searchGyms(query.trim(), pos.lat, pos.lng);
       setResults(found);
     } catch (err: any) {
-      setInfo({ title: "Não consegui buscar", message: err?.response?.data?.detail ?? "Tente novamente." });
+      setInfo({ title: "Não consegui buscar", message: mensagemDeErro(err, "Tente novamente.") });
     } finally {
       setSearching(false);
     }
@@ -101,7 +102,7 @@ export function GymScreen() {
       setResults(null);
       setQuery("");
     } catch (err: any) {
-      setInfo({ title: "Não consegui salvar", message: err?.response?.data?.detail ?? "Tente novamente." });
+      setInfo({ title: "Não consegui salvar", message: mensagemDeErro(err, "Tente novamente.") });
     }
   }
 
@@ -121,7 +122,7 @@ export function GymScreen() {
           : `Registrado como treino fora da sua academia${ci.gym_name ? ` (${ci.gym_name})` : ""}. Conta no desafio, marcado como "fora".`,
       });
     } catch (err: any) {
-      const detail: string = err?.response?.data?.detail ?? "Tente novamente.";
+      const detail: string = mensagemDeErro(err, "Tente novamente.");
       // Longe da academia: o backend pede o nome do lugar onde treinou.
       if (detail.includes("longe da sua academia")) {
         setShowAway(true);

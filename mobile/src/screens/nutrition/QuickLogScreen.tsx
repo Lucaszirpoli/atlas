@@ -9,6 +9,7 @@ import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { InfoDialog } from "../../components/InfoDialog";
 import { useTheme } from "../../theme/ThemeProvider";
+import { mensagemDeErro } from "../../utils/errorMessage";
 
 // Item já interpretado e editável na revisão (o usuário confirma antes de salvar).
 type ReviewItem = {
@@ -53,7 +54,7 @@ export function QuickLogScreen() {
         }))
       );
     } catch (err: any) {
-      setInfo({ title: "Não consegui interpretar", message: err?.response?.data?.detail ?? "Tente de novo." });
+      setInfo({ title: "Não consegui interpretar", message: mensagemDeErro(err, "Tente de novo.") });
     } finally {
       setParsing(false);
     }
@@ -79,7 +80,7 @@ export function QuickLogScreen() {
       });
       navigation.goBack();
     } catch (err: any) {
-      setInfo({ title: "Não consegui registrar", message: err?.response?.data?.detail ?? "Tente de novo." });
+      setInfo({ title: "Não consegui registrar", message: mensagemDeErro(err, "Tente de novo.") });
     } finally {
       setSaving(false);
     }

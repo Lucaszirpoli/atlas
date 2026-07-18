@@ -22,7 +22,11 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    # Não é EmailStr de propósito: a tela de login aceita e-mail OU @handle
+    # ("E-mail ou usuário"), e um handle não é um e-mail válido — validar como
+    # EmailStr fazia o backend recusar a requisição inteira com 422 antes de
+    # sequer checar a senha (e o app quebrava ao tentar mostrar esse erro).
+    email: str = Field(min_length=1, max_length=255)
     password: str
 
 

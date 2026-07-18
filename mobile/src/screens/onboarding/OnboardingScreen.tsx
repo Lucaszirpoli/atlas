@@ -8,6 +8,7 @@ import { HelpDot } from "../../components/HelpDot";
 import { OptionButton } from "../../components/OptionButton";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
+import { mensagemDeErro } from "../../utils/errorMessage";
 
 type FormState = Omit<OnboardingPayload, "age" | "height_cm" | "current_weight_kg"> & {
   age: string;
@@ -93,7 +94,7 @@ export function OnboardingScreen() {
     } catch (err: any) {
       Alert.alert(
         "Não foi possível concluir o onboarding",
-        err?.response?.data?.detail ?? "Tente novamente em instantes."
+        mensagemDeErro(err, "Tente novamente em instantes.")
       );
       setIsSubmitting(false);
       return;

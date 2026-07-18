@@ -11,6 +11,7 @@ import { Button } from "../../components/Button";
 import { InfoDialog } from "../../components/InfoDialog";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
+import { mensagemDeErro } from "../../utils/errorMessage";
 
 export function PaywallScreen() {
   const { colors, type, spacing, radius } = useTheme();
@@ -55,7 +56,7 @@ export function PaywallScreen() {
       // o dinheiro saiu, e a pessoa tentaria comprar de novo.
       await subscribePro(nativePackage ?? undefined);
     } catch (err: any) {
-      setDone(err?.response?.data?.detail ?? "Não deu pra concluir agora. Tente de novo.");
+      setDone(mensagemDeErro(err, "Não deu pra concluir agora. Tente de novo."));
       setSubscribing(false);
       return;
     }
@@ -92,7 +93,7 @@ export function PaywallScreen() {
           : "Não encontramos nenhuma assinatura ativa nessa conta da loja."
       );
     } catch (err: any) {
-      setDone(err?.response?.data?.detail ?? "Não deu pra restaurar agora. Tente de novo.");
+      setDone(mensagemDeErro(err, "Não deu pra restaurar agora. Tente de novo."));
     } finally {
       setRestoring(false);
     }

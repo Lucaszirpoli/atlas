@@ -8,6 +8,7 @@ import { InfoDialog } from "../../components/InfoDialog";
 import { TextField } from "../../components/TextField";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
+import { mensagemDeErro } from "../../utils/errorMessage";
 
 export function LoginScreen() {
   const { colors, type, spacing, shadow } = useTheme();
@@ -20,15 +21,19 @@ export function LoginScreen() {
   const [erro, setErro] = useState<string | null>(null);
 
   async function handleSubmit() {
+    const login = email.trim().toLowerCase();
+    if (!login || !password) {
+      setErro("Preencha e-mail (ou usuário) e senha para entrar.");
+      return;
+    }
     setIsSubmitting(true);
     try {
-      await signIn(email.trim().toLowerCase(), password);
+      await signIn(login, password);
     } catch (err: any) {
       // Alert.alert nativo (a "tela feia") -> InfoDialog com o visual do ATLAS.
-      setErro(
-        err?.response?.data?.detail ??
-          "E-mail ou senha incorretos. Confira e tente de novo."
-      );
+      // mensagemDeErro garante que um 422 (detail em lista) nunca vire tela
+      // branca: vira uma frase legível.
+      setErro(mensagemDeErro(err, "E-mail/usuário ou senha incorretos. Confira e tente de novo."));
     } finally {
       setIsSubmitting(false);
     }

@@ -18,6 +18,7 @@ import { Card } from "../../components/Card";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { useActiveWorkout } from "../../context/ActiveWorkoutContext";
 import { useTheme } from "../../theme/ThemeProvider";
+import { mensagemDeErro } from "../../utils/errorMessage";
 
 export function RoutineListScreen() {
   const { colors, type, spacing, radius } = useTheme();
@@ -51,7 +52,7 @@ export function RoutineListScreen() {
         prefill,
       });
     } catch (err: any) {
-      Alert.alert("Não foi possível iniciar", err?.response?.data?.detail ?? "Tente novamente.");
+      Alert.alert("Não foi possível iniciar", mensagemDeErro(err, "Tente novamente."));
     }
   }
 
@@ -77,7 +78,7 @@ export function RoutineListScreen() {
               await duplicateRoutine(optionsRoutine.id);
               listRoutines().then(setRoutines);
             } catch (err: any) {
-              Alert.alert("Não foi possível duplicar", err?.response?.data?.detail ?? "Tente novamente.");
+              Alert.alert("Não foi possível duplicar", mensagemDeErro(err, "Tente novamente."));
             }
           },
         },

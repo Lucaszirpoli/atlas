@@ -17,3 +17,13 @@ def get_by_email(db: Session, email: str) -> User | None:
 
 def get_by_handle(db: Session, handle: str) -> User | None:
     return db.execute(select(User).where(User.handle == handle)).scalar_one_or_none()
+
+
+def get_by_email_or_handle(db: Session, identifier: str) -> User | None:
+    """A tela de login pede "e-mail ou usuário". @handle nunca tem "@" no
+    meio (regex de cadastro é `[a-z0-9_]{3,30}`), então usar "@" pra decidir
+    o caminho é seguro e evita duas queries pra quem digitou e-mail."""
+    identifier = identifier.strip()
+    if "@" in identifier:
+        return get_by_email(db, identifier.lower())
+    return get_by_handle(db, identifier.lower())

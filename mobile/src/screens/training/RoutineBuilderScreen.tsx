@@ -9,6 +9,7 @@ import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { useTheme } from "../../theme/ThemeProvider";
 import { exercisePickBus } from "./exercisePickBus";
+import { mensagemDeErro } from "../../utils/errorMessage";
 
 type BuilderExercise = {
   exercise: Exercise;
@@ -93,7 +94,7 @@ export function RoutineBuilderScreen() {
       }
       navigation.goBack();
     } catch (err: any) {
-      Alert.alert("Não foi possível salvar", err?.response?.data?.detail ?? "Tente novamente.");
+      Alert.alert("Não foi possível salvar", mensagemDeErro(err, "Tente novamente."));
     } finally {
       setIsSubmitting(false);
     }

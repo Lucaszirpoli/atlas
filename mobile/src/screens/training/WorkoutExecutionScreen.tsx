@@ -23,6 +23,7 @@ import { OptionButton } from "../../components/OptionButton";
 import { RestTimerOverlay } from "../../components/RestTimerOverlay";
 import { useActiveWorkout } from "../../context/ActiveWorkoutContext";
 import { useTheme } from "../../theme/ThemeProvider";
+import { mensagemDeErro } from "../../utils/errorMessage";
 
 const SET_TYPE_LABELS: Record<SetType, string> = {
   warmup: "Aquecimento",
@@ -163,7 +164,7 @@ export function WorkoutExecutionScreen() {
       updateSet(exerciseIndex, setIdx, { completed: true });
       setRestSeconds(routineExercise.rest_seconds);
     } catch (err: any) {
-      Alert.alert("Não foi possível registrar a série", err?.response?.data?.detail ?? "Tente novamente.");
+      Alert.alert("Não foi possível registrar a série", mensagemDeErro(err, "Tente novamente."));
     }
   }
 

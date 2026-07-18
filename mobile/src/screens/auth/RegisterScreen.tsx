@@ -1,13 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
 
 import { checkHandleAvailability } from "../../api/auth";
 import { Button } from "../../components/Button";
+import { InfoDialog } from "../../components/InfoDialog";
 import { TextField } from "../../components/TextField";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
+import { mensagemDeErro } from "../../utils/errorMessage";
 
 const HANDLE_PATTERN = /^[a-z0-9_]{3,30}$/;
 
@@ -24,6 +26,7 @@ export function RegisterScreen() {
     "idle" | "checking" | "available" | "taken" | "invalid"
   >("idle");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
     if (handle.length === 0) {
@@ -54,23 +57,32 @@ export function RegisterScreen() {
         : undefined;
 
   async function handleSubmit() {
+    // Validação no cliente ANTES de bater no servidor: uma senha curta (a do
+    // amigo tinha 6 caracteres) voltava como 422 e, antes, quebrava a tela.
+    // Agora a pessoa recebe a mensagem certa na hora, sem nem enviar.
+    const nome = displayName.trim();
+    const emailN = email.trim().toLowerCase();
+    if (!nome) {
+      setErro("Digite seu nome de exibição.");
+      return;
+    }
     if (handleStatus !== "available") {
-      Alert.alert("Verifique o @handle", "Escolha um @handle válido e disponível.");
+      setErro("Escolha um @handle válido e disponível (3-30 letras minúsculas, números ou _).");
+      return;
+    }
+    if (!/^\S+@\S+\.\S+$/.test(emailN)) {
+      setErro("Digite um e-mail válido (ex.: voce@email.com).");
+      return;
+    }
+    if (password.length < 8) {
+      setErro("A senha precisa ter pelo menos 8 caracteres.");
       return;
     }
     setIsSubmitting(true);
     try {
-      await signUp({
-        email: email.trim().toLowerCase(),
-        password,
-        handle,
-        display_name: displayName.trim(),
-      });
+      await signUp({ email: emailN, password, handle, display_name: nome });
     } catch (err: any) {
-      Alert.alert(
-        "Não foi possível criar sua conta",
-        err?.response?.data?.detail ?? "Tente novamente em instantes."
-      );
+      setErro(mensagemDeErro(err, "Não foi possível criar sua conta. Tente novamente em instantes."));
     } finally {
       setIsSubmitting(false);
     }
@@ -151,6 +163,13 @@ export function RegisterScreen() {
           </Text>
         </View>
       </ScrollView>
+
+      <InfoDialog
+        visible={erro !== null}
+        onClose={() => setErro(null)}
+        title="Não foi possível criar sua conta"
+        message={erro ?? undefined}
+      />
     </KeyboardAvoidingView>
   );
 }
