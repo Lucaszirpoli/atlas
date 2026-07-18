@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -192,6 +192,17 @@ class BulkExercise(BaseModel):
     target_reps_max: int | None = None
     rest_seconds: int = 90
     notes: str | None = None
+
+    @field_validator("target_sets", "target_reps_min", "rest_seconds", mode="before")
+    @classmethod
+    def _null_vira_default(cls, v, info):
+        # O plano gerado pode trazer esses campos como null (ex.: RP Training não
+        # define descanso por slot). Sem isto, mandar null explícito quebrava o
+        # salvamento com 422 ("Input should be a valid integer") — foi o erro na
+        # tela ao salvar um método. null -> o default do campo.
+        if v is None:
+            return {"target_sets": 3, "target_reps_min": 8, "rest_seconds": 90}[info.field_name]
+        return v
 
 
 class BulkRoutine(BaseModel):
