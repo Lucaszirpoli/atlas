@@ -71,6 +71,9 @@ export function AddFoodScreen() {
   const [nomeReceita, setNomeReceita] = useState("");
   const [pedindoNome, setPedindoNome] = useState(false);
   const [aviso, setAviso] = useState<{ title: string; message: string } | null>(null);
+  // "Criar receita": a cesta JÁ monta uma receita (marca ingredientes -> vê a
+  // kcal total -> Salvar). Só faltava o convite visível pra esse fluxo.
+  const [modoReceita, setModoReceita] = useState(false);
 
   function alternarNaCesta(food: Food) {
     setCesta((c) =>
@@ -366,10 +369,39 @@ export function AddFoodScreen() {
               gramas
             </Text>
           </View>
-          {selectedFood.default_portion_label ? (
-            <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.xs }]}>
-              Sugestão: {selectedFood.default_portion_label} ({selectedFood.default_portion_g}g)
-            </Text>
+          {/* GRAMAS **ou** UNIDADE. A pessoa pode digitar as gramas acima OU
+              tocar numa medida caseira aqui ("1 unidade", "½ unidade", "2
+              unidades") — as duas opções, como pedido (o ovo em gramas é foda). */}
+          {selectedFood.default_portion_label && selectedFood.default_portion_g ? (
+            <View style={{ marginTop: spacing.md }}>
+              <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.xs }]}>
+                Ou escolha pela medida:
+              </Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
+                {[0.5, 1, 2, 3].map((mult) => {
+                  const g = Math.round((selectedFood.default_portion_g ?? 0) * mult);
+                  const on = Number(quantityG) === g;
+                  return (
+                    <Pressable
+                      key={mult}
+                      onPress={() => setQuantityG(String(g))}
+                      style={{
+                        backgroundColor: on ? colors.primary : colors.surfaceAlt,
+                        borderWidth: 1,
+                        borderColor: on ? colors.primary : colors.border,
+                        borderRadius: 999,
+                        paddingVertical: 7,
+                        paddingHorizontal: 13,
+                      }}
+                    >
+                      <Text style={[type.bodySmall, { color: on ? colors.textOnPrimary : colors.textPrimary }]}>
+                        {rotuloPorcao(selectedFood.default_portion_label ?? "", mult)} · {g}g
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
           ) : null}
         </Card>
 
@@ -427,6 +459,12 @@ export function AddFoodScreen() {
             onPress={() => navigation.navigate("BarcodeScanner", { categoryId })}
           />
           <QuickAction
+            icon="restaurant"
+            label="Criar receita"
+            color={colors.moduleTraining}
+            onPress={() => setModoReceita(true)}
+          />
+          <QuickAction
             icon="camera"
             label={user?.plan === "pro" ? "Foto (IA)" : "Foto (Pro)"}
             color={colors.secondary}
@@ -439,6 +477,31 @@ export function AddFoodScreen() {
               navigation.navigate("MealPhoto", { categoryId });
             }}
           />
+        </View>
+      ) : null}
+
+      {/* Convite do modo receita: explica o gesto (marcar ingredientes) que a
+          cesta + "Salvar receita" já executam. */}
+      {modoReceita ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: spacing.sm,
+            backgroundColor: colors.moduleTraining + "1E",
+            borderRadius: radius.button,
+            padding: spacing.md,
+            marginBottom: spacing.md,
+          }}
+        >
+          <Ionicons name="restaurant" size={20} color={colors.moduleTraining} />
+          <Text style={[type.caption, { color: colors.textPrimary, flex: 1 }]}>
+            Busque e <Text style={{ fontWeight: "700" }}>marque cada ingrediente</Text> que você usou. A
+            kcal total aparece embaixo — aí é só tocar em <Text style={{ fontWeight: "700" }}>Salvar receita</Text>.
+          </Text>
+          <TouchableOpacity onPress={() => setModoReceita(false)} hitSlop={8}>
+            <Ionicons name="close" size={18} color={colors.textSecondary} />
+          </TouchableOpacity>
         </View>
       ) : null}
 

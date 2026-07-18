@@ -218,13 +218,17 @@ export function ExercisePickerScreen() {
         />
       </View>
 
-      {/* Filtro por grupo muscular */}
+      {/* Filtro por grupo muscular. contentContainerStyle centra os chips no
+          eixo vertical e dá folga — sem isso, a ScrollView horizontal recortava
+          a parte de baixo do texto (descendentes de "Bíceps"/"Tríceps") quando a
+          altura media curto. alignItems garante que nunca corte. */}
       <FlatList
         horizontal
         showsHorizontalScrollIndicator={false}
         data={Object.entries(MUSCLE_LABELS)}
         keyExtractor={([key]) => key}
         style={{ flexGrow: 0, marginBottom: spacing.sm }}
+        contentContainerStyle={{ alignItems: "center", paddingVertical: 4 }}
         renderItem={({ item: [key, label] }) => (
           <View style={{ marginRight: spacing.xs }}>
             <OptionButton
