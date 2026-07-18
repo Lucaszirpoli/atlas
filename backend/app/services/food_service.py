@@ -52,11 +52,27 @@ def search_local(db: Session, query: str, limit: int = 30) -> list[Food]:
             s += 400  # nome idêntico à busca
         if f.source == FoodSource.TACO:
             s += 30
+        # Preparo comum de um alimento base (o que a pessoa mais registra:
+        # "arroz cozido", "frango grelhado") ganha um empurrão à frente do prato
+        # composto ("arroz carreteiro") que só era curto.
+        if re.search(r"\b(cozid|grelhad|assad|cru|frit)", st):
+            s += 25
         s -= len(st) * 0.4  # nomes mais curtos primeiro
         return s
 
     candidates.sort(key=score, reverse=True)
-    return candidates[:limit]
+
+    # Dedup por nome exibido: TACO + curado às vezes têm o MESMO nome com kcal
+    # levemente diferente ("Arroz carreteiro" 2×). Mantém o de maior score.
+    vistos: set[str] = set()
+    unicos: list[Food] = []
+    for f in candidates:
+        chave = (f.name or "").strip().lower()
+        if chave in vistos:
+            continue
+        vistos.add(chave)
+        unicos.append(f)
+    return unicos[:limit]
 
 
 def search_brands_live(db: Session, query: str, limit: int = 30) -> list[Food]:
