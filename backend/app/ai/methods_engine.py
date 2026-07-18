@@ -216,6 +216,7 @@ def _pick(
             Exercise.primary_muscle_group.in_(muscles),
             Exercise.is_compound.is_(want_compound),
             Exercise.is_custom.is_(False),
+            Exercise.is_hidden.is_(False),
             # Só musculação. Sem isto, a base importada devolvia alongamento
             # ("All Fours Quad Stretch"), mobilidade ("Ankle Circles") e
             # levantamento olímpico como se fossem exercício de rotina — foi
@@ -272,6 +273,7 @@ def _so_existe_isolado(db: Session, muscles: list[MuscleGroup]) -> bool:
                 Exercise.primary_muscle_group == m,
                 Exercise.is_compound.is_(True),
                 Exercise.is_custom.is_(False),
+                Exercise.is_hidden.is_(False),
                 Exercise.category.in_(STRENGTH_CATEGORIES),
             )
             .limit(1)
@@ -294,6 +296,7 @@ def _find_exercise(db: Session, name_query: str) -> Exercise | None:
         .where(
             Exercise.name.ilike(f"%{name_query}%"),
             Exercise.is_custom.is_(False),
+            Exercise.is_hidden.is_(False),
             Exercise.category.in_(EXTENDED_STRENGTH_CATEGORIES),
         )
         .order_by(Exercise.id)

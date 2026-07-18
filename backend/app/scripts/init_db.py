@@ -15,6 +15,7 @@ from app.scripts import (
     backfill_exercise_category,
     grant_comp_pro,
     retranslate_exercises,
+    seed_exercisedb,
     seed_exercises,
     seed_exercises_open,
     seed_plant_based,
@@ -68,6 +69,12 @@ def run() -> None:
     # desfaz os nomes duplicados (o importado que colide com um curado vira
     # "(variação N)"). Idempotente: só grava quando o nome muda de verdade.
     retranslate_exercises.run()
+
+    # Base oficial do ExerciseDB (1394 com GIF próprio). Roda por ÚLTIMO e é
+    # autoritativa: insere/atualiza os exercícios da ExerciseDB e ESCONDE a base
+    # antiga (free-exercise-db) — sem apagar, pra não orfanar rotinas/histórico.
+    # Idempotente e sem chamada de API (lê o snapshot versionado).
+    seed_exercisedb.run()
 
     # Pro de cortesia (testadores) via env PRO_COMP_EMAILS. Só concede.
     grant_comp_pro.run()

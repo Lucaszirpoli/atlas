@@ -8,7 +8,7 @@ para o app confirmar explicitamente (espec. 3.6)."""
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models.exercise import EXTENDED_STRENGTH_CATEGORIES, Exercise, MuscleGroup
@@ -329,10 +329,15 @@ def execute_read_tool(db: Session, user_id: int, tool_name: str, tool_input: dic
         #    pelo chat vinha inteiro sem imagem. Agora quem tem foto vem antes.
         stmt = select(Exercise).where(
             Exercise.is_custom.is_(False),
+            Exercise.is_hidden.is_(False),
             Exercise.category.in_(EXTENDED_STRENGTH_CATEGORIES),
         )
         if tool_input.get("nome"):
-            stmt = stmt.where(Exercise.name.ilike(f"%{tool_input['nome']}%"))
+            # Casa também pelo nome em inglês da ExerciseDB (name_en).
+            termo = tool_input["nome"]
+            stmt = stmt.where(
+                or_(Exercise.name.ilike(f"%{termo}%"), Exercise.name_en.ilike(f"%{termo}%"))
+            )
         if tool_input.get("grupo_muscular"):
             stmt = stmt.where(
                 Exercise.primary_muscle_group == MuscleGroup(tool_input["grupo_muscular"])

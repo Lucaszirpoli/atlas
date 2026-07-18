@@ -158,12 +158,16 @@ def _tokens(texto: str) -> set[str]:
 def confianca(nome_importado: str, exercicio: Exercise) -> float:
     """0..1 de quão provável é que os dois sejam o MESMO exercício.
 
-    Usa sobreposição de palavras (Jaccard ponderado) sobre o nome já traduzido,
-    não semelhança de caracteres: "supino reto" e "supino inclinado" têm letras
-    quase idênticas mas são exercícios diferentes — o que os separa é a palavra
-    "inclinado", e é isso que precisa pesar.
+    Usa sobreposição de palavras (Jaccard ponderado), não semelhança de
+    caracteres: "supino reto" e "supino inclinado" têm letras quase idênticas
+    mas são exercícios diferentes — o que os separa é "inclinado", e é isso que
+    precisa pesar. Compara inglês-com-inglês (nome cru vs name_en) e PT-com-PT,
+    ficando com o maior.
     """
-    return _confianca_tokens(_tokens(traduzir_nome(nome_importado)), _tokens(exercicio.name))
+    return max(
+        _confianca_tokens(_tokens(nome_importado), _tokens(exercicio.name_en or "")),
+        _confianca_tokens(_tokens(traduzir_nome(nome_importado)), _tokens(exercicio.name)),
+    )
 
 
 def _confianca_tokens(a: set[str], b: set[str]) -> float:
@@ -209,24 +213,26 @@ def _catalogo(db: Session) -> list[Exercise]:
         db.execute(
             select(Exercise).where(
                 Exercise.is_custom.is_(False),
+                Exercise.is_hidden.is_(False),
                 Exercise.category.in_(STRENGTH_CATEGORIES),
             )
         ).scalars()
     )
 
 
-def _catalogo_com_tokens(db: Session) -> list[tuple[Exercise, set[str]]]:
-    """Catálogo com os tokens de cada exercício JÁ calculados.
+def _catalogo_com_tokens(db: Session) -> list[tuple[Exercise, set[str], set[str]]]:
+    """Catálogo com os tokens de cada exercício JÁ calculados — DOIS conjuntos
+    por exercício: os do nome em inglês da ExerciseDB (`name_en`) e os do nome
+    PT. O Hevy exporta em inglês ("Bench Press (Barbell)"), então casar
+    inglês-com-inglês contra `name_en` ("barbell bench press") é quase exato —
+    muito melhor que traduzir e comparar em PT (o que dependia de um glossário
+    e errava tudo que não estivesse nele: era o "não entende quase nada").
 
     Medido contra um export real do Hevy (854 linhas, 91 exercícios únicos):
-    sem isto, `casar_exercicio` tokenizava os ~787 exercícios da base de novo
-    para CADA um dos 91 nomes importados — ~71 mil tokenizações — e levava
-    14,9s. No celular contra o Railway (mais lento, e mais ainda se estiver
-    frio) isso passa dos 60s de timeout, e o app mostra erro genérico como se
-    não tivesse reconhecido o arquivo. Calculando uma vez só, o trabalho cai
-    de O(nomes × base) para O(base) tokenizações.
+    tokenizar a base inteira a cada nome (O(nomes × base)) levava ~15s e
+    estourava o timeout no Railway frio. Pré-calcular aqui deixa em O(base).
     """
-    return [(ex, _tokens(ex.name)) for ex in _catalogo(db)]
+    return [(ex, _tokens(ex.name_en or ""), _tokens(ex.name)) for ex in _catalogo(db)]
 
 
 @dataclass(frozen=True)
@@ -245,10 +251,16 @@ _SEM_PAR = _Match(exercise_id=None, exercise_nome=None, confianca=0.0, revisar=T
 
 def _casar_nome(
     nome: str,
-    catalogo_tokens: list[tuple[Exercise, set[str]]],
+    catalogo_tokens: list[tuple[Exercise, set[str], set[str]]],
     cache: dict[str, _Match] | None,
 ) -> _Match:
     """Acha o melhor par pro nome vindo do outro app.
+
+    Usa DOIS sinais e fica com o maior por candidato: (1) o nome do Hevy cru,
+    em inglês, contra o `name_en` da ExerciseDB — casamento quase exato quando
+    ambos existem; (2) o nome traduzido pro PT contra o nome PT — fallback que
+    ainda funciona pra qualquer exercício sem `name_en`. Antes só existia (2),
+    e tudo que o glossário não cobrisse não casava.
 
     `cache` (opcional, por nome exato) evita reprocessar o MESMO exercício
     quando ele se repete em várias rotinas do arquivo — comum: "Crucifixo no
@@ -260,11 +272,15 @@ def _casar_nome(
     if cache is not None and nome in cache:
         return cache[nome]
 
-    tokens_nome = _tokens(traduzir_nome(nome))
+    tokens_en = _tokens(nome)  # nome do Hevy cru (inglês), sem traduzir
+    tokens_pt = _tokens(traduzir_nome(nome))  # traduzido, pro fallback PT
     melhor: Exercise | None = None
     melhor_nota = 0.0
-    for ex, tokens_ex in catalogo_tokens:
-        nota = _confianca_tokens(tokens_nome, tokens_ex)
+    for ex, tokens_ex_en, tokens_ex_pt in catalogo_tokens:
+        nota = max(
+            _confianca_tokens(tokens_en, tokens_ex_en),
+            _confianca_tokens(tokens_pt, tokens_ex_pt),
+        )
         if nota > melhor_nota:
             melhor, melhor_nota = ex, nota
 
@@ -286,7 +302,7 @@ def _casar_nome(
 
 def casar_exercicio(
     nome: str,
-    catalogo_tokens: list[tuple[Exercise, set[str]]],
+    catalogo_tokens: list[tuple[Exercise, set[str], set[str]]],
     cache: dict[str, _Match] | None = None,
 ) -> ExercicioImportado:
     """Casa `nome` com o catálogo e devolve um `ExercicioImportado` NOVO —

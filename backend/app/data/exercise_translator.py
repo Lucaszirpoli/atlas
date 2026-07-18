@@ -326,6 +326,31 @@ _LEFTOVER_TERMS: dict[str, str] = {
     "negative": "negativa",
     "partial": "parcial",
     "isometric": "isométrico",
+    # Movimentos que aparecem como SECUNDÁRIOS num nome composto (o núcleo já
+    # foi casado antes): sem isto vazavam em inglês ("... twist row" -> "row").
+    "row": "remada",
+    "fly": "crucifixo",
+    "flye": "crucifixo",
+    "squat": "agachamento",
+    "lunge": "afundo",
+    "deadlift": "levantamento terra",
+    "pushdown": "na polia",
+    "pulldown": "puxada",
+    "thrust": "elevação",
+    # Modificadores/ruído que faltavam nos nomes mais obscuros.
+    "floor": "no chão",
+    "advanced": "avançado",
+    "renegade": "renegado",
+    "kick": "chute",
+    "kicks": "chutes",
+    "flutter": "",
+    "complex": "",
+    "position": "",
+    "from": "",
+    "bottom": "",
+    "bottoms": "",
+    "get": "",
+    "style": "",
 }
 
 _STOPWORDS = {"the", "a", "an", "with", "and", "on", "of", "to", "for", "your", "smr", "up", "ups"}
@@ -409,7 +434,15 @@ def translate_exercise_name(english: str) -> str:
         sub = [tokens[i] for i in remaining]
         eq_key, eq_start, eq_len = _match_longest(sub, _EQUIPMENT)
         if eq_key is not None:
-            equip_phrases.append(_EQUIPMENT[eq_key])
+            frase = _EQUIPMENT[eq_key]
+            # Dedup: "leverage machine" casa "leverage" E "machine", ambos ->
+            # "na máquina". E alguns movimentos já embutem o equipamento ("chest
+            # press" -> "Supino na máquina"), então o "machine"/"lever" do nome
+            # repetiria: "Supino na máquina ... na máquina". Consome os tokens de
+            # qualquer jeito, mas só acrescenta a frase se ela ainda não apareceu
+            # (nem na lista de equipamentos, nem já dentro do movimento).
+            if frase not in equip_phrases and frase not in mv_pt:
+                equip_phrases.append(frase)
             drop = remaining[eq_start : eq_start + eq_len]
             remaining = [i for i in remaining if i not in drop]
             changed = True

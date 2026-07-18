@@ -85,6 +85,17 @@ class Exercise(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(150), index=True)
+    # Nome original em inglês da fonte (ExerciseDB). Guardado pra casar importação
+    # do Hevy/Strong (que vêm em inglês) inglês-com-inglês — muito mais preciso
+    # que traduzir e comparar com o nome PT. Null nos exercícios curados antigos.
+    name_en: Mapped[str | None] = mapped_column(String(150), nullable=True, index=True)
+    # Id externo na ExerciseDB ("0001"). Chave de idempotência do seed: reimportar
+    # atualiza a linha em vez de duplicar. Null em quem não veio da ExerciseDB.
+    source_external_id: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
+    # Escondido da busca/picker/engine sem apagar (apagar quebraria rotinas e
+    # histórico que referenciam o id por FK). Usado pra aposentar a base antiga
+    # do free-exercise-db quando a ExerciseDB entra.
+    is_hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     primary_muscle_group: Mapped[MuscleGroup] = mapped_column(
         Enum(MuscleGroup, name="muscle_group")
     )

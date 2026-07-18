@@ -21,10 +21,15 @@ def list_exercises(
     db: Session = Depends(get_db),
 ) -> list[Exercise]:
     stmt = select(Exercise).where(
-        or_(Exercise.is_custom.is_(False), Exercise.created_by_user_id == current_user.id)
+        # is_hidden esconde a base antiga (free-exercise-db) aposentada pela
+        # ExerciseDB, sem apagá-la (rotinas/histórico ainda referenciam o id).
+        Exercise.is_hidden.is_(False),
+        or_(Exercise.is_custom.is_(False), Exercise.created_by_user_id == current_user.id),
     )
     if q:
-        stmt = stmt.where(Exercise.name.ilike(f"%{q}%"))
+        # Casa pelo nome PT E pelo nome em inglês da ExerciseDB — quem tem o
+        # movimento na memória em inglês ("bench press") acha o "Supino".
+        stmt = stmt.where(or_(Exercise.name.ilike(f"%{q}%"), Exercise.name_en.ilike(f"%{q}%")))
     if muscle_group:
         stmt = stmt.where(Exercise.primary_muscle_group == muscle_group)
     if equipment:
