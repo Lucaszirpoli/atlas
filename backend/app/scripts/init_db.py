@@ -31,10 +31,16 @@ def run() -> None:
 
     # ANTES de qualquer consulta a Exercise, e logo depois do create_all:
     # create_all não adiciona coluna em tabela que já existe, então num banco
-    # antigo (produção) a coluna `category` não existiria — e QUALQUER
-    # select(Exercise) do ORM já pede essa coluna, estourando "no such column".
+    # antigo (produção) as colunas novas não existiriam — e QUALQUER
+    # select(Exercise) do ORM já pede TODAS elas, estourando "no such column".
     # Como o start é `init_db && uvicorn`, isso não seria um erro de seed: o
-    # backend inteiro não subiria. Este passo tem que vir primeiro.
+    # backend inteiro não subiria (502). Estes passos têm que vir primeiro.
+    #
+    # ensure_columns() adiciona name_en/source_external_id/is_hidden (do
+    # ExerciseDB) e PRECISA rodar aqui, não só dentro de seed_exercisedb.run()
+    # lá no fim — senão o backfill_exercise_category abaixo já faz select(Exercise)
+    # e derruba o boot antes do seed chegar a criar as colunas.
+    seed_exercisedb.ensure_columns()
     backfill_exercise_category.run()
 
     db = SessionLocal()

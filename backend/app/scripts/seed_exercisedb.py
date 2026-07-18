@@ -30,10 +30,15 @@ DATA_PATH = Path(__file__).parent.parent / "data" / "exercisedb_catalog.json"
 GIF_DIR = Path(__file__).parent.parent / "static" / "exercisedb"
 
 
-def _ensure_columns() -> None:
+def ensure_columns() -> None:
     """ALTER TABLE idempotente (SQLite dev + Postgres prod). create_all não
     adiciona coluna em tabela já existente, então num banco antigo essas colunas
-    faltariam e QUALQUER select(Exercise) do ORM estouraria 'no such column'."""
+    faltariam e QUALQUER select(Exercise) do ORM estouraria 'no such column'.
+
+    CRÍTICO: tem que rodar ANTES de qualquer select(Exercise) do init_db
+    (backfill_exercise_category, retranslate_exercises, etc.), senão o boot
+    inteiro morre e o backend não sobe (502). Por isso o init_db chama isto logo
+    depois do create_all, e não só dentro de run()."""
     existentes = {c["name"] for c in inspect(engine).get_columns("exercises")}
     pg = engine.dialect.name == "postgresql"
     add_cols: list[tuple[str, str, str]] = [
@@ -67,7 +72,7 @@ def _gif_url(ex_id: str) -> str | None:
 
 
 def run() -> None:
-    _ensure_columns()
+    ensure_columns()
 
     if not DATA_PATH.exists():
         print(f"{DATA_PATH.name} ausente — rode fetch_exercisedb primeiro. Pulando.")
