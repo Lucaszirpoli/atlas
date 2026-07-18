@@ -5,6 +5,7 @@ import { HeaderBack } from "../components/HeaderBack";
 import { AiDietScreen } from "../screens/ai/AiDietScreen";
 import { AddFoodScreen } from "../screens/nutrition/AddFoodScreen";
 import { BarcodeScannerScreen } from "../screens/nutrition/BarcodeScannerScreen";
+import { CalorieHistoryScreen } from "../screens/nutrition/CalorieHistoryScreen";
 import { DiaryScreen } from "../screens/nutrition/DiaryScreen";
 import { DietTemplatesScreen } from "../screens/nutrition/DietTemplatesScreen";
 import { GoalSettingsScreen } from "../screens/nutrition/GoalSettingsScreen";
@@ -48,6 +49,7 @@ export function NutritionStack() {
         options={{ title: "Registrar por foto" }}
       />
       <Stack.Screen name="Measurements" component={MeasurementsScreen} options={{ title: "Medidas e fotos" }} />
+      <Stack.Screen name="CalorieHistory" component={CalorieHistoryScreen} options={{ title: "Histórico de calorias" }} />
     </Stack.Navigator>
   );
 }

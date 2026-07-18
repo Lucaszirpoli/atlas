@@ -4,13 +4,22 @@ import React, { useCallback, useState } from "react";
 import { RefreshControl, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { getCurrentGoal, type CalorieGoal } from "../../api/goals";
-import { deleteMealLog, listMealCategories, listMealsForDay, type MealCategory, type MealLog } from "../../api/meals";
+import {
+  createSavedMeal,
+  deleteMealLog,
+  listMealCategories,
+  listMealsForDay,
+  type MealCategory,
+  type MealLog,
+} from "../../api/meals";
 import { getTodayWaterSummary, logWater, type WaterSummary } from "../../api/water";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { InfoDialog } from "../../components/InfoDialog";
 import { ProgressRing } from "../../components/ProgressRing";
 import { useTheme } from "../../theme/ThemeProvider";
+import { mensagemDeErro } from "../../utils/errorMessage";
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -45,6 +54,10 @@ export function DiaryScreen() {
   const [deleteTarget, setDeleteTarget] = useState<
     { mealLogId: number; foodName: string; itemCount: number } | null
   >(null);
+  // "Salvar o dia inteiro como dieta": junta tudo que foi comido hoje num
+  // modelo reutilizável (um SavedMeal), que reaparece em "Suas receitas".
+  const [savingDay, setSavingDay] = useState(false);
+  const [dayAviso, setDayAviso] = useState<{ title: string; message: string } | null>(null);
 
   async function loadAll() {
     const [cats, mealsForDay, currentGoal, waterToday] = await Promise.all([
@@ -75,6 +88,24 @@ export function DiaryScreen() {
     await deleteMealLog(deleteTarget.mealLogId);
     setDeleteTarget(null);
     loadAll();
+  }
+
+  async function salvarDiaComoDieta() {
+    const itens = meals.flatMap((m) => m.items).map((i) => ({ food_id: i.food_id, quantity_g: i.quantity_g }));
+    if (itens.length === 0) return;
+    const hoje = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+    setSavingDay(true);
+    try {
+      await createSavedMeal({ name: `Dieta de ${hoje}`, items: itens });
+      setDayAviso({
+        title: "Dia salvo como dieta!",
+        message: `Os ${itens.length} itens de hoje viraram o modelo "Dieta de ${hoje}" — reutilize em Adicionar alimento › Suas receitas.`,
+      });
+    } catch (err: any) {
+      setDayAviso({ title: "Não consegui salvar", message: mensagemDeErro(err, "Tente novamente.") });
+    } finally {
+      setSavingDay(false);
+    }
   }
 
   useFocusEffect(
@@ -210,6 +241,45 @@ export function DiaryScreen() {
             Você passou um pouco da meta hoje — tudo bem, é só informação.
           </Text>
         ) : null}
+        {/* Histórico (quanto comi nos últimos dias / média) + salvar o dia todo. */}
+        <View
+          style={{
+            flexDirection: "row",
+            marginTop: spacing.md,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => navigation.navigate("CalorieHistory")}
+            activeOpacity={0.7}
+            style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: spacing.sm }}
+          >
+            <Ionicons name="stats-chart" size={16} color={colors.primary} />
+            <Text style={[type.bodySmall, { color: colors.primary, fontWeight: "700" }]}>Histórico</Text>
+          </TouchableOpacity>
+          {allItems.length > 0 ? (
+            <TouchableOpacity
+              onPress={salvarDiaComoDieta}
+              disabled={savingDay}
+              activeOpacity={0.7}
+              style={{
+                flex: 1,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+                paddingVertical: spacing.sm,
+                borderLeftWidth: 1,
+                borderLeftColor: colors.border,
+                opacity: savingDay ? 0.5 : 1,
+              }}
+            >
+              <Ionicons name="bookmark-outline" size={16} color={colors.moduleTraining} />
+              <Text style={[type.bodySmall, { color: colors.moduleTraining, fontWeight: "700" }]}>Salvar dia</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
         {!goal ? (
           <View style={{ marginTop: spacing.md }}>
             <Button title="Definir meta de calorias" onPress={() => navigation.navigate("GoalSettings")} />
@@ -355,6 +425,12 @@ export function DiaryScreen() {
         confirmLabel="Remover"
         destructive
         onConfirm={confirmDeleteFood}
+      />
+      <InfoDialog
+        visible={dayAviso !== null}
+        onClose={() => setDayAviso(null)}
+        title={dayAviso?.title ?? ""}
+        message={dayAviso?.message}
       />
     </ScrollView>
   );
