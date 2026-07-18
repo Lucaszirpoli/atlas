@@ -25,9 +25,14 @@ BASE_URL = "https://br.openfoodfacts.org"
 #    própria query e devolve nutriments. É esta.
 SEARCH_URL = "https://search.openfoodfacts.org/search"
 TIMEOUT_SECONDS = 8
-# O OFF é instável (503 intermitente, mesmo com pouco tráfego). Sem retentativa,
-# a busca de marca é uma moeda ao ar.
-_TENTATIVAS = 3
+# Busca de marca: 6s por endpoint (o app encaixa as marcas de forma assíncrona,
+# mas 8s×vários é lento demais se todos flaparem).
+_SEARCH_TIMEOUT_S = 6
+# O OFF é instável (503/502 intermitente) e os serviços de busca caem de forma
+# INDEPENDENTE — num dado momento a search-a-licious pode estar 502 e a cgi de
+# pé, ou o contrário (visto ao vivo: search-a-licious 502 enquanto o product API
+# respondia 200). Tentar UM só endpoint era o que fazia "não aparecer marca
+# brasileira". Aqui a gente cai em cascata pelos três até um responder.
 _ESPERA_INICIAL_S = 0.6
 
 # Cache em memória por termo. Além de aliviar o OFF, faz a segunda digitação da
@@ -132,12 +137,51 @@ def fetch_by_barcode(barcode: str) -> dict | None:
     return _normalize_product(payload["product"])
 
 
+def _buscar_search_a_licious(query: str, page_size: int) -> list[dict]:
+    """Busca textual nova do OFF (search.openfoodfacts.org). Devolve `hits`,
+    `brands` como LISTA. Filtro de país na própria query."""
+    r = requests.get(
+        SEARCH_URL,
+        params={
+            "q": f'{query} countries_tags:"en:brazil"',
+            "page_size": page_size,
+            "fields": "code,product_name,brands,nutriments,serving_size",
+        },
+        headers={"User-Agent": USER_AGENT},
+        timeout=_SEARCH_TIMEOUT_S,
+    )
+    r.raise_for_status()
+    return r.json().get("hits", [])
+
+
+def _buscar_cgi(base: str, query: str, page_size: int, so_brasil: bool) -> list[dict]:
+    """Busca legada `cgi/search.pl`. Devolve `products`, `brands` como STRING.
+    Existe em br.* e world.* — quando a search-a-licious está fora, uma destas
+    costuma responder."""
+    params = {
+        "search_terms": query,
+        "search_simple": 1,
+        "action": "process",
+        "json": 1,
+        "page_size": page_size,
+        "fields": "code,product_name,brands,nutriments,serving_size",
+    }
+    if so_brasil:
+        params.update({"tagtype_0": "countries", "tag_contains_0": "contains", "tag_0": "brazil"})
+    r = requests.get(
+        f"{base}/cgi/search.pl", params=params, headers={"User-Agent": USER_AGENT}, timeout=_SEARCH_TIMEOUT_S
+    )
+    r.raise_for_status()
+    return r.json().get("products", [])
+
+
 def search_by_name(query: str, page_size: int = 25) -> list[dict]:
     """Produtos de marca vendidos no BRASIL que casem com o termo.
 
-    Com cache e retentativa porque o OFF cai muito (503 intermitente): sem
-    isso, a maioria das buscas voltava vazia e o app parecia não ter marca
-    brasileira nenhuma.
+    Cai em CASCATA por três serviços de busca do OFF porque eles caem de forma
+    independente (502/503 intermitente): a search-a-licious nova, a cgi do mundo
+    filtrando Brasil e a cgi do subdomínio br. O primeiro que responder vence.
+    Cache por termo (a busca dispara a cada tecla). Vazio só se TODOS caírem.
     """
     chave = f"{query.strip().lower()}|{page_size}"
     agora = time.monotonic()
@@ -146,40 +190,26 @@ def search_by_name(query: str, page_size: int = 25) -> list[dict]:
         if achado and agora - achado[0] < _CACHE_TTL_S:
             return achado[1]
 
+    estrategias = (
+        lambda: _buscar_search_a_licious(query, page_size),
+        lambda: _buscar_cgi("https://world.openfoodfacts.org", query, page_size, so_brasil=True),
+        lambda: _buscar_cgi("https://br.openfoodfacts.org", query, page_size, so_brasil=False),
+    )
     produtos: list[dict] = []
-    espera = _ESPERA_INICIAL_S
-    for tentativa in range(_TENTATIVAS):
+    for estrategia in estrategias:
         try:
-            response = requests.get(
-                SEARCH_URL,
-                params={
-                    # O filtro de país vai na própria query. Sem ele vêm
-                    # produtos do mundo todo e a marca brasileira some no meio.
-                    "q": f'{query} countries_tags:"en:brazil"',
-                    "page_size": page_size,
-                    # `brands` só volta se pedido explicitamente.
-                    "fields": "code,product_name,brands,nutriments,serving_size",
-                },
-                headers={"User-Agent": USER_AGENT},
-                timeout=TIMEOUT_SECONDS,
-            )
-            if response.status_code == 503 and tentativa < _TENTATIVAS - 1:
-                time.sleep(espera)
-                espera *= 2
-                continue
-            response.raise_for_status()
-            produtos = response.json().get("hits", [])
-            break
+            produtos = estrategia()
+            if produtos:
+                break
         except (requests.RequestException, ValueError):
-            # ValueError cobre o JSON inválido que vem quando o OFF devolve
-            # uma página de erro em HTML com status 200.
-            if tentativa == _TENTATIVAS - 1:
-                return []
-            time.sleep(espera)
-            espera *= 2
+            # ValueError cobre o HTML de erro com status 200. Tenta o próximo.
+            continue
 
     normalizados = [_normalize_product(p) for p in produtos]
     resultado = [p for p in normalizados if p is not None]
-    with _cache_lock:
-        _cache[chave] = (agora, resultado)
+    # Só cacheia sucesso: se todos caíram agora, não queremos travar "vazio" por
+    # 10min — a próxima tecla tenta de novo e um serviço pode ter voltado.
+    if resultado:
+        with _cache_lock:
+            _cache[chave] = (agora, resultado)
     return resultado
