@@ -207,22 +207,37 @@ export function DashboardScreen() {
               Free vê a apresentação + assinar; Pro entra direto (o gate está
               dentro da CoachingScreen). */}
           <Tile minH={tile} onPress={() => navigation.navigate("Coaching")}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
               <View
                 style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 11,
+                  width: 30,
+                  height: 30,
+                  borderRadius: 10,
                   backgroundColor: colors.primary + "22",
                   alignItems: "center",
                   justifyContent: "center",
                 }}
               >
-                <Ionicons name="compass" size={20} color={colors.primary} />
+                <Ionicons name="compass" size={18} color={colors.primary} />
               </View>
-              <Text style={[type.h2, { color: colors.textPrimary, fontSize: 16, flex: 1 }]}>Coaching</Text>
-              <View style={{ backgroundColor: colors.primary, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
-                <Text style={{ color: colors.textOnPrimary, fontSize: 9, fontWeight: "900", letterSpacing: 0.5 }}>PRO</Text>
+              {/* flexShrink deixa o título truncar antes de empurrar o selo pra
+                  fora do card (era o "PRO" saindo do quadrado em telas estreitas). */}
+              <Text
+                numberOfLines={1}
+                style={[type.h2, { color: colors.textPrimary, fontSize: 15, flex: 1 }]}
+              >
+                Coaching
+              </Text>
+              <View
+                style={{
+                  flexShrink: 0,
+                  backgroundColor: colors.primary,
+                  borderRadius: 6,
+                  paddingHorizontal: 5,
+                  paddingVertical: 2,
+                }}
+              >
+                <Text style={{ color: colors.textOnPrimary, fontSize: 9, fontWeight: "900" }}>PRO</Text>
               </View>
             </View>
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>

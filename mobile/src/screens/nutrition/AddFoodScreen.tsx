@@ -5,6 +5,8 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   Text,
   TextInput,
@@ -730,7 +732,8 @@ export function AddFoodScreen() {
         const emEdicao = cesta.find((i) => i.food.id === editandoId);
         if (!emEdicao) return null;
         return (
-          <View
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
             style={{
               position: "absolute",
               left: 0,
@@ -761,7 +764,7 @@ export function AddFoodScreen() {
                 <Button title="Concluir" onPress={() => setEditandoId(null)} />
               </View>
             </Card>
-          </View>
+          </KeyboardAvoidingView>
         );
       })()}
 
@@ -773,7 +776,8 @@ export function AddFoodScreen() {
       />
 
       {pedindoNome ? (
-        <View
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={{
             position: "absolute",
             left: 0,
@@ -818,7 +822,7 @@ export function AddFoodScreen() {
               </View>
             </View>
           </Card>
-        </View>
+        </KeyboardAvoidingView>
       ) : null}
     </View>
   );
