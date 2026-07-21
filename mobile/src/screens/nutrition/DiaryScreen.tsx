@@ -20,6 +20,7 @@ import { InfoDialog } from "../../components/InfoDialog";
 import { ProgressRing } from "../../components/ProgressRing";
 import { useTheme } from "../../theme/ThemeProvider";
 import { mensagemDeErro } from "../../utils/errorMessage";
+import { formatQuantity } from "../../utils/portion";
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -350,7 +351,10 @@ export function DiaryScreen() {
                     <View key={item.id} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 5 }}>
                       <Text style={[type.bodySmall, { color: colors.textPrimary, flex: 1 }]} numberOfLines={1}>
                         {item.food.name}
-                        <Text style={{ color: colors.textSecondary }}> · {Math.round(item.quantity_g)}g</Text>
+                        <Text style={{ color: colors.textSecondary }}>
+                          {" · "}
+                          {formatQuantity(item.quantity_g, item.unit_label, item.unit_amount)}
+                        </Text>
                       </Text>
                       <Text style={[type.bodySmall, { color: colors.textSecondary, marginRight: spacing.md }]}>
                         {Math.round(item.kcal)} kcal

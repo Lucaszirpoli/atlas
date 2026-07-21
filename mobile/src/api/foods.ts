@@ -56,6 +56,32 @@ export async function createCustomFood(payload: {
   return data;
 }
 
+/** Medida caseira de um alimento (unidade, fatia, colher...) — grams = peso de
+ * UMA unidade. is_custom = criada pelo próprio usuário (dá pra apagar). */
+export type FoodPortion = {
+  id: number;
+  label: string;
+  grams: number;
+  is_custom: boolean;
+};
+
+export async function listFoodPortions(foodId: number): Promise<FoodPortion[]> {
+  const { data } = await api.get<FoodPortion[]>(`/foods/${foodId}/portions`);
+  return data;
+}
+
+export async function createFoodPortion(
+  foodId: number,
+  payload: { label: string; grams: number }
+): Promise<FoodPortion> {
+  const { data } = await api.post<FoodPortion>(`/foods/${foodId}/portions`, payload);
+  return data;
+}
+
+export async function deleteFoodPortion(foodId: number, portionId: number): Promise<void> {
+  await api.delete(`/foods/${foodId}/portions/${portionId}`);
+}
+
 export async function listFavoriteFoods(): Promise<Food[]> {
   const { data } = await api.get<Food[]>("/foods/favorites");
   return data;
