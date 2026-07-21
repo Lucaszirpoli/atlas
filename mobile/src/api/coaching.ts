@@ -39,9 +39,12 @@ export type CoachingAnalysis = {
   metrics: CoachingMetrics;
 };
 
-/** Análise semanal do Coaching (Pro). Determinística no backend — sem token. */
-export async function getCoachingAnalysis(): Promise<CoachingAnalysis> {
-  const { data } = await api.get<CoachingAnalysis>("/coaching/analysis");
+/** Análise do Coaching no período (Pro). Determinística no backend — sem token.
+ * windowDays: janela de análise (28/56/84 = 4/8/12 semanas). */
+export async function getCoachingAnalysis(windowDays = 28): Promise<CoachingAnalysis> {
+  const { data } = await api.get<CoachingAnalysis>("/coaching/analysis", {
+    params: { window_days: windowDays },
+  });
   return data;
 }
 

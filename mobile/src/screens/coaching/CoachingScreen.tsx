@@ -19,6 +19,14 @@ import { InfoDialog } from "../../components/InfoDialog";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
 import { mensagemDeErro } from "../../utils/errorMessage";
+import { CoachingProgress } from "./CoachingProgress";
+
+// Períodos de análise/gráfico — 4/8/12 semanas.
+const PERIODS: { label: string; days: number }[] = [
+  { label: "4 sem", days: 28 },
+  { label: "8 sem", days: 56 },
+  { label: "12 sem", days: 84 },
+];
 
 /**
  * Coaching — a área-diferencial do plano Pro. Reúne objetivo, metas, medidas,
@@ -38,6 +46,7 @@ export function CoachingScreen() {
 
   const [analysis, setAnalysis] = useState<CoachingAnalysis | null>(null);
   const [adjustments, setAdjustments] = useState<CoachingAdjustment[]>([]);
+  const [periodDays, setPeriodDays] = useState(28);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState(false);
   const [aviso, setAviso] = useState<{ title: string; message: string } | null>(null);
@@ -46,14 +55,14 @@ export function CoachingScreen() {
     if (!isPro) return Promise.resolve();
     setErro(false);
     return Promise.all([
-      getCoachingAnalysis().then(setAnalysis),
+      getCoachingAnalysis(periodDays).then(setAnalysis),
       listCoachingAdjustments()
         .then(setAdjustments)
         .catch(() => {}), // histórico é secundário; não derruba a tela
     ])
       .catch(() => setErro(true))
       .finally(() => setLoading(false));
-  }, [isPro]);
+  }, [isPro, periodDays]);
 
   // Recarrega a cada foco: a pessoa registra peso/refeição e volta pra ver o
   // que mudou. Só pro Pro — o Free nem chega aqui (paywall abaixo).
@@ -76,8 +85,44 @@ export function CoachingScreen() {
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}>
-      {/* Análise da semana — o motor determinístico (sem IA) lê os registros. */}
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+    >
+      {/* Período da análise e dos gráficos — controla a janela inteira. */}
+      <View style={{ flexDirection: "row", gap: spacing.xs, marginBottom: spacing.md }}>
+        {PERIODS.map((p) => {
+          const on = periodDays === p.days;
+          return (
+            <TouchableOpacity
+              key={p.days}
+              onPress={() => setPeriodDays(p.days)}
+              style={{
+                flex: 1,
+                alignItems: "center",
+                backgroundColor: on ? colors.primary : colors.surface,
+                borderWidth: 1,
+                borderColor: on ? colors.primary : colors.border,
+                borderRadius: radius.pill,
+                paddingVertical: 8,
+              }}
+            >
+              <Text
+                style={[
+                  type.caption,
+                  { color: on ? colors.textOnPrimary : colors.textPrimary, fontWeight: on ? "700" : "500" },
+                ]}
+              >
+                {p.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* Análise do período — o motor determinístico (sem IA) lê os registros. */}
       {loading && !analysis ? (
         <Card style={{ marginBottom: spacing.md, alignItems: "center", paddingVertical: spacing.xl }}>
           <ActivityIndicator color={colors.primary} />
@@ -96,6 +141,10 @@ export function CoachingScreen() {
         <AnalysisView analysis={analysis} onApplied={onApplied} />
       ) : null}
 
+      {/* Gráfico simples do período — UM de cada vez (peso/calorias/treino),
+          com registro de peso ali mesmo. Absorve a antiga tela de Evolução. */}
+      <CoachingProgress periodDays={periodDays} onDataChanged={load} />
+
       {/* Ajustes que a pessoa aplicou — com Desfazer. */}
       {adjustments.length > 0 ? (
         <AdjustmentsSection
@@ -109,13 +158,6 @@ export function CoachingScreen() {
         Seus dados e análises
       </Text>
 
-      <CoachRow
-        icon="trending-up"
-        tint={colors.moduleTraining}
-        title="Evolução"
-        subtitle="Gráficos de peso, treino, sono e dieta"
-        onPress={() => navigation.navigate("Evolution", { initialMetrics: ["treino", "sono", "dieta"] })}
-      />
       <CoachRow
         icon="flag"
         tint={colors.moduleNutrition}
