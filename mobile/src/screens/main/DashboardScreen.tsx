@@ -4,13 +4,11 @@ import React, { useCallback, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { getConsistency, type ConsistencyHistory } from "../../api/evolution";
 import { getCurrentGoal, type CalorieGoal } from "../../api/goals";
 import { listMealsForDay, type MealLog } from "../../api/meals";
 import { listRoutines, type Routine } from "../../api/routines";
 import { listSleepLogs, type SleepLog } from "../../api/sleep";
 import { listWorkoutSessions, type WorkoutSessionDetail } from "../../api/workoutSessions";
-import { AiFab } from "../../components/AiFab";
 import { AtlasLogo } from "../../components/AtlasLogo";
 import { Avatar } from "../../components/Avatar";
 import { ProgressRing } from "../../components/ProgressRing";
@@ -45,23 +43,20 @@ export function DashboardScreen() {
   const [sleepLogs, setSleepLogs] = useState<SleepLog[]>([]);
   const [sessions, setSessions] = useState<WorkoutSessionDetail[]>([]);
   const [routines, setRoutines] = useState<Routine[]>([]);
-  const [consistency, setConsistency] = useState<ConsistencyHistory | null>(null);
 
   async function load() {
-    const [g, m, s, sess, r, c] = await Promise.all([
+    const [g, m, s, sess, r] = await Promise.all([
       getCurrentGoal().catch(() => null),
       listMealsForDay(todayIso()).catch(() => []),
       listSleepLogs().catch(() => []),
       listWorkoutSessions().catch(() => []),
       listRoutines().catch(() => []),
-      getConsistency(30).catch(() => null),
     ]);
     setGoal(g);
     setMeals(m);
     setSleepLogs(s);
     setSessions(sess);
     setRoutines(r);
-    setConsistency(c);
   }
 
   useFocusEffect(
@@ -154,66 +149,100 @@ export function DashboardScreen() {
           </Text>
         </View>
 
-        {/* Barrinha fina única — recurso poderoso mas fácil de achar (o
-            diferencial do app): abre a Evolution com treino+sono+dieta já
-            ligados, prontos pra comparar. */}
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate("Evolution", { initialMetrics: ["treino", "sono", "dieta"] })}
-          style={{ width: contentW, marginBottom: spacing.md }}
-        >
-          <View
+        {/* Faixa horizontal: Desafios + social. Substitui a antiga barra de
+            "constância" (a evolução/constância foi pra dentro do Coaching). O
+            corpo abre os Desafios; a pílula à direita abre Amigos e feed. */}
+        <View style={{ width: contentW, marginBottom: spacing.md, flexDirection: "row", gap: spacing.sm }}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate("Social", { screen: "Challenges" })}
+            style={{ flex: 1 }}
+          >
+            <View
+              style={{
+                backgroundColor: colors.secondary,
+                borderRadius: 14,
+                paddingVertical: 10,
+                paddingHorizontal: spacing.md,
+                flexDirection: "row",
+                alignItems: "center",
+              }}
+            >
+              <Ionicons name="trophy" size={22} color="#FFFFFF" style={{ marginRight: spacing.sm }} />
+              <View style={{ flex: 1 }}>
+                <Text style={[type.body, { color: "#FFFFFF", fontWeight: "800" }]}>Desafios</Text>
+                <Text style={[type.caption, { color: "rgba(255,255,255,0.9)" }]} numberOfLines={1}>
+                  Dispute com seus amigos
+                </Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate("Social")}
             style={{
-              backgroundColor: colors.secondary,
+              backgroundColor: colors.surface,
+              borderWidth: 1,
+              borderColor: colors.border,
               borderRadius: 14,
-              paddingVertical: 10,
               paddingHorizontal: spacing.md,
-              flexDirection: "row",
               alignItems: "center",
+              justifyContent: "center",
             }}
           >
-            <Ionicons name="flame" size={26} color="#FFFFFF" style={{ marginRight: spacing.sm }} />
-            <Text style={[type.body, { color: "#FFFFFF", flex: 1, fontWeight: "700" }]}>
-              {consistency
-                ? `Sua evolução: ${consistency.current_streak} dia${consistency.current_streak !== 1 ? "s" : ""} de constância`
-                : "Veja sua evolução"}
+            <Ionicons name="people" size={18} color={colors.moduleSocial} />
+            <Text style={[type.caption, { color: colors.textPrimary, fontWeight: "700", fontSize: 10, marginTop: 2 }]}>
+              Amigos e feed
             </Text>
-            <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
-          </View>
-        </TouchableOpacity>
-
-        {/* A faixa "Social" saiu daqui: o quadrado de Desafios abaixo já é a
-            porta de entrada (e com destaque bem maior). */}
+          </TouchableOpacity>
+        </View>
 
         {/* Grid 2×2— os quadrados crescem pra preencher a altura da tela
             (sem sobrar espaço vazio embaixo no celular). minHeight garante o
             tamanho mínimo quadrado em telas curtas (aí a tela rola). */}
         <View style={{ width: contentW, flex: 1, gap, minHeight: tile * 2 + gap }}>
           <View style={{ flexDirection: "row", gap, flex: 1 }}>
-          {/* Desafios — ocupa o lugar que era da Água (a água virou parte da
-              Dieta, onde a pessoa já anota o que consome). Desafios é o foco:
-              é o que traz os amigos e faz a pessoa voltar. */}
-          <Tile minH={tile} onPress={() => navigation.navigate("Social", { screen: "Challenges" })}>
-            <TileHeader icon="trophy" tint={colors.moduleSocial} title="Desafios" />
+          {/* Coaching — o card-herói do plano Pro. Acompanhamento contínuo que
+              reúne objetivo, metas, medidas, evolução, dieta, treino e sono.
+              Free vê a apresentação + assinar; Pro entra direto (o gate está
+              dentro da CoachingScreen). */}
+          <Tile minH={tile} onPress={() => navigation.navigate("Coaching")}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <View
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 11,
+                  backgroundColor: colors.primary + "22",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons name="compass" size={20} color={colors.primary} />
+              </View>
+              <Text style={[type.h2, { color: colors.textPrimary, fontSize: 16, flex: 1 }]}>Coaching</Text>
+              <View style={{ backgroundColor: colors.primary, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
+                <Text style={{ color: colors.textOnPrimary, fontSize: 9, fontWeight: "900", letterSpacing: 0.5 }}>PRO</Text>
+              </View>
+            </View>
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
               <View
                 style={{
                   width: Math.min(tile - 80, 92),
                   height: Math.min(tile - 80, 92),
                   borderRadius: Math.min(tile - 80, 92) / 2,
-                  backgroundColor: colors.moduleSocial + "22",
+                  backgroundColor: colors.primary + "18",
                   alignItems: "center",
                   justifyContent: "center",
                 }}
               >
-                <Ionicons name="trophy" size={Math.min(tile - 130, 46)} color={colors.moduleSocial} />
+                <Ionicons name="compass" size={Math.min(tile - 130, 46)} color={colors.primary} />
               </View>
               <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm, textAlign: "center" }]}>
-                Dispute com seus amigos
+                Seu acompanhamento personalizado
               </Text>
             </View>
-            <TouchableOpacity
-              onPress={() => navigation.navigate("Social")}
+            <View
               style={{
                 flexDirection: "row",
                 alignItems: "center",
@@ -221,14 +250,14 @@ export function DashboardScreen() {
                 gap: 5,
                 paddingVertical: 7,
                 borderRadius: 999,
-                backgroundColor: colors.moduleSocial + "18",
+                backgroundColor: colors.primary + "18",
               }}
             >
-              <Ionicons name="people" size={13} color={colors.moduleSocial} />
-              <Text style={[type.caption, { color: colors.moduleSocial, fontWeight: "800", fontSize: 11 }]}>
-                Amigos e feed
+              <Ionicons name="sparkles" size={13} color={colors.primary} />
+              <Text style={[type.caption, { color: colors.primary, fontWeight: "800", fontSize: 11 }]}>
+                {user?.plan === "pro" ? "Abrir Coaching" : "Conhecer o Pro"}
               </Text>
-            </TouchableOpacity>
+            </View>
           </Tile>
 
           {/* Calorias — anel circular */}
@@ -303,7 +332,6 @@ export function DashboardScreen() {
           </View>
         </View>
       </ScrollView>
-      <AiFab />
     </View>
   );
 }
