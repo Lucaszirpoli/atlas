@@ -152,14 +152,26 @@ def _nutrition_findings(m: Metrics) -> list[Finding]:
 
 
 def _training_findings(m: Metrics) -> list[Finding]:
+    out: list[Finding] = []
     t = m.training
     # Só cobra frequência se a janela é longa o bastante pra ser justo.
     if t.window_days >= 14 and t.sessions_per_week < MIN_SESSIONS_PER_WEEK:
-        return [Finding("low_frequency", SEV_ATTENTION, "Frequência de treino baixa",
-                        f"Média de {t.sessions_per_week:.1f} treinos/semana. Abaixo de 2x por grupo muscular "
-                        "o estímulo pra crescer/manter cai bastante.",
-                        "Mirar pelo menos 2–3 treinos por semana, mesmo que mais curtos.")]
-    return []
+        out.append(Finding("low_frequency", SEV_ATTENTION, "Frequência de treino baixa",
+                           f"Média de {t.sessions_per_week:.1f} treinos/semana. Abaixo de 2x por grupo muscular "
+                           "o estímulo pra crescer/manter cai bastante.",
+                           "Mirar pelo menos 2–3 treinos por semana, mesmo que mais curtos."))
+
+    # Progressão travada num exercício principal — o coach avisa antes de virar
+    # frustração. Orientação, não ajuste automático (isso é do lado do treino).
+    for lift in t.stalled_lifts:
+        nome = lift["name"]
+        out.append(Finding(
+            f"stalled_lift:{nome}", SEV_ATTENTION, f"{nome} empacou",
+            f"Você treinou {nome} em {lift['sessions']} sessões nos últimos {lift['span_days']} dias, mas a "
+            "carga/reps não subiu. Estagnar por semanas costuma ser recuperação, técnica ou volume — não força.",
+            "Tenta uma progressão pequena: some 1 rep por série até fechar o topo da faixa, aí sobe a carga. "
+            "Se não render, confira sono, proteína e um deload leve."))
+    return out
 
 
 def _sleep_findings(m: Metrics) -> list[Finding]:

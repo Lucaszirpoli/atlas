@@ -13,11 +13,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.calorie_goal import CalorieGoal
+from app.models.exercise import Exercise
 from app.models.meal import MealLog
 from app.models.sleep_log import SleepLog
 from app.models.user_profile import UserProfile
 from app.models.weight_log import WeightLog
-from app.models.workout_session import WorkoutSession
+from app.models.workout_session import WorkoutSession, WorkoutSetLog
 
 
 @dataclass
@@ -44,6 +45,9 @@ class TrainingMetrics:
     sessions: int
     sessions_per_week: float
     window_days: int
+    # Exercícios principais que pararam de progredir na janela.
+    # Cada item: {"name": str, "sessions": int, "span_days": int}
+    stalled_lifts: list[dict]
 
 
 @dataclass
@@ -147,6 +151,67 @@ def _nutrition_metrics(db: Session, user_id: int, since: datetime, window_days: 
     )
 
 
+def _e1rm(weight_kg: float, reps: int) -> float:
+    """1RM estimado (Epley) — capta progresso por carga OU por reps, então uma
+    série de 80×8 e outra de 80×10 não parecem 'iguais'."""
+    return weight_kg * (1 + reps / 30.0)
+
+
+def _stalled_lifts(db: Session, user_id: int, since: datetime) -> list[dict]:
+    """Exercícios principais que não progrediram: pra cada exercício treinado em
+    ≥3 sessões num intervalo ≥14 dias, compara o melhor e1RM da metade recente
+    com o da metade inicial. Sem ganho (dentro de 1%) = travado. Prioriza
+    compostos e os mais treinados; devolve no máximo 2 (não assusta a pessoa)."""
+    rows = db.execute(
+        select(
+            WorkoutSetLog.exercise_id,
+            Exercise.name,
+            Exercise.is_compound,
+            WorkoutSession.started_at,
+            WorkoutSetLog.weight_kg,
+            WorkoutSetLog.reps,
+        )
+        .join(WorkoutSession, WorkoutSession.id == WorkoutSetLog.session_id)
+        .join(Exercise, Exercise.id == WorkoutSetLog.exercise_id)
+        .where(
+            WorkoutSession.user_id == user_id,
+            WorkoutSession.started_at >= since,
+            WorkoutSession.completed_at.is_not(None),
+            WorkoutSetLog.weight_kg > 0,
+            WorkoutSetLog.reps > 0,
+        )
+    ).all()
+
+    # exercise_id -> {name, is_compound, per_session: {day -> best_e1rm}}
+    by_ex: dict[int, dict] = {}
+    for ex_id, name, is_comp, started_at, w, reps in rows:
+        d = by_ex.setdefault(ex_id, {"name": name, "is_compound": bool(is_comp), "sessions": {}})
+        day = started_at.date().isoformat()
+        e = _e1rm(w, reps)
+        if e > d["sessions"].get(day, 0):
+            d["sessions"][day] = e
+
+    stalled: list[dict] = []
+    for ex_id, d in by_ex.items():
+        dias = sorted(d["sessions"].items())  # [(day, best_e1rm)], cronológico
+        if len(dias) < 3:
+            continue
+        span = (datetime.fromisoformat(dias[-1][0]) - datetime.fromisoformat(dias[0][0])).days
+        if span < 14:
+            continue
+        meio = len(dias) // 2
+        melhor_inicio = max(e for _, e in dias[:meio] or dias[:1])
+        melhor_recente = max(e for _, e in dias[meio:])
+        if melhor_recente <= melhor_inicio * 1.01:  # não subiu de forma relevante
+            stalled.append(
+                {"name": d["name"], "sessions": len(dias), "span_days": span, "is_compound": d["is_compound"]}
+            )
+
+    # compostos primeiro, depois os mais treinados
+    stalled.sort(key=lambda s: (not s["is_compound"], -s["sessions"]))
+    return [{"name": s["name"], "sessions": s["sessions"], "span_days": s["span_days"]} for s in stalled[:2]]
+
+
 def _training_metrics(db: Session, user_id: int, since: datetime, window_days: int) -> TrainingMetrics:
     # Só sessões CONCLUÍDAS contam como treino feito.
     sessions = db.execute(
@@ -159,7 +224,12 @@ def _training_metrics(db: Session, user_id: int, since: datetime, window_days: i
     ).scalars().all()
     n = len(sessions)
     weeks = max(window_days / 7.0, 1.0)
-    return TrainingMetrics(sessions=n, sessions_per_week=round(n / weeks, 2), window_days=window_days)
+    return TrainingMetrics(
+        sessions=n,
+        sessions_per_week=round(n / weeks, 2),
+        window_days=window_days,
+        stalled_lifts=_stalled_lifts(db, user_id, since),
+    )
 
 
 def _sleep_metrics(db: Session, user_id: int, since: datetime) -> SleepMetrics:
