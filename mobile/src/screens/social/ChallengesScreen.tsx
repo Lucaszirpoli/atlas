@@ -109,6 +109,8 @@ export function ChallengesScreen() {
       style={{ backgroundColor: colors.bg }}
       contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
       showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
     >
       {/* Academia + check-in: base do desafio "quem vai mais à academia". */}
       <TouchableOpacity

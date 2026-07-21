@@ -104,6 +104,8 @@ export function SleepScreen() {
       style={{ backgroundColor: colors.bg }}
       contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl + insets.bottom }}
       showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
     >
       <Card accent={colors.moduleSleep} style={{ marginBottom: spacing.lg }}>
         <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.md }}>

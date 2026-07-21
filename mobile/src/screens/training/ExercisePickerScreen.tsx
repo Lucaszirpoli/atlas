@@ -245,6 +245,8 @@ export function ExercisePickerScreen() {
         data={exercises}
         keyExtractor={(item) => String(item.id)}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         // Sem resultado, o caminho natural é cadastrar o que faltou — a base
         // não tem todo aparelho de toda academia, e a importação de outro app
         // também deixa nomes sem par.

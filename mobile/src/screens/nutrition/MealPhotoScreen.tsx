@@ -113,7 +113,7 @@ export function MealPhotoScreen() {
             <View style={{ flexDirection: "row", alignItems: "center", marginTop: spacing.xs }}>
               <TextInput
                 value={item.quantidade_editada}
-                onChangeText={(v) => updateQuantity(index, v.replace(/[^0-9.]/g, ""))}
+                onChangeText={(v) => updateQuantity(index, v.replace(/,/g, ".").replace(/[^0-9.]/g, ""))}
                 keyboardType="decimal-pad"
                 editable={!!item.food_id}
                 style={[

@@ -496,6 +496,7 @@ export function AddFoodScreen() {
         data={query.trim().length < 2 ? favorites : results}
         keyExtractor={(item) => String(item.id)}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
           query.trim().length < 2 ? (
             <View>

@@ -509,7 +509,7 @@ function SetInput({
       ) : null}
       <TextInput
         value={value}
-        onChangeText={(v) => onChangeText(v.replace(/[^0-9.]/g, ""))}
+        onChangeText={(v) => onChangeText(v.replace(/,/g, ".").replace(/[^0-9.]/g, ""))}
         keyboardType="decimal-pad"
         style={[
           compact ? type.body : type.h2,

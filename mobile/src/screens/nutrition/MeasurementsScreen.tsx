@@ -85,6 +85,8 @@ export function MeasurementsScreen() {
       style={{ backgroundColor: colors.bg }}
       contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
       showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
     >
       {/* Nova medida */}
       <Card style={{ marginBottom: spacing.lg }}>
@@ -103,7 +105,7 @@ export function MeasurementsScreen() {
         <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm, alignItems: "center" }}>
           <TextInput
             value={valueCm}
-            onChangeText={(v) => setValueCm(v.replace(/[^0-9.]/g, ""))}
+            onChangeText={(v) => setValueCm(v.replace(/,/g, ".").replace(/[^0-9.]/g, ""))}
             placeholder="0.0"
             placeholderTextColor={colors.textSecondary}
             keyboardType="decimal-pad"

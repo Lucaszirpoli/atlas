@@ -151,6 +151,8 @@ export function GoalSettingsScreen() {
       style={{ backgroundColor: colors.bg }}
       contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl + insets.bottom }}
       showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
     >
       {/* Meta atual — compacta (uma linha), pra sobrar espaço pros campos do
           cálculo automático abaixo. */}
@@ -372,7 +374,7 @@ function ManualInput({
       <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.xs }]}>{label}</Text>
       <TextInput
         value={value}
-        onChangeText={(v) => onChangeText(v.replace(/[^0-9.]/g, ""))}
+        onChangeText={(v) => onChangeText(v.replace(/,/g, ".").replace(/[^0-9.]/g, ""))}
         keyboardType="decimal-pad"
         style={[
           type.body,

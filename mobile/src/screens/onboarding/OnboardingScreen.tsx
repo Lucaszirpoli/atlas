@@ -238,7 +238,13 @@ export function OnboardingScreen() {
           />
         </View>
       </View>
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, flexGrow: 1 }}>{renderStep()}</ScrollView>
+      <ScrollView
+        contentContainerStyle={{ padding: spacing.lg, flexGrow: 1 }}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
+        {renderStep()}
+      </ScrollView>
       <View style={{ flexDirection: "row", gap: spacing.sm, padding: spacing.lg, paddingBottom: spacing.lg + insets.bottom }}>
         {step > 0 ? (
           <View style={{ flex: 1 }}>
@@ -300,7 +306,7 @@ function NumberInput({
     <View style={{ flexDirection: "row", alignItems: "center" }}>
       <TextInput
         value={value}
-        onChangeText={(v) => onChangeText(v.replace(/[^0-9.]/g, ""))}
+        onChangeText={(v) => onChangeText(v.replace(/,/g, ".").replace(/[^0-9.]/g, ""))}
         keyboardType="decimal-pad"
         autoFocus
         style={[
