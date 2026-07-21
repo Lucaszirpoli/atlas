@@ -9,6 +9,7 @@ import { useAuth } from "../context/AuthContext";
 import { AiHubScreen } from "../screens/ai/AiHubScreen";
 import { AssistantScreen } from "../screens/ai/AssistantScreen";
 import { ChatScreen } from "../screens/ai/ChatScreen";
+import { CoachChatScreen } from "../screens/coaching/CoachChatScreen";
 import { CoachingScreen } from "../screens/coaching/CoachingScreen";
 import { EvolutionScreen } from "../screens/evolution/EvolutionScreen";
 import { DashboardScreen } from "../screens/main/DashboardScreen";
@@ -52,6 +53,7 @@ function AppStack() {
       <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: true, title: "Perfil" }} />
       <Stack.Screen name="Paywall" component={PaywallScreen} options={{ headerShown: true, title: "ATLAS Pro" }} />
       <Stack.Screen name="Coaching" component={CoachingScreen} options={{ headerShown: true, title: "Coaching" }} />
+      <Stack.Screen name="CoachChat" component={CoachChatScreen} options={{ headerShown: true, title: "Pergunte ao coach" }} />
       <Stack.Screen name="Evolution" component={EvolutionScreen} options={{ headerShown: true, title: "Evolução" }} />
       <Stack.Screen name="AiHub" component={AiHubScreen} options={{ headerShown: true, title: "Treino com IA" }} />
       <Stack.Screen name="Assistant" component={AssistantScreen} options={{ headerShown: true, title: "Assistente" }} />

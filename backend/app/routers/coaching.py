@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from datetime import datetime, timezone
 
+from app.coaching import chat as coach_chat
 from app.coaching.engine import analyze
 from app.coaching.metrics import compute_metrics
 from app.core.db import get_db
@@ -14,6 +15,8 @@ from app.models.user import Plan, User
 from app.schemas.coaching import (
     ApplyDietRequest,
     ApplyDietResult,
+    CoachChatRequest,
+    CoachChatResponse,
     CoachingAdjustmentRead,
     CoachingAnalysis,
     RevertResult,
@@ -121,6 +124,22 @@ def apply_diet_adjustment(
         message=f"Pronto — {sentido} sua meta em {abs(actual_delta)} kcal, agora {round(new_kcal)} kcal/dia. "
         "Reavalie em 2 semanas.",
     )
+
+
+@router.post("/chat", response_model=CoachChatResponse)
+def coach_chat_turn(
+    payload: CoachChatRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CoachChatResponse:
+    """Pergunte ao coach. A IA responde ANCORADA na análise determinística (não
+    recalcula nada, não muda plano). Exclusiva do Pro; sem chave da Anthropic,
+    devolve um resumo determinístico da análise."""
+    _require_pro(current_user)
+    analysis = analyze(compute_metrics(db, current_user.id))
+    history = [{"role": h.role, "content": h.content} for h in payload.history]
+    texto, used_ai = coach_chat.answer(analysis, payload.question, history)
+    return CoachChatResponse(answer=texto, used_ai=used_ai)
 
 
 @router.get("/adjustments", response_model=list[CoachingAdjustmentRead])

@@ -141,6 +141,43 @@ export function CoachingScreen() {
         <AnalysisView analysis={analysis} onApplied={onApplied} />
       ) : null}
 
+      {/* Pergunte ao coach — a IA que EXPLICA a análise (não muda plano). */}
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={() => navigation.navigate("CoachChat")}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.md,
+          backgroundColor: colors.primary + "14",
+          borderWidth: 1,
+          borderColor: colors.primary + "33",
+          borderRadius: radius.card,
+          padding: spacing.md,
+          marginBottom: spacing.md,
+        }}
+      >
+        <View
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 14,
+            backgroundColor: colors.primary + "22",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ionicons name="chatbubbles" size={22} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>Pergunte ao coach</Text>
+          <Text style={[type.caption, { color: colors.textSecondary, marginTop: 1 }]}>
+            Tire dúvidas sobre sua análise, treino, dieta e sono
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+      </TouchableOpacity>
+
       {/* Gráfico simples do período — UM de cada vez (peso/calorias/treino),
           com registro de peso ali mesmo. Absorve a antiga tela de Evolução. */}
       <CoachingProgress periodDays={periodDays} onDataChanged={load} />

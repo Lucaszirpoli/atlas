@@ -86,3 +86,17 @@ export async function revertAdjustment(id: number): Promise<RevertResult> {
   const { data } = await api.post<RevertResult>(`/coaching/adjustments/${id}/revert`, {});
   return data;
 }
+
+export type CoachChatMessage = { role: "user" | "assistant"; content: string };
+
+/** Pergunte ao coach. A IA responde ancorada na análise determinística. */
+export async function coachChat(
+  question: string,
+  history: CoachChatMessage[]
+): Promise<{ answer: string; used_ai: boolean }> {
+  const { data } = await api.post<{ answer: string; used_ai: boolean }>("/coaching/chat", {
+    question,
+    history,
+  });
+  return data;
+}

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CoachingFinding(BaseModel):
@@ -43,6 +43,21 @@ class RevertResult(BaseModel):
     reverted: bool
     restored_kcal: float
     message: str
+
+
+class CoachChatMessage(BaseModel):
+    role: str  # user | assistant
+    content: str
+
+
+class CoachChatRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=1000)
+    history: list[CoachChatMessage] = Field(default_factory=list)
+
+
+class CoachChatResponse(BaseModel):
+    answer: str
+    used_ai: bool
 
 
 class CoachingAnalysis(BaseModel):
