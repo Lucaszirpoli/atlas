@@ -8,6 +8,8 @@ export type CoachingFinding = {
   title: string;
   detail: string;
   proposal: string | null;
+  // Presente só quando o ajuste é aplicável em 1 toque (ex.: { kcal_delta: -200 }).
+  adjustment: { kcal_delta?: number } | null;
 };
 
 export type CoachingMetrics = {
@@ -40,5 +42,19 @@ export type CoachingAnalysis = {
 /** Análise semanal do Coaching (Pro). Determinística no backend — sem token. */
 export async function getCoachingAnalysis(): Promise<CoachingAnalysis> {
   const { data } = await api.get<CoachingAnalysis>("/coaching/analysis");
+  return data;
+}
+
+export type ApplyDietResult = {
+  applied: boolean;
+  previous_kcal: number;
+  new_kcal: number;
+  kcal_delta: number;
+  message: string;
+};
+
+/** Aplica o ajuste calórico de um achado — cria uma nova versão da meta. */
+export async function applyDietAdjustment(findingKey: string): Promise<ApplyDietResult> {
+  const { data } = await api.post<ApplyDietResult>("/coaching/apply/diet", { finding_key: findingKey });
   return data;
 }

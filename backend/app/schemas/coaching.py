@@ -9,6 +9,20 @@ class CoachingFinding(BaseModel):
     title: str
     detail: str
     proposal: str | None = None
+    # Presente só quando o ajuste é aplicável (ex.: {"kcal_delta": -200}).
+    adjustment: dict[str, Any] | None = None
+
+
+class ApplyDietRequest(BaseModel):
+    finding_key: str
+
+
+class ApplyDietResult(BaseModel):
+    applied: bool
+    previous_kcal: float
+    new_kcal: float
+    kcal_delta: int
+    message: str
 
 
 class CoachingAnalysis(BaseModel):

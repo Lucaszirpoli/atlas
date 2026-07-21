@@ -13,7 +13,7 @@ def get_current_goal(db: Session, user_id: int) -> CalorieGoal | None:
     return db.execute(
         select(CalorieGoal)
         .where(CalorieGoal.user_id == user_id)
-        .order_by(CalorieGoal.created_at.desc())
+        .order_by(CalorieGoal.created_at.desc(), CalorieGoal.id.desc())
         .limit(1)
     ).scalar_one_or_none()
 

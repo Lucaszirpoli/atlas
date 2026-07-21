@@ -229,7 +229,7 @@ def nutrition_history(
     goal = db.execute(
         select(CalorieGoal)
         .where(CalorieGoal.user_id == current_user.id)
-        .order_by(CalorieGoal.created_at.desc())
+        .order_by(CalorieGoal.created_at.desc(), CalorieGoal.id.desc())
         .limit(1)
     ).scalar_one_or_none()
     goal_kcal = goal.kcal if goal else None

@@ -4,6 +4,7 @@ import React, { useCallback, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import {
+  applyDietAdjustment,
   getCoachingAnalysis,
   type CoachingAnalysis,
   type CoachingFinding,
@@ -11,8 +12,10 @@ import {
 } from "../../api/coaching";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
+import { InfoDialog } from "../../components/InfoDialog";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
+import { mensagemDeErro } from "../../utils/errorMessage";
 
 /**
  * Coaching — a área-diferencial do plano Pro. Reúne objetivo, metas, medidas,
@@ -33,22 +36,31 @@ export function CoachingScreen() {
   const [analysis, setAnalysis] = useState<CoachingAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState(false);
+  const [aviso, setAviso] = useState<{ title: string; message: string } | null>(null);
+
+  const load = useCallback(() => {
+    if (!isPro) return Promise.resolve();
+    setErro(false);
+    return getCoachingAnalysis()
+      .then(setAnalysis)
+      .catch(() => setErro(true))
+      .finally(() => setLoading(false));
+  }, [isPro]);
 
   // Recarrega a cada foco: a pessoa registra peso/refeição e volta pra ver o
   // que mudou. Só pro Pro — o Free nem chega aqui (paywall abaixo).
   useFocusEffect(
     useCallback(() => {
-      if (!isPro) return;
-      let vivo = true;
-      setErro(false);
-      getCoachingAnalysis()
-        .then((a) => vivo && setAnalysis(a))
-        .catch(() => vivo && setErro(true))
-        .finally(() => vivo && setLoading(false));
-      return () => {
-        vivo = false;
-      };
-    }, [isPro])
+      load();
+    }, [load])
+  );
+
+  const onApplied = useCallback(
+    (title: string, message: string) => {
+      setAviso({ title, message });
+      load(); // a análise muda depois do ajuste — recarrega
+    },
+    [load]
   );
 
   if (!isPro) {
@@ -73,7 +85,7 @@ export function CoachingScreen() {
           </Text>
         </Card>
       ) : analysis ? (
-        <AnalysisView analysis={analysis} />
+        <AnalysisView analysis={analysis} onApplied={onApplied} />
       ) : null}
 
       {/* Módulos pessoais que passaram a viver dentro do Coaching. */}
@@ -102,11 +114,24 @@ export function CoachingScreen() {
         subtitle="Circunferências e fotos de progresso"
         onPress={() => navigation.navigate("NutritionModule", { screen: "Measurements" })}
       />
+
+      <InfoDialog
+        visible={aviso != null}
+        onClose={() => setAviso(null)}
+        title={aviso?.title ?? ""}
+        message={aviso?.message}
+      />
     </ScrollView>
   );
 }
 
-function AnalysisView({ analysis }: { analysis: CoachingAnalysis }) {
+function AnalysisView({
+  analysis,
+  onApplied,
+}: {
+  analysis: CoachingAnalysis;
+  onApplied: (title: string, message: string) => void;
+}) {
   const { colors, type, spacing, radius } = useTheme();
   const m = analysis.metrics;
 
@@ -141,7 +166,7 @@ function AnalysisView({ analysis }: { analysis: CoachingAnalysis }) {
 
       {/* Achados com ajuste proposto */}
       {analysis.findings.map((f) => (
-        <FindingCard key={f.key} f={f} />
+        <FindingCard key={f.key} f={f} onApplied={onApplied} />
       ))}
 
       {/* Lacunas de dado — o que registrar pra afinar a análise */}
@@ -205,12 +230,37 @@ function MetricStrip({ m }: { m: CoachingMetrics }) {
   );
 }
 
-function FindingCard({ f }: { f: CoachingFinding }) {
+function FindingCard({
+  f,
+  onApplied,
+}: {
+  f: CoachingFinding;
+  onApplied: (title: string, message: string) => void;
+}) {
   const { colors, type, spacing, radius } = useTheme();
+  const [applying, setApplying] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
   const tint =
     f.severity === "action" ? colors.primary : f.severity === "attention" ? colors.warning : colors.success;
   const icon =
     f.severity === "action" ? "flash" : f.severity === "attention" ? "alert-circle" : "checkmark-circle";
+
+  // Ajuste aplicável em 1 toque (só nos achados de caloria). Muda a meta de
+  // verdade — por isso pede confirmação antes.
+  const podeAplicar = typeof f.adjustment?.kcal_delta === "number" && f.adjustment.kcal_delta !== 0;
+
+  async function aplicar() {
+    setErro(null);
+    setApplying(true);
+    try {
+      const r = await applyDietAdjustment(f.key);
+      onApplied("Meta ajustada", r.message);
+    } catch (e: any) {
+      setErro(mensagemDeErro(e, "Não consegui aplicar agora."));
+    } finally {
+      setApplying(false);
+    }
+  }
 
   return (
     <Card accent={tint} style={{ marginBottom: spacing.md }}>
@@ -232,6 +282,28 @@ function FindingCard({ f }: { f: CoachingFinding }) {
         >
           <Text style={[type.caption, { color: tint, fontWeight: "700", marginBottom: 2 }]}>Sugestão</Text>
           <Text style={[type.bodySmall, { color: colors.textPrimary, lineHeight: 20 }]}>{f.proposal}</Text>
+        </View>
+      ) : null}
+
+      {podeAplicar ? (
+        <View style={{ marginTop: spacing.sm }}>
+          <Button
+            title={
+              applying
+                ? "Aplicando..."
+                : `Aplicar ajuste (${f.adjustment!.kcal_delta! > 0 ? "+" : ""}${f.adjustment!.kcal_delta} kcal)`
+            }
+            variant="secondary"
+            compact
+            loading={applying}
+            onPress={aplicar}
+          />
+          <Text style={[type.caption, { color: colors.textSecondary, marginTop: 4, textAlign: "center" }]}>
+            Cria uma nova versão da sua meta. Você pode mudar quando quiser em Objetivo e metas.
+          </Text>
+          {erro ? (
+            <Text style={[type.caption, { color: colors.warning, marginTop: 4, textAlign: "center" }]}>{erro}</Text>
+          ) : null}
         </View>
       ) : null}
     </Card>

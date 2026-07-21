@@ -133,7 +133,7 @@ def _nutrition_metrics(db: Session, user_id: int, since: datetime, window_days: 
     goal = db.execute(
         select(CalorieGoal)
         .where(CalorieGoal.user_id == user_id)
-        .order_by(CalorieGoal.created_at.desc())
+        .order_by(CalorieGoal.created_at.desc(), CalorieGoal.id.desc())
         .limit(1)
     ).scalar_one_or_none()
 

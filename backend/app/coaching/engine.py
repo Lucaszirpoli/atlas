@@ -47,6 +47,10 @@ class Finding:
     title: str
     detail: str
     proposal: str | None = None
+    # Ajuste APLICÁVEL (só nos achados de caloria): {"kcal_delta": int}. O app
+    # mostra "Aplicar" e o backend cria uma nova versão da meta. Achados de
+    # hábito (proteína, sono, passos) não têm — são orientação, não um botão.
+    adjustment: dict | None = None
 
 
 @dataclass
@@ -81,20 +85,24 @@ def _weight_findings(m: Metrics) -> list[Finding]:
     trend = w.trend_kg_per_week
     sinal = f"{trend:+.2f} kg/sem ({pct:+.2f}%/sem)"
     goal = m.goal
+    gk = m.nutrition.goal_kcal
 
     if goal == "emagrecimento":
         if abs(pct) < CUT_PLATEAU_ABS:
+            corte = round(gk * 0.1) if gk else 200
             return [Finding("plateau_cut", SEV_ACTION, "Peso estagnou no corte",
                             f"Nas últimas {w.span_days} dias o peso ficou praticamente parado ({sinal}), "
                             "mas o objetivo é emagrecer.",
-                            "Reduzir ~10% das calorias (uns 150–250 kcal/dia) OU somar ~2.000 passos/dia por "
-                            "2 semanas e reavaliar. Ajuste pequeno de propósito.")]
+                            f"Reduzir ~{corte} kcal/dia (uns 10%) OU somar ~2.000 passos/dia por 2 semanas e "
+                            "reavaliar. Ajuste pequeno de propósito.",
+                            adjustment={"kcal_delta": -corte})]
         if pct <= CUT_FAST_LOSS:
             return [Finding("fast_loss", SEV_ATTENTION, "Emagrecendo rápido demais",
                             f"A perda está em {sinal} — acima de ~1%/sem, o risco de perder músculo e "
                             "travar o metabolismo sobe.",
-                            "Somar ~100–150 kcal/dia (de preferência carboidrato perto do treino) e manter "
-                            "a proteína alta pra segurar o músculo.")]
+                            "Somar ~125 kcal/dia (de preferência carboidrato perto do treino) e manter "
+                            "a proteína alta pra segurar o músculo.",
+                            adjustment={"kcal_delta": 125})]
         return [Finding("on_track_cut", SEV_INFO, "Corte no ritmo certo",
                         f"Perda saudável e sustentável ({sinal}). Segue firme.")]
 
@@ -103,23 +111,28 @@ def _weight_findings(m: Metrics) -> list[Finding]:
             return [Finding("bulk_losing", SEV_ACTION, "Você está perdendo peso, não ganhando",
                             f"O objetivo é ganhar massa, mas o peso está caindo ({sinal}) — provável déficit "
                             "de calorias.",
-                            "Somar ~150–250 kcal/dia (comida de verdade, não só treino) e reavaliar em 2 semanas.")]
+                            "Somar ~200 kcal/dia (comida de verdade, não só treino) e reavaliar em 2 semanas.",
+                            adjustment={"kcal_delta": 200})]
         if abs(pct) < BULK_STALL_ABS or (trend is not None and trend <= 0):
             return [Finding("bulk_stall", SEV_ACTION, "Ganho travado",
                             f"O peso não está subindo ({sinal}), mas o objetivo é ganhar massa.",
-                            "Somar ~100–150 kcal/dia e reavaliar em 2 semanas. Sem pressa: ganho magro é lento.")]
+                            "Somar ~125 kcal/dia e reavaliar em 2 semanas. Sem pressa: ganho magro é lento.",
+                            adjustment={"kcal_delta": 125})]
         if pct >= BULK_FAST_GAIN:
             return [Finding("fast_gain", SEV_ATTENTION, "Ganhando rápido demais",
                             f"O ganho está em {sinal} — acima disso, boa parte vira gordura.",
-                            "Reduzir ~100 kcal/dia pra segurar o ganho num ritmo mais magro.")]
+                            "Reduzir ~100 kcal/dia pra segurar o ganho num ritmo mais magro.",
+                            adjustment={"kcal_delta": -100})]
         return [Finding("on_track_bulk", SEV_INFO, "Ganho magro no ritmo",
                         f"Ganho controlado ({sinal}), do jeito que preserva definição.")]
 
     # manutenção / recomposição / performance: só sinaliza deriva grande.
     if goal in {"manutencao", "recomposicao", "performance"} and abs(pct) > MAINTAIN_DRIFT:
+        delta = -100 if pct > 0 else 100  # empurra no sentido oposto da deriva
         return [Finding("weight_drift", SEV_ATTENTION, "Peso derivando",
                         f"O objetivo é manter, mas o peso está mudando a {sinal}.",
-                        "Ajustar ~100 kcal/dia no sentido oposto pra estabilizar.")]
+                        f"Ajustar {'−' if delta < 0 else '+'}100 kcal/dia no sentido oposto pra estabilizar.",
+                        adjustment={"kcal_delta": delta})]
     return []
 
 
