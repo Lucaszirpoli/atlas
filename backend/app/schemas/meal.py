@@ -24,6 +24,11 @@ class MealCategoryUpdate(BaseModel):
 class MealLogItemCreate(BaseModel):
     food_id: int
     quantity_g: float = Field(gt=0)
+    # Opcional: quando a pessoa escolheu por medida caseira ("2 unidades"),
+    # o app manda o rótulo + a contagem pra guardar como foi registrado. A
+    # quantidade em gramas continua obrigatória e é a base do cálculo.
+    unit_label: str | None = Field(default=None, max_length=50)
+    unit_amount: float | None = Field(default=None, gt=0)
 
 
 class MealLogCreate(BaseModel):
@@ -39,6 +44,8 @@ class MealLogItemRead(BaseModel):
     food_id: int
     food: FoodRead
     quantity_g: float
+    unit_label: str | None = None
+    unit_amount: float | None = None
     kcal: float
     protein_g: float
     carbs_g: float
@@ -74,6 +81,8 @@ class ParsedMealItem(BaseModel):
 class SavedMealItemCreate(BaseModel):
     food_id: int
     quantity_g: float = Field(gt=0)
+    unit_label: str | None = Field(default=None, max_length=50)
+    unit_amount: float | None = Field(default=None, gt=0)
 
 
 class SavedMealCreate(BaseModel):
@@ -87,6 +96,8 @@ class SavedMealItemRead(BaseModel):
     food_id: int
     food: FoodRead
     quantity_g: float
+    unit_label: str | None = None
+    unit_amount: float | None = None
 
 
 class SavedMealRead(BaseModel):

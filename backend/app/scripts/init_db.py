@@ -18,6 +18,7 @@ from app.scripts import (
     seed_exercisedb,
     seed_exercises,
     seed_exercises_open,
+    seed_food_portions,
     seed_plant_based,
     seed_taco,
     seed_taco_official,
@@ -42,6 +43,12 @@ def run() -> None:
     # e derruba o boot antes do seed chegar a criar as colunas.
     seed_exercisedb.ensure_columns()
     backfill_exercise_category.run()
+
+    # Colunas de medida caseira (unit_label/unit_amount) em meal_log_items e
+    # saved_meal_items: mesmo motivo do ExerciseDB — precisam existir ANTES de a
+    # API registrar qualquer refeição num banco antigo. A tabela food_portions é
+    # nova, então o create_all acima já a cria; o backfill roda depois dos seeds.
+    seed_food_portions.ensure_columns()
 
     db = SessionLocal()
     try:
@@ -81,6 +88,10 @@ def run() -> None:
     # antiga (free-exercise-db) — sem apagar, pra não orfanar rotinas/histórico.
     # Idempotente e sem chamada de API (lê o snapshot versionado).
     seed_exercisedb.run()
+
+    # Medidas caseiras embutidas (gramas/unidades): deriva uma FoodPortion do
+    # default_portion de cada alimento. Depois dos seeds de comida, idempotente.
+    seed_food_portions.run()
 
     # Pro de cortesia (testadores) via env PRO_COMP_EMAILS. Só concede.
     grant_comp_pro.run()

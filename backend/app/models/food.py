@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, String, UniqueConstraint, event, func
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, UniqueConstraint, event, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -59,3 +59,32 @@ def _populate_search_text(_mapper, _connection, target: Food) -> None:
     """Mantém search_text sempre em sincronia com name/brand — um lugar só,
     impossível esquecer em algum ponto de inserção (seed, OFF, custom)."""
     target.search_text = normalize_search_text(target.name, target.brand)
+
+
+class FoodPortion(Base):
+    """Medida caseira nomeada de um alimento — "unidade", "fatia", "colher de
+    sopa", "concha" — com o peso em gramas de UMA unidade. Um alimento pode ter
+    várias. As gramas continuam sendo a base de todo cálculo nutricional; a
+    porção é só a forma humana de escolher a quantidade (ninguém pesa um ovo,
+    pensa "2 unidades").
+
+    `created_by_user_id` nulo = medida embutida (derivada da base/seed, visível
+    pra todo mundo); preenchido = medida personalizada que aquele usuário criou
+    pra aquele alimento (só ele vê). É o "unidades personalizadas" da Parte 3.2.
+    """
+
+    __tablename__ = "food_portions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    food_id: Mapped[int] = mapped_column(ForeignKey("foods.id", ondelete="CASCADE"), index=True)
+    # Rótulo no singular ("unidade", "fatia", "colher de sopa"). O app pluraliza
+    # na hora de exibir ("2 unidades") — não guardamos o plural aqui.
+    label: Mapped[str] = mapped_column(String(50))
+    grams: Mapped[float] = mapped_column(Float)  # gramas de UMA unidade
+    created_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

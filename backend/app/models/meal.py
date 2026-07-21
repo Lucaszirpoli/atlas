@@ -64,6 +64,13 @@ class MealLogItem(Base):
     food_id: Mapped[int] = mapped_column(ForeignKey("foods.id"))
     quantity_g: Mapped[float] = mapped_column(Float)
 
+    # Como a pessoa ESCOLHEU a quantidade (snapshot append-only, igual à
+    # nutrição). Quando registrou por medida caseira — "2 unidades" — guardamos
+    # o rótulo e a contagem pra mostrar assim no diário; quando digitou em
+    # gramas, ficam nulos. A base do cálculo é sempre quantity_g.
+    unit_label: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    unit_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     kcal: Mapped[float] = mapped_column(Float)
     protein_g: Mapped[float] = mapped_column(Float)
     carbs_g: Mapped[float] = mapped_column(Float)

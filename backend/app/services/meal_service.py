@@ -54,6 +54,8 @@ def log_meal(db: Session, user_id: int, payload: MealLogCreate) -> MealLog:
                 meal_log_id=meal_log.id,
                 food_id=food.id,
                 quantity_g=item.quantity_g,
+                unit_label=item.unit_label,
+                unit_amount=item.unit_amount,
                 **_snapshot_item(food, item.quantity_g),
             )
         )

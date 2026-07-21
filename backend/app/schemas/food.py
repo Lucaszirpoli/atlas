@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.food import FoodSource
 
@@ -36,3 +36,18 @@ class FoodCreate(BaseModel):
     sugar_g_per_100g: float | None = None
     default_portion_g: float = 100.0
     default_portion_label: str | None = None
+
+
+class FoodPortionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    label: str
+    grams: float
+    # True quando é uma medida criada pelo próprio usuário (dá pra apagar).
+    is_custom: bool
+
+
+class FoodPortionCreate(BaseModel):
+    label: str = Field(min_length=1, max_length=50)
+    grams: float = Field(gt=0, le=5000)
