@@ -58,3 +58,28 @@ export async function applyDietAdjustment(findingKey: string): Promise<ApplyDiet
   const { data } = await api.post<ApplyDietResult>("/coaching/apply/diet", { finding_key: findingKey });
   return data;
 }
+
+export type CoachingAdjustment = {
+  id: number;
+  finding_key: string;
+  kind: string;
+  kcal_delta: number;
+  prev_kcal: number;
+  new_kcal: number;
+  created_at: string;
+  reverted_at: string | null;
+};
+
+/** Histórico recente de ajustes aplicados (pra mostrar + oferecer Desfazer). */
+export async function listCoachingAdjustments(): Promise<CoachingAdjustment[]> {
+  const { data } = await api.get<CoachingAdjustment[]>("/coaching/adjustments");
+  return data;
+}
+
+export type RevertResult = { reverted: boolean; restored_kcal: number; message: string };
+
+/** Desfaz um ajuste: restaura a meta pro que era antes dele. */
+export async function revertAdjustment(id: number): Promise<RevertResult> {
+  const { data } = await api.post<RevertResult>(`/coaching/adjustments/${id}/revert`, {});
+  return data;
+}

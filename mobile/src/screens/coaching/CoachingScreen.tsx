@@ -6,6 +6,9 @@ import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "rea
 import {
   applyDietAdjustment,
   getCoachingAnalysis,
+  listCoachingAdjustments,
+  revertAdjustment,
+  type CoachingAdjustment,
   type CoachingAnalysis,
   type CoachingFinding,
   type CoachingMetrics,
@@ -34,6 +37,7 @@ export function CoachingScreen() {
   const isPro = user?.plan === "pro";
 
   const [analysis, setAnalysis] = useState<CoachingAnalysis | null>(null);
+  const [adjustments, setAdjustments] = useState<CoachingAdjustment[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState(false);
   const [aviso, setAviso] = useState<{ title: string; message: string } | null>(null);
@@ -41,8 +45,12 @@ export function CoachingScreen() {
   const load = useCallback(() => {
     if (!isPro) return Promise.resolve();
     setErro(false);
-    return getCoachingAnalysis()
-      .then(setAnalysis)
+    return Promise.all([
+      getCoachingAnalysis().then(setAnalysis),
+      listCoachingAdjustments()
+        .then(setAdjustments)
+        .catch(() => {}), // histórico é secundário; não derruba a tela
+    ])
       .catch(() => setErro(true))
       .finally(() => setLoading(false));
   }, [isPro]);
@@ -86,6 +94,14 @@ export function CoachingScreen() {
         </Card>
       ) : analysis ? (
         <AnalysisView analysis={analysis} onApplied={onApplied} />
+      ) : null}
+
+      {/* Ajustes que a pessoa aplicou — com Desfazer. */}
+      {adjustments.length > 0 ? (
+        <AdjustmentsSection
+          adjustments={adjustments}
+          onReverted={(msg) => onApplied("Ajuste desfeito", msg)}
+        />
       ) : null}
 
       {/* Módulos pessoais que passaram a viver dentro do Coaching. */}
@@ -307,6 +323,97 @@ function FindingCard({
         </View>
       ) : null}
     </Card>
+  );
+}
+
+function AdjustmentsSection({
+  adjustments,
+  onReverted,
+}: {
+  adjustments: CoachingAdjustment[];
+  onReverted: (message: string) => void;
+}) {
+  const { colors, type, spacing, radius } = useTheme();
+  const [revertingId, setRevertingId] = useState<number | null>(null);
+
+  async function desfazer(id: number) {
+    setRevertingId(id);
+    try {
+      const r = await revertAdjustment(id);
+      onReverted(r.message);
+    } catch {
+      // silencioso — a lista recarrega no próximo foco
+    } finally {
+      setRevertingId(null);
+    }
+  }
+
+  function quando(iso: string): string {
+    const dias = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+    if (dias <= 0) return "hoje";
+    if (dias === 1) return "ontem";
+    return `há ${dias} dias`;
+  }
+
+  return (
+    <>
+      <Text
+        style={[
+          type.caption,
+          { color: colors.textSecondary, letterSpacing: 1, textTransform: "uppercase", marginBottom: spacing.sm },
+        ]}
+      >
+        Ajustes que você aplicou
+      </Text>
+      <Card style={{ marginBottom: spacing.md }}>
+        {adjustments.map((a, i) => {
+          const revertido = a.reverted_at != null;
+          return (
+            <View
+              key={a.id}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                paddingVertical: spacing.sm,
+                borderTopWidth: i === 0 ? 0 : 1,
+                borderTopColor: colors.border,
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "600" }]}>
+                  Meta {a.kcal_delta > 0 ? "+" : ""}
+                  {Math.round(a.kcal_delta)} kcal ({Math.round(a.prev_kcal)} → {Math.round(a.new_kcal)})
+                </Text>
+                <Text style={[type.caption, { color: colors.textSecondary, marginTop: 1 }]}>
+                  {quando(a.created_at)}
+                  {revertido ? " · desfeito" : ""}
+                </Text>
+              </View>
+              {revertido ? (
+                <Ionicons name="arrow-undo" size={16} color={colors.textSecondary} />
+              ) : (
+                <TouchableOpacity
+                  onPress={() => desfazer(a.id)}
+                  disabled={revertingId === a.id}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: radius.pill,
+                    paddingVertical: 5,
+                    paddingHorizontal: 12,
+                    opacity: revertingId === a.id ? 0.5 : 1,
+                  }}
+                >
+                  <Text style={[type.caption, { color: colors.textPrimary, fontWeight: "700" }]}>
+                    {revertingId === a.id ? "..." : "Desfazer"}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          );
+        })}
+      </Card>
+    </>
   );
 }
 

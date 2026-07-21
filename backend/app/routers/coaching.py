@@ -2,13 +2,22 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from datetime import datetime, timezone
+
 from app.coaching.engine import analyze
 from app.coaching.metrics import compute_metrics
 from app.core.db import get_db
 from app.core.security import get_current_user
 from app.models.calorie_goal import CalorieGoal, GoalMode
+from app.models.coaching_adjustment import CoachingAdjustment
 from app.models.user import Plan, User
-from app.schemas.coaching import ApplyDietRequest, ApplyDietResult, CoachingAnalysis
+from app.schemas.coaching import (
+    ApplyDietRequest,
+    ApplyDietResult,
+    CoachingAdjustmentRead,
+    CoachingAnalysis,
+    RevertResult,
+)
 
 router = APIRouter(prefix="/coaching", tags=["coaching"])
 
@@ -87,6 +96,20 @@ def apply_diet_adjustment(
         sugar_g=goal.sugar_g,
     )
     db.add(novo)
+    # Registro auditável com o snapshot ANTERIOR — é o que o "Desfazer" restaura.
+    db.add(
+        CoachingAdjustment(
+            user_id=current_user.id,
+            finding_key=finding.key,
+            kind="diet_kcal",
+            kcal_delta=actual_delta,
+            prev_kcal=goal.kcal,
+            prev_protein_g=goal.protein_g,
+            prev_carbs_g=goal.carbs_g,
+            prev_fat_g=goal.fat_g,
+            new_kcal=new_kcal,
+        )
+    )
     db.commit()
 
     sentido = "aumentei" if actual_delta > 0 else "reduzi"
@@ -97,4 +120,58 @@ def apply_diet_adjustment(
         kcal_delta=actual_delta,
         message=f"Pronto — {sentido} sua meta em {abs(actual_delta)} kcal, agora {round(new_kcal)} kcal/dia. "
         "Reavalie em 2 semanas.",
+    )
+
+
+@router.get("/adjustments", response_model=list[CoachingAdjustmentRead])
+def list_adjustments(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[CoachingAdjustment]:
+    """Histórico recente de ajustes aplicados (com quais já foram desfeitos).
+    O app usa pra mostrar 'ajustes que você aplicou' e oferecer Desfazer."""
+    _require_pro(current_user)
+    return list(
+        db.execute(
+            select(CoachingAdjustment)
+            .where(CoachingAdjustment.user_id == current_user.id)
+            .order_by(CoachingAdjustment.created_at.desc(), CoachingAdjustment.id.desc())
+            .limit(5)
+        ).scalars()
+    )
+
+
+@router.post("/adjustments/{adjustment_id}/revert", response_model=RevertResult)
+def revert_adjustment(
+    adjustment_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> RevertResult:
+    """Desfaz um ajuste: restaura a meta pro snapshot de ANTES dele, criando uma
+    nova versão (append-only). Não desfaz duas vezes."""
+    _require_pro(current_user)
+    adj = db.get(CoachingAdjustment, adjustment_id)
+    if adj is None or adj.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ajuste não encontrado")
+    if adj.reverted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Esse ajuste já foi desfeito."
+        )
+
+    db.add(
+        CalorieGoal(
+            user_id=current_user.id,
+            mode=GoalMode.MANUAL,
+            kcal=adj.prev_kcal,
+            protein_g=adj.prev_protein_g,
+            carbs_g=adj.prev_carbs_g,
+            fat_g=adj.prev_fat_g,
+        )
+    )
+    adj.reverted_at = datetime.now(timezone.utc)
+    db.commit()
+    return RevertResult(
+        reverted=True,
+        restored_kcal=adj.prev_kcal,
+        message=f"Desfeito — sua meta voltou pra {round(adj.prev_kcal)} kcal/dia.",
     )

@@ -1,6 +1,7 @@
+from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class CoachingFinding(BaseModel):
@@ -22,6 +23,25 @@ class ApplyDietResult(BaseModel):
     previous_kcal: float
     new_kcal: float
     kcal_delta: int
+    message: str
+
+
+class CoachingAdjustmentRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    finding_key: str
+    kind: str
+    kcal_delta: float
+    prev_kcal: float
+    new_kcal: float
+    created_at: datetime
+    reverted_at: datetime | None
+
+
+class RevertResult(BaseModel):
+    reverted: bool
+    restored_kcal: float
     message: str
 
 
