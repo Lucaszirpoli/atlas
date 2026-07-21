@@ -15,7 +15,6 @@ import { createRoutinesBulk, listRoutines } from "../../api/routines";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { InfoDialog } from "../../components/InfoDialog";
-import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
 import { mensagemDeErro } from "../../utils/errorMessage";
 
@@ -93,9 +92,6 @@ function slotsToExercises(session: Session) {
 export function AiHubScreen() {
   const { colors, type, spacing, radius } = useTheme();
   const navigation = useNavigation<any>();
-  const { user } = useAuth();
-  const isPro = user?.plan === "pro";
-
   const [methods, setMethods] = useState<TrainingMethod[]>([]);
   const [selected, setSelected] = useState<TrainingMethod | null>(null);
   // Ficha completa do método aberto. Buscada só ao abrir (a lista continua
@@ -154,21 +150,6 @@ export function AiHubScreen() {
     } finally {
       setLoading(false);
     }
-  }
-
-  // "Criar treino com IA": conversa — a IA pergunta rotina/objetivo/dias/local
-  // e monta o treino pra pessoa. Pro-only; Free vê o card mas cai no paywall.
-  function handleCreateWithAi() {
-    if (!isPro) {
-      navigation.navigate("Paywall");
-      return;
-    }
-    navigation.navigate("Assistant", {
-      autoSend:
-        "Quero que você monte um treino personalizado pra mim. Me pergunte o que precisar — " +
-        "meu objetivo, quantos dias por semana posso treinar, onde treino (academia completa/básica ou casa), " +
-        "quanto tempo tenho por sessão, e preferências ou limitações. Depois monte o treino completo.",
-    });
   }
 
   async function autoSavePlan(r: GenerateTrainingResult) {
@@ -598,50 +579,14 @@ export function AiHubScreen() {
       style={{ backgroundColor: colors.bg }}
       contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
     >
-      <Text style={[type.h1, { color: colors.textPrimary }]}>Monte seu treino</Text>
+      <Text style={[type.h1, { color: colors.textPrimary }]}>Métodos de treino</Text>
       <Text style={[type.body, { color: colors.textSecondary, marginTop: 4 }]}>
-        A IA monta um treino do zero pra você (Pro), ou escolha um dos 10 métodos consagrados — fiel ao
-        método (frequência, volume, proporção e ordem).
+        Escolha um dos 10 métodos consagrados — o treino é montado fiel ao método (frequência, volume,
+        proporção e ordem dos exercícios).
       </Text>
 
-      {/* Criar treino com IA (conversa): a IA pergunta rotina/objetivo e monta.
-          Pro-only — quem é Free vê o card mas cai no paywall ao tocar. */}
-      <TouchableOpacity activeOpacity={0.85} onPress={handleCreateWithAi}>
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            backgroundColor: colors.primary,
-            borderRadius: radius.card,
-            padding: spacing.md,
-            marginTop: spacing.md,
-          }}
-        >
-          <View
-            style={{
-              width: 46,
-              height: 46,
-              borderRadius: 15,
-              backgroundColor: "rgba(255,255,255,0.22)",
-              alignItems: "center",
-              justifyContent: "center",
-              marginRight: spacing.md,
-            }}
-          >
-            <Ionicons name="sparkles" size={24} color="#FFFFFF" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[type.h2, { color: "#FFFFFF", fontSize: 16 }]}>Criar treino com IA</Text>
-            <Text style={[type.caption, { color: "rgba(255,255,255,0.9)" }]} numberOfLines={2}>
-              A IA pergunta seu objetivo, dias e preferências e monta pra você{isPro ? "" : " · Pro"}
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
-        </View>
-      </TouchableOpacity>
-
       <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.lg, fontWeight: "700" }]}>
-        OU ESCOLHA UM MÉTODO PRONTO
+        ESCOLHA UM MÉTODO
       </Text>
 
       {methods.map((m) => (

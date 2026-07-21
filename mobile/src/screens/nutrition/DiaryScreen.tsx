@@ -141,13 +141,13 @@ export function DiaryScreen() {
       refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />}
       showsVerticalScrollIndicator={false}
     >
-      {/* Atalhos — Meta em destaque (maior), Medidas compacto ao lado. */}
-      <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md }}>
+      {/* Meta de calorias — essencial pro Free rastrear (define kcal/macros).
+          "Medidas" saiu daqui: migrou pro Coaching (Pro), junto de evolução. */}
+      <View style={{ marginBottom: spacing.md }}>
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={() => navigation.navigate("GoalSettings")}
           style={{
-            flex: 1,
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "center",
@@ -160,38 +160,19 @@ export function DiaryScreen() {
           }}
         >
           <Ionicons name="flag" size={20} color={colors.primary} />
-          <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>Minha meta</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate("Measurements")}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: spacing.xs,
-            backgroundColor: colors.surface,
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: radius.card,
-            paddingVertical: spacing.md,
-            paddingHorizontal: spacing.md,
-          }}
-        >
-          <Ionicons name="body" size={18} color={colors.textSecondary} />
-          <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "600" }]}>Medidas</Text>
+          <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>Minha meta de calorias</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Entrada ÚNICA de "montar dieta" — dentro dela ficam as duas formas:
-          com IA (bate a meta de macros) e as dietas prontas curadas. */}
+      {/* Dietas prontas (Free). A geração de dieta por IA saiu daqui — passou a
+          ser parte do Coaching (Pro). */}
       <TouchableOpacity
         activeOpacity={0.85}
-        onPress={() => navigation.navigate("AiDiet")}
+        onPress={() => navigation.navigate("DietTemplates")}
         style={{
           flexDirection: "row",
           alignItems: "center",
-          backgroundColor: colors.secondary,
+          backgroundColor: colors.moduleNutrition,
           borderRadius: radius.card,
           padding: spacing.md,
           marginBottom: spacing.md,
@@ -211,9 +192,9 @@ export function DiaryScreen() {
           <Ionicons name="restaurant" size={20} color="#FFFFFF" />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={[type.bodySmall, { color: "#FFFFFF", fontWeight: "700" }]}>Montar dieta</Text>
+          <Text style={[type.bodySmall, { color: "#FFFFFF", fontWeight: "700" }]}>Dietas prontas</Text>
           <Text style={[type.caption, { color: "rgba(255,255,255,0.9)" }]} numberOfLines={2}>
-            Com IA (bate sua meta) ou escolha uma dieta pronta
+            Escolha um cardápio pronto e adapte ao seu dia
           </Text>
         </View>
         <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
