@@ -1,8 +1,14 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
-import React from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import React, { useCallback, useState } from "react";
+import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
+import {
+  getCoachingAnalysis,
+  type CoachingAnalysis,
+  type CoachingFinding,
+  type CoachingMetrics,
+} from "../../api/coaching";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { useAuth } from "../../context/AuthContext";
@@ -24,44 +30,51 @@ export function CoachingScreen() {
   const { user } = useAuth();
   const isPro = user?.plan === "pro";
 
+  const [analysis, setAnalysis] = useState<CoachingAnalysis | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState(false);
+
+  // Recarrega a cada foco: a pessoa registra peso/refeição e volta pra ver o
+  // que mudou. Só pro Pro — o Free nem chega aqui (paywall abaixo).
+  useFocusEffect(
+    useCallback(() => {
+      if (!isPro) return;
+      let vivo = true;
+      setErro(false);
+      getCoachingAnalysis()
+        .then((a) => vivo && setAnalysis(a))
+        .catch(() => vivo && setErro(true))
+        .finally(() => vivo && setLoading(false));
+      return () => {
+        vivo = false;
+      };
+    }, [isPro])
+  );
+
   if (!isPro) {
     return <CoachingPaywall />;
   }
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}>
-      {/* Estado atual — a análise semanal do motor entra aqui na Fase 2. */}
-      <Card style={{ marginBottom: spacing.md }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: spacing.sm }}>
-          <Ionicons name="compass" size={22} color={colors.primary} />
-          <Text style={[type.h2, { color: colors.textPrimary, flex: 1 }]}>Seu Coaching</Text>
-        </View>
-        <Text style={[type.body, { color: colors.textSecondary, lineHeight: 22 }]}>
-          Acompanhamento contínuo que cruza treino, dieta, sono e evolução para propor ajustes graduais —
-          sempre com o seu aval antes de mudar qualquer plano.
-        </Text>
-        <View
-          style={{
-            marginTop: spacing.md,
-            padding: spacing.md,
-            borderRadius: radius.button,
-            backgroundColor: colors.primary + "12",
-            borderWidth: 1,
-            borderColor: colors.primary + "33",
-          }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Ionicons name="construct" size={16} color={colors.primary} />
-            <Text style={[type.bodySmall, { color: colors.primary, fontWeight: "700" }]}>
-              Análise da semana — em construção
-            </Text>
-          </View>
-          <Text style={[type.caption, { color: colors.textSecondary, marginTop: 4, lineHeight: 18 }]}>
-            O motor que lê seus registros (peso, adesão, desempenho, sono) e sugere ajustes com base em
-            regras — sem inventar — está sendo montado. Enquanto isso, use os módulos abaixo.
+      {/* Análise da semana — o motor determinístico (sem IA) lê os registros. */}
+      {loading && !analysis ? (
+        <Card style={{ marginBottom: spacing.md, alignItems: "center", paddingVertical: spacing.xl }}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm }]}>
+            Lendo seus registros...
           </Text>
-        </View>
-      </Card>
+        </Card>
+      ) : erro ? (
+        <Card style={{ marginBottom: spacing.md }}>
+          <Text style={[type.body, { color: colors.textPrimary }]}>Não consegui carregar sua análise agora.</Text>
+          <Text style={[type.caption, { color: colors.textSecondary, marginTop: 4 }]}>
+            Puxe pra atualizar ou tente de novo em instantes.
+          </Text>
+        </Card>
+      ) : analysis ? (
+        <AnalysisView analysis={analysis} />
+      ) : null}
 
       {/* Módulos pessoais que passaram a viver dentro do Coaching. */}
       <Text style={[type.caption, { color: colors.textSecondary, letterSpacing: 1, textTransform: "uppercase", marginBottom: spacing.sm }]}>
@@ -90,6 +103,138 @@ export function CoachingScreen() {
         onPress={() => navigation.navigate("NutritionModule", { screen: "Measurements" })}
       />
     </ScrollView>
+  );
+}
+
+function AnalysisView({ analysis }: { analysis: CoachingAnalysis }) {
+  const { colors, type, spacing, radius } = useTheme();
+  const m = analysis.metrics;
+
+  return (
+    <>
+      {/* Manchete + confiança */}
+      <Card style={{ marginBottom: spacing.md }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: spacing.xs }}>
+          <Ionicons name="compass" size={22} color={colors.primary} />
+          <Text style={[type.h2, { color: colors.textPrimary, flex: 1 }]}>Seu Coaching</Text>
+          <View
+            style={{
+              backgroundColor: colors.surfaceAlt,
+              borderRadius: radius.pill,
+              paddingVertical: 3,
+              paddingHorizontal: 9,
+            }}
+          >
+            <Text style={[type.caption, { color: colors.textSecondary, fontWeight: "700" }]}>
+              {analysis.window_days} dias
+            </Text>
+          </View>
+        </View>
+        <Text style={[type.body, { color: colors.textPrimary, lineHeight: 22 }]}>{analysis.headline}</Text>
+        <Text style={[type.caption, { color: colors.textSecondary, marginTop: 6 }]}>
+          Análise por regras dos seus registros — confiança {analysis.confidence}.
+        </Text>
+      </Card>
+
+      {/* Métricas destiladas (só quando há dado que sustente) */}
+      {analysis.has_enough_data ? <MetricStrip m={m} /> : null}
+
+      {/* Achados com ajuste proposto */}
+      {analysis.findings.map((f) => (
+        <FindingCard key={f.key} f={f} />
+      ))}
+
+      {/* Lacunas de dado — o que registrar pra afinar a análise */}
+      {analysis.data_gaps.length > 0 ? (
+        <Card style={{ marginBottom: spacing.md }}>
+          <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700", marginBottom: spacing.xs }]}>
+            {analysis.has_enough_data ? "Pra afinar a análise" : "Me dê um pouco mais pra trabalhar"}
+          </Text>
+          {analysis.data_gaps.map((g, i) => (
+            <View key={i} style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
+              <Ionicons name="ellipse" size={7} color={colors.primary} style={{ marginTop: 7 }} />
+              <Text style={[type.bodySmall, { color: colors.textSecondary, flex: 1, lineHeight: 19 }]}>{g}</Text>
+            </View>
+          ))}
+        </Card>
+      ) : null}
+    </>
+  );
+}
+
+function MetricStrip({ m }: { m: CoachingMetrics }) {
+  const { colors, type, spacing, radius } = useTheme();
+
+  const trend =
+    m.weight_trend_kg_per_week != null
+      ? `${m.weight_trend_kg_per_week > 0 ? "+" : ""}${m.weight_trend_kg_per_week.toFixed(2)} kg/sem`
+      : "—";
+  const kcal = m.avg_kcal != null ? `${m.avg_kcal}` : "—";
+  const kcalSub = m.goal_kcal != null ? `meta ${Math.round(m.goal_kcal)}` : "sem meta";
+  const prot = m.avg_protein_g != null ? `${Math.round(m.avg_protein_g)} g` : "—";
+  const protSub = m.protein_target_g != null ? `alvo ${Math.round(m.protein_target_g)} g` : "proteína";
+  const treino = m.sessions_per_week != null ? `${m.sessions_per_week.toFixed(1)}` : "—";
+  const sono = m.avg_sleep_hours != null ? `${m.avg_sleep_hours.toFixed(1)} h` : "—";
+
+  const tiles = [
+    { label: "Peso (tendência)", value: trend, sub: m.weight_points ? `${m.weight_points} registros` : "registre o peso" },
+    { label: "Calorias/dia", value: kcal, sub: kcalSub },
+    { label: "Proteína/dia", value: prot, sub: protSub },
+    { label: "Treinos/semana", value: treino, sub: "concluídos" },
+    { label: "Sono", value: sono, sub: "por noite" },
+  ];
+
+  return (
+    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md }}>
+      {tiles.map((t) => (
+        <View
+          key={t.label}
+          style={{
+            width: "47.5%",
+            backgroundColor: colors.surface,
+            borderRadius: radius.button,
+            padding: spacing.md,
+          }}
+        >
+          <Text style={[type.caption, { color: colors.textSecondary }]}>{t.label}</Text>
+          <Text style={[type.h2, { color: colors.textPrimary, fontSize: 20, marginTop: 2 }]}>{t.value}</Text>
+          <Text style={[type.caption, { color: colors.textSecondary, marginTop: 1 }]}>{t.sub}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function FindingCard({ f }: { f: CoachingFinding }) {
+  const { colors, type, spacing, radius } = useTheme();
+  const tint =
+    f.severity === "action" ? colors.primary : f.severity === "attention" ? colors.warning : colors.success;
+  const icon =
+    f.severity === "action" ? "flash" : f.severity === "attention" ? "alert-circle" : "checkmark-circle";
+
+  return (
+    <Card accent={tint} style={{ marginBottom: spacing.md }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <Ionicons name={icon as keyof typeof Ionicons.glyphMap} size={18} color={tint} />
+        <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700", flex: 1 }]}>{f.title}</Text>
+      </View>
+      <Text style={[type.bodySmall, { color: colors.textSecondary, lineHeight: 20 }]}>{f.detail}</Text>
+      {f.proposal ? (
+        <View
+          style={{
+            marginTop: spacing.sm,
+            padding: spacing.sm,
+            borderRadius: radius.button,
+            backgroundColor: tint + "14",
+            borderWidth: 1,
+            borderColor: tint + "33",
+          }}
+        >
+          <Text style={[type.caption, { color: tint, fontWeight: "700", marginBottom: 2 }]}>Sugestão</Text>
+          <Text style={[type.bodySmall, { color: colors.textPrimary, lineHeight: 20 }]}>{f.proposal}</Text>
+        </View>
+      ) : null}
+    </Card>
   );
 }
 

@@ -25,6 +25,7 @@ MIN_LOGGING_RATIO = 0.4        # < 40% dos dias registrados => confiança baixa
 CUT_PLATEAU_ABS = 0.15         # |%/sem| abaixo disto num corte = platô
 CUT_FAST_LOSS = -1.0           # perder mais rápido que 1%/sem = rápido demais
 BULK_STALL_ABS = 0.05          # ganho ~zero na hipertrofia = não progride
+BULK_DROP = -0.15              # perdendo peso de verdade durante um bulk
 BULK_FAST_GAIN = 0.6           # ganhar mais que 0.6%/sem = gordura demais
 MAINTAIN_DRIFT = 0.5           # manutenção/recomp: deriva > 0.5%/sem
 
@@ -98,7 +99,12 @@ def _weight_findings(m: Metrics) -> list[Finding]:
                         f"Perda saudável e sustentável ({sinal}). Segue firme.")]
 
     if goal == "hipertrofia":
-        if abs(pct) < BULK_STALL_ABS or trend is not None and trend <= 0:
+        if pct <= BULK_DROP:
+            return [Finding("bulk_losing", SEV_ACTION, "Você está perdendo peso, não ganhando",
+                            f"O objetivo é ganhar massa, mas o peso está caindo ({sinal}) — provável déficit "
+                            "de calorias.",
+                            "Somar ~150–250 kcal/dia (comida de verdade, não só treino) e reavaliar em 2 semanas.")]
+        if abs(pct) < BULK_STALL_ABS or (trend is not None and trend <= 0):
             return [Finding("bulk_stall", SEV_ACTION, "Ganho travado",
                             f"O peso não está subindo ({sinal}), mas o objetivo é ganhar massa.",
                             "Somar ~100–150 kcal/dia e reavaliar em 2 semanas. Sem pressa: ganho magro é lento.")]
