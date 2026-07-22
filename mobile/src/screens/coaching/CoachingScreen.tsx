@@ -8,6 +8,7 @@ import {
   applyDietAdjustment,
   applyTechnique,
   applyTransitionStep,
+  buildCoachWorkout,
   setGoalPace,
   setTargetWeight,
   setTrainingPrefs,
@@ -184,6 +185,7 @@ export function CoachingScreen() {
           onApplied={onApplied}
           onOpenChart={onOpenChart}
           onOpenObjective={() => navigation.navigate("NutritionModule", { screen: "GoalSettings" })}
+          onOpenTraining={() => navigation.navigate("TrainingModule")}
         />
       ) : null}
 
@@ -339,12 +341,14 @@ function AnalysisView({
   onApplied,
   onOpenChart,
   onOpenObjective,
+  onOpenTraining,
 }: {
   analysis: CoachingAnalysis;
   checkin: CoachingCheckin | null;
   onApplied: (title: string, message: string) => void;
   onOpenChart: (chart: CoachingChart) => void;
   onOpenObjective: () => void;
+  onOpenTraining: () => void;
 }) {
   const { colors, type, spacing, radius } = useTheme();
   const meta = GOAL_META[analysis.goal ?? ""] ?? { label: "Seu objetivo", icon: "compass" as const };
@@ -407,6 +411,10 @@ function AnalysisView({
       {analysis.metrics.training_prefs ? (
         <TrainingPrefsCard prefs={analysis.metrics.training_prefs} onChanged={onApplied} />
       ) : null}
+
+      {/* SEU TREINO — o treino completo que o coach monta com as prefs acima.
+          Trocar UM exercício específico continua nas barras de aviso. */}
+      <WorkoutCard workout={analysis.metrics.workout} onApplied={onApplied} onOpenTraining={onOpenTraining} />
 
       {/* CHECK-IN DA SEMANA — o pulso da semana atual (domingo → hoje). */}
       {checkin && checkin.has_data ? <WeeklyCheckin checkin={checkin} /> : null}
@@ -716,6 +724,104 @@ function TrainingPrefsCard({
       ) : null}
 
       <OptionSheet visible={sheet != null} config={sheetConfig} onClose={() => setSheet(null)} />
+    </Card>
+  );
+}
+
+// "Seu treino": o treino completo que o coach monta a partir das preferências.
+// Sem treino → botão pra montar; com treino → mostra as rotinas (o que já foi
+// aplicado) + refazer. Trocar UM exercício específico é nas barras de aviso.
+function WorkoutCard({
+  workout,
+  onApplied,
+  onOpenTraining,
+}: {
+  workout: CoachingAnalysis["metrics"]["workout"];
+  onApplied: (title: string, message: string) => void;
+  onOpenTraining: () => void;
+}) {
+  const { colors, type, spacing, radius } = useTheme();
+  const [building, setBuilding] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const built = !!workout?.built;
+
+  async function montar() {
+    setErro(null);
+    setBuilding(true);
+    try {
+      const r = await buildCoachWorkout();
+      const extra = r.cardio_note ? `\n\n${r.cardio_note}` : "";
+      const foco = r.weak_point_label ? ` Priorizei ${r.weak_point_label}.` : "";
+      onApplied("Treino montado", `${r.message}${foco}${extra}`);
+    } catch (e: any) {
+      setErro(mensagemDeErro(e, "Não consegui montar agora."));
+    } finally {
+      setBuilding(false);
+    }
+  }
+
+  return (
+    <Card style={{ marginBottom: spacing.md }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: spacing.xs }}>
+        <Ionicons name="barbell" size={16} color={colors.primary} />
+        <Text style={[type.caption, { color: colors.primary, fontWeight: "800", letterSpacing: 0.5, textTransform: "uppercase", flex: 1 }]}>
+          Seu treino
+        </Text>
+        {built ? (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <Ionicons name="checkmark-circle" size={14} color={colors.success} />
+            <Text style={[type.caption, { color: colors.success, fontWeight: "700" }]}>Aplicado</Text>
+          </View>
+        ) : null}
+      </View>
+
+      {built && workout ? (
+        <>
+          <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.sm, lineHeight: 17 }]}>
+            {workout.count} treino{workout.count === 1 ? "" : "s"} · {workout.total_exercises} exercícios no total. Toque pra abrir.
+          </Text>
+          {workout.routines.map((r) => (
+            <TouchableOpacity
+              key={r.id}
+              onPress={onOpenTraining}
+              activeOpacity={0.7}
+              style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 9, borderTopWidth: 1, borderTopColor: colors.border }}
+            >
+              <View style={{ width: 26, height: 26, borderRadius: 8, backgroundColor: colors.surfaceAlt, alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="fitness" size={14} color={colors.primary} />
+              </View>
+              <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "600", flex: 1 }]} numberOfLines={1}>
+                {r.name}
+              </Text>
+              <Text style={[type.caption, { color: colors.textSecondary }]}>{r.exercises} ex.</Text>
+              <Ionicons name="chevron-forward" size={15} color={colors.textSecondary} />
+            </TouchableOpacity>
+          ))}
+          <View style={{ marginTop: spacing.md }}>
+            <Button
+              title={building ? "Montando..." : "Refazer com base nas minhas preferências"}
+              variant="secondary"
+              compact
+              loading={building}
+              onPress={montar}
+            />
+            <Text style={[type.caption, { color: colors.textSecondary, marginTop: 4, textAlign: "center" }]}>
+              Arquiva o treino atual e monta um novo. Seu histórico continua intacto.
+            </Text>
+          </View>
+        </>
+      ) : (
+        <>
+          <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.md, lineHeight: 17 }]}>
+            Deixa que eu monto seu treino completo com base no que você definiu acima — método, ponto fraco, tempo por
+            sessão e periodização. Fica salvo nas suas rotinas, pronto pra treinar.
+          </Text>
+          <Button title={building ? "Montando..." : "Montar meu treino"} loading={building} onPress={montar} />
+        </>
+      )}
+      {erro ? (
+        <Text style={[type.caption, { color: colors.warning, marginTop: 6, textAlign: "center" }]}>{erro}</Text>
+      ) : null}
     </Card>
   );
 }

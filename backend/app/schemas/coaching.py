@@ -195,6 +195,21 @@ class SetGoalConfigResult(BaseModel):
     message: str
 
 
+class BuildWorkoutResult(BaseModel):
+    """Resultado de montar o treino completo pelo coach (a partir das prefs)."""
+
+    method_name: str
+    author: str
+    days: int
+    routines: list[str]
+    total_exercises: int
+    weak_point_label: str | None = None
+    session_range: str | None = None
+    cardio_note: str | None = None
+    periodization_label: str
+    message: str
+
+
 class SetTrainingPrefsRequest(BaseModel):
     """Preferências de treino do Coaching. Atualização PARCIAL: só os campos
     enviados (model_fields_set) são alterados — um campo omitido não é mexido,

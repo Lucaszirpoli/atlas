@@ -51,6 +51,13 @@ export type CoachingMetrics = {
   } | null;
   // Preferências de treino do Coaching ("Como eu monto seu treino") + opções.
   training_prefs: TrainingPrefs | null;
+  // Resumo do treino ativo (todas as rotinas) — o card "Seu treino".
+  workout: {
+    built: boolean;
+    count: number;
+    total_exercises: number;
+    routines: { id: number; name: string; exercises: number }[];
+  } | null;
 };
 
 export type SessionLength = "curto" | "medio" | "longo";
@@ -306,6 +313,26 @@ export type TrainingPrefsUpdate = {
  * técnica/deload. */
 export async function setTrainingPrefs(prefs: TrainingPrefsUpdate): Promise<{ ok: boolean; message: string }> {
   const { data } = await api.post("/coaching/training-prefs", prefs);
+  return data;
+}
+
+export type BuildWorkoutResult = {
+  method_name: string;
+  author: string;
+  days: number;
+  routines: string[];
+  total_exercises: number;
+  weak_point_label: string | null;
+  session_range: string | null;
+  cardio_note: string | null;
+  periodization_label: string;
+  message: string;
+};
+
+/** Monta o treino completo da pessoa pelas prefs ("Como eu monto seu treino") e
+ * salva como as rotinas ativas (arquiva as antigas). O coach montando o treino. */
+export async function buildCoachWorkout(): Promise<BuildWorkoutResult> {
+  const { data } = await api.post<BuildWorkoutResult>("/coaching/build-workout", {});
   return data;
 }
 
