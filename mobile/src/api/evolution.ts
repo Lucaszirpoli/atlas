@@ -27,10 +27,19 @@ export async function getExerciseProgression(
   return data;
 }
 
-export type NutritionDay = { date: string; kcal: number };
+export type NutritionDay = {
+  date: string;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+};
 export type NutritionHistory = {
   days: NutritionDay[];
   goal_kcal: number | null;
+  goal_protein_g: number | null;
+  goal_carbs_g: number | null;
+  goal_fat_g: number | null;
   days_logged: number;
   days_within_goal: number;
 };

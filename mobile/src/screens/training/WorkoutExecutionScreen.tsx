@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { listTechniqueCues, type TechniqueCue } from "../../api/coaching";
 import { getRoutine, type Routine } from "../../api/routines";
 import {
   completeWorkoutSession,
@@ -93,6 +94,7 @@ export function WorkoutExecutionScreen() {
   };
 
   const [routine, setRoutine] = useState<Routine | null>(null);
+  const [cues, setCues] = useState<TechniqueCue[]>([]);
   // Todos os exercícios ficam na tela ao mesmo tempo (rolagem única) — sem
   // "próximo exercício". setsByExercise[i] são as séries do exercício i.
   const [setsByExercise, setSetsByExercise] = useState<SetRow[][]>([]);
@@ -126,9 +128,16 @@ export function WorkoutExecutionScreen() {
     });
   }, [routineId]);
 
+  // Dicas do coach (técnica no exercício travado) — some silenciosa se falhar.
+  useEffect(() => {
+    listTechniqueCues().then(setCues).catch(() => {});
+  }, []);
+
   if (!routine || setsByExercise.length === 0) {
     return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
   }
+
+  const cueFor = (exerciseId: number) => cues.find((c) => c.exercise_id === exerciseId);
 
   const totalSets = setsByExercise.reduce((sum, rows) => sum + rows.length, 0);
   const totalCompleted = setsByExercise.reduce((sum, rows) => sum + rows.filter((s) => s.completed).length, 0);
@@ -271,6 +280,33 @@ export function WorkoutExecutionScreen() {
                 <Meta icon="timer-outline" text={`${routineExercise.rest_seconds}s descanso`} />
                 <Meta icon="checkmark-done" text={`${completedCount}/${sets.length} feitas`} />
               </View>
+
+              {/* Dica do coach: técnica de intensidade pra furar o platô deste
+                  exercício (aplicada no Coaching). Só leitura aqui — remover é lá. */}
+              {(() => {
+                const cue = cueFor(routineExercise.exercise_id);
+                if (!cue) return null;
+                return (
+                  <View
+                    style={{
+                      marginBottom: spacing.sm,
+                      backgroundColor: colors.surfaceAlt,
+                      borderRadius: radius.card,
+                      borderLeftWidth: 3,
+                      borderLeftColor: colors.primary,
+                      padding: spacing.sm,
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                      <Ionicons name="flash" size={14} color={colors.primary} />
+                      <Text style={[type.caption, { color: colors.primary, fontWeight: "700" }]}>
+                        Coach · {cue.technique_label}
+                      </Text>
+                    </View>
+                    <Text style={[type.caption, { color: colors.textSecondary, lineHeight: 18 }]}>{cue.cue_text}</Text>
+                  </View>
+                );
+              })()}
 
               {/* Cabeçalho da tabela — Série / Anterior / kg / Reps / ✓ */}
               <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.sm, marginBottom: spacing.xs }}>

@@ -1,8 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
+import { listTechniqueCues, removeTechniqueCue, type TechniqueCue } from "../../api/coaching";
 import { getRoutine, type Routine } from "../../api/routines";
 import {
   getWorkoutPreview,
@@ -28,6 +29,7 @@ export function WorkoutPreviewScreen() {
 
   const [routine, setRoutine] = useState<Routine | null>(null);
   const [prefill, setPrefill] = useState<ExercisePrefill[]>([]);
+  const [cues, setCues] = useState<TechniqueCue[]>([]);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
 
@@ -39,7 +41,25 @@ export function WorkoutPreviewScreen() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+    // Dicas do coach (técnica no exercício travado) — some silenciosa se falhar.
+    listTechniqueCues()
+      .then(setCues)
+      .catch(() => {});
   }, [routineId]);
+
+  function cueFor(exerciseId: number): TechniqueCue | undefined {
+    return cues.find((c) => c.exercise_id === exerciseId);
+  }
+
+  async function removerCue(id: number) {
+    setCues((cs) => cs.filter((c) => c.id !== id)); // otimista
+    try {
+      await removeTechniqueCue(id);
+    } catch {
+      // se falhar, recarrega a lista pra refletir o estado real
+      listTechniqueCues().then(setCues).catch(() => {});
+    }
+  }
 
   async function handleStart() {
     if (!routine) return;
@@ -131,6 +151,36 @@ export function WorkoutPreviewScreen() {
                   Primeira vez neste exercício — os pesos ficam prontos quando você treinar.
                 </Text>
               ) : null}
+
+              {/* Dica do coach: técnica de intensidade pra furar o platô deste
+                  exercício. O "remover" é o desfazer, aqui onde ela vive. */}
+              {(() => {
+                const cue = cueFor(ex.exercise_id);
+                if (!cue) return null;
+                return (
+                  <View
+                    style={{
+                      marginTop: spacing.sm,
+                      backgroundColor: colors.surfaceAlt,
+                      borderRadius: radius.card,
+                      borderLeftWidth: 3,
+                      borderLeftColor: colors.primary,
+                      padding: spacing.sm,
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                      <Ionicons name="flash" size={14} color={colors.primary} />
+                      <Text style={[type.caption, { color: colors.primary, fontWeight: "700", flex: 1 }]}>
+                        Coach · {cue.technique_label}
+                      </Text>
+                      <TouchableOpacity onPress={() => removerCue(cue.id)} hitSlop={8}>
+                        <Text style={[type.caption, { color: colors.textSecondary }]}>Remover</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={[type.caption, { color: colors.textSecondary, lineHeight: 18 }]}>{cue.cue_text}</Text>
+                  </View>
+                );
+              })()}
             </Card>
           );
         })}

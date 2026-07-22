@@ -2,70 +2,90 @@ import { Ionicons } from "@expo/vector-icons";
 import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Text, TextInput, TouchableOpacity, View } from "react-native";
 
-import {
-  getNutritionHistory,
-  getVolumeEvolution,
-  getWeightEvolution,
-} from "../../api/evolution";
+import type { CoachingChart } from "../../api/coaching";
+import { getNutritionHistory, getVolumeEvolution, getWeightEvolution } from "../../api/evolution";
+import { listSleepLogs } from "../../api/sleep";
 import { logWeight } from "../../api/weight";
 import { Card } from "../../components/Card";
 import { LineChart, type ChartPoint } from "../../components/LineChart";
 import { useTheme } from "../../theme/ThemeProvider";
 
-type Metric = "peso" | "calorias" | "treino";
-
-const METRICS: { key: Metric; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+const METRICS: { key: CoachingChart; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: "peso", label: "Peso", icon: "trending-down" },
   { key: "calorias", label: "Calorias", icon: "flame" },
-  { key: "treino", label: "Treino", icon: "barbell" },
+  { key: "macros", label: "Macros", icon: "restaurant" },
+  { key: "sono", label: "Sono", icon: "moon" },
+  { key: "carga", label: "Carga", icon: "barbell" },
 ];
 
-/** UM gráfico por vez, limpo — o oposto da tela de Evolução antiga (onde a
- * pessoa empilhava várias métricas normalizadas no mesmo plano). O Coaching
- * mostra o que importa, simples, e deixa registrar o peso ali mesmo (o motor
- * precisa desse dado). */
+/** UM gráfico por vez, limpo — o oposto da tela de Evolução antiga (mistura de
+ * métricas normalizadas). Controlado: a métrica vem de fora (as barras têm um
+ * quadradinho que troca o gráfico). Deixa registrar o peso ali mesmo. */
 export function CoachingProgress({
   periodDays,
+  metric,
+  onMetricChange,
   onDataChanged,
 }: {
   periodDays: number;
+  metric: CoachingChart;
+  onMetricChange: (m: CoachingChart) => void;
   onDataChanged: () => void;
 }) {
   const { colors, type, spacing, radius } = useTheme();
-  const [metric, setMetric] = useState<Metric>("peso");
   const [loading, setLoading] = useState(true);
 
   const [weight, setWeight] = useState<ChartPoint[]>([]);
   const [calories, setCalories] = useState<ChartPoint[]>([]);
   const [goalKcal, setGoalKcal] = useState<number | null>(null);
-  const [volume, setVolume] = useState<ChartPoint[]>([]);
+  const [macros, setMacros] = useState<{ prot: ChartPoint[]; carb: ChartPoint[]; fat: ChartPoint[] }>({
+    prot: [],
+    carb: [],
+    fat: [],
+  });
+  const [sono, setSono] = useState<ChartPoint[]>([]);
+  const [carga, setCarga] = useState<ChartPoint[]>([]);
 
   const [novoPeso, setNovoPeso] = useState("");
   const [salvando, setSalvando] = useState(false);
 
   const load = useCallback(() => {
-    // cutoff calculado AQUI dentro: se ficasse no corpo do componente com
-    // Date.now(), mudaria a cada render, o useCallback trocaria a cada render e
-    // o useEffect entraria em loop infinito ("Maximum update depth exceeded").
+    // cutoff calculado AQUI dentro (Date.now() no corpo entraria nas deps e
+    // causaria loop de render).
     const cutoff = Date.now() - periodDays * 86400000;
+    const inWin = (p: ChartPoint) => p.x >= cutoff;
     setLoading(true);
     return Promise.all([
       getWeightEvolution()
-        .then((pts) =>
-          setWeight(pts.map((p) => ({ x: new Date(p.date).getTime(), y: p.weight_kg })).filter((p) => p.x >= cutoff))
-        )
+        .then((pts) => setWeight(pts.map((p) => ({ x: new Date(p.date).getTime(), y: p.weight_kg })).filter(inWin)))
         .catch(() => setWeight([])),
       getNutritionHistory(periodDays)
         .then((h) => {
-          setCalories(h.days.map((d) => ({ x: new Date(d.date).getTime(), y: d.kcal })).filter((p) => p.y > 0));
+          const dia = (d: any, y: number) => ({ x: new Date(d.date).getTime(), y });
+          setCalories(h.days.filter((d) => d.kcal > 0).map((d) => dia(d, d.kcal)));
+          setMacros({
+            prot: h.days.filter((d) => d.kcal > 0).map((d) => dia(d, d.protein_g)),
+            carb: h.days.filter((d) => d.kcal > 0).map((d) => dia(d, d.carbs_g)),
+            fat: h.days.filter((d) => d.kcal > 0).map((d) => dia(d, d.fat_g)),
+          });
           setGoalKcal(h.goal_kcal ?? null);
         })
         .catch(() => setCalories([])),
       getVolumeEvolution()
-        .then((pts) =>
-          setVolume(pts.map((p) => ({ x: new Date(p.date).getTime(), y: p.volume_kg })).filter((p) => p.x >= cutoff))
+        .then((pts) => setCarga(pts.map((p) => ({ x: new Date(p.date).getTime(), y: p.volume_kg })).filter(inWin)))
+        .catch(() => setCarga([])),
+      listSleepLogs()
+        .then((logs) =>
+          setSono(
+            logs
+              .map((l) => ({
+                x: new Date(l.sleep_at).getTime(),
+                y: (new Date(l.wake_at).getTime() - new Date(l.sleep_at).getTime()) / 3600000,
+              }))
+              .filter((p) => p.y > 0 && p.y < 24 && inWin(p))
+          )
         )
-        .catch(() => setVolume([])),
+        .catch(() => setSono([])),
     ]).finally(() => setLoading(false));
   }, [periodDays]);
 
@@ -81,44 +101,17 @@ export function CoachingProgress({
       await logWeight(v);
       setNovoPeso("");
       await load();
-      onDataChanged(); // a análise depende do peso — recarrega
+      onDataChanged();
     } catch {
-      // silencioso — a pessoa tenta de novo
+      /* silencioso */
     } finally {
       setSalvando(false);
     }
   }
 
-  const active = metric === "peso" ? weight : metric === "calorias" ? calories : volume;
-  const color =
-    metric === "peso" ? colors.primary : metric === "calorias" ? colors.moduleNutrition : colors.moduleTraining;
-
-  const series = [{ data: active, color, area: true, showDots: active.length <= 14 }];
-  // Linha de meta tracejada só nas calorias (referência do alvo).
-  if (metric === "calorias" && goalKcal && active.length > 0) {
-    const xs = active.map((p) => p.x);
-    series.push({
-      data: [
-        { x: Math.min(...xs), y: goalKcal },
-        { x: Math.max(...xs), y: goalKcal },
-      ],
-      color: colors.textSecondary,
-      dashed: true,
-    } as any);
-  }
-
-  const formatY =
-    metric === "treino"
-      ? (v: number) => (v >= 1000 ? `${Math.round(v / 100) / 10}k` : String(Math.round(v)))
-      : (v: number) => String(Math.round(v));
-
-  const vazio = active.length === 0;
-  const legenda =
-    metric === "peso"
-      ? "Seu peso ao longo do período."
-      : metric === "calorias"
-      ? "Calorias por dia — a linha tracejada é sua meta."
-      : "Volume por treino (kg levantados).";
+  // Série(s) + config por métrica.
+  const cfg = buildSeries(metric, { weight, calories, goalKcal, macros, sono, carga }, colors);
+  const vazio = cfg.series.every((s: any) => s.data.length === 0);
 
   return (
     <>
@@ -131,35 +124,34 @@ export function CoachingProgress({
         Seu progresso
       </Text>
 
-      {/* Seletor de métrica — UMA por vez */}
-      <View style={{ flexDirection: "row", gap: spacing.xs, marginBottom: spacing.sm }}>
-        {METRICS.map((m) => {
-          const on = metric === m.key;
+      {/* Seletor de métrica (rola horizontal — são 5). */}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginBottom: spacing.sm }}>
+        {METRICS.map((mt) => {
+          const on = metric === mt.key;
           return (
             <TouchableOpacity
-              key={m.key}
-              onPress={() => setMetric(m.key)}
+              key={mt.key}
+              onPress={() => onMetricChange(mt.key)}
               style={{
-                flex: 1,
                 flexDirection: "row",
-                justifyContent: "center",
                 alignItems: "center",
                 gap: 5,
                 backgroundColor: on ? colors.primary : colors.surface,
                 borderWidth: 1,
                 borderColor: on ? colors.primary : colors.border,
                 borderRadius: radius.pill,
-                paddingVertical: 8,
+                paddingVertical: 7,
+                paddingHorizontal: 12,
               }}
             >
-              <Ionicons name={m.icon} size={14} color={on ? colors.textOnPrimary : colors.textSecondary} />
+              <Ionicons name={mt.icon} size={13} color={on ? colors.textOnPrimary : colors.textSecondary} />
               <Text
                 style={[
                   type.caption,
                   { color: on ? colors.textOnPrimary : colors.textPrimary, fontWeight: on ? "700" : "500" },
                 ]}
               >
-                {m.label}
+                {mt.label}
               </Text>
             </TouchableOpacity>
           );
@@ -175,22 +167,28 @@ export function CoachingProgress({
           <View style={{ height: 200, alignItems: "center", justifyContent: "center" }}>
             <Ionicons name="analytics-outline" size={28} color={colors.textSecondary} />
             <Text style={[type.bodySmall, { color: colors.textSecondary, marginTop: 8, textAlign: "center" }]}>
-              {metric === "peso"
-                ? "Registre seu peso abaixo pra começar o gráfico."
-                : metric === "calorias"
-                ? "Registre refeições pra ver as calorias no período."
-                : "Conclua treinos pra ver seu volume evoluir."}
+              {cfg.empty}
             </Text>
           </View>
         ) : (
           <>
-            <LineChart series={series as any} height={200} formatY={formatY} />
-            <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm }]}>{legenda}</Text>
+            <LineChart series={cfg.series as any} height={200} formatY={cfg.formatY} />
+            {cfg.legend ? (
+              <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.sm }}>
+                {cfg.legend.map((l) => (
+                  <View key={l.label} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: l.color }} />
+                    <Text style={[type.caption, { color: colors.textSecondary }]}>{l.label}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm }]}>{cfg.legendText}</Text>
+            )}
           </>
         )}
 
-        {/* Registrar peso ali mesmo — o coach precisa desse dado (fica só na
-            métrica de peso pra não poluir). */}
+        {/* Registrar peso ali mesmo — o coach precisa desse dado. */}
         {metric === "peso" ? (
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md }}>
             <TextInput
@@ -233,4 +231,68 @@ export function CoachingProgress({
       </Card>
     </>
   );
+}
+
+type Data = {
+  weight: ChartPoint[];
+  calories: ChartPoint[];
+  goalKcal: number | null;
+  macros: { prot: ChartPoint[]; carb: ChartPoint[]; fat: ChartPoint[] };
+  sono: ChartPoint[];
+  carga: ChartPoint[];
+};
+
+function buildSeries(metric: CoachingChart, d: Data, colors: any) {
+  const roundY = (v: number) => String(Math.round(v));
+  if (metric === "peso") {
+    return {
+      series: [{ data: d.weight, color: colors.primary, area: true, showDots: d.weight.length <= 14 }],
+      formatY: roundY,
+      empty: "Registre seu peso abaixo pra começar o gráfico.",
+      legendText: "Seu peso ao longo do período.",
+      legend: null as { label: string; color: string }[] | null,
+    };
+  }
+  if (metric === "calorias") {
+    const series: any[] = [{ data: d.calories, color: colors.moduleNutrition, area: true, showDots: d.calories.length <= 14 }];
+    if (d.goalKcal && d.calories.length) {
+      const xs = d.calories.map((p) => p.x);
+      series.push({ data: [{ x: Math.min(...xs), y: d.goalKcal }, { x: Math.max(...xs), y: d.goalKcal }], color: colors.textSecondary, dashed: true });
+    }
+    return { series, formatY: roundY, empty: "Registre refeições pra ver as calorias.", legendText: "Calorias por dia — a linha tracejada é sua meta.", legend: null };
+  }
+  if (metric === "macros") {
+    return {
+      series: [
+        { data: d.macros.prot, color: colors.moduleTraining, showDots: false },
+        { data: d.macros.carb, color: colors.info, showDots: false },
+        { data: d.macros.fat, color: colors.warning, showDots: false },
+      ],
+      formatY: roundY,
+      empty: "Registre refeições pra ver proteína, carbo e gordura.",
+      legendText: "",
+      legend: [
+        { label: "Proteína", color: colors.moduleTraining },
+        { label: "Carbo", color: colors.info },
+        { label: "Gordura", color: colors.warning },
+      ],
+    };
+  }
+  if (metric === "sono") {
+    return {
+      series: [{ data: d.sono, color: colors.secondary, area: true, showDots: d.sono.length <= 14 }],
+      formatY: (v: number) => `${Math.round(v)}h`,
+      empty: "Registre o sono pra ver a evolução.",
+      legendText: "Horas de sono por noite no período.",
+      legend: null,
+    };
+  }
+  // carga
+  return {
+    series: [{ data: d.carga, color: colors.moduleTraining, area: true, showDots: d.carga.length <= 14 }],
+    formatY: (v: number) => (v >= 1000 ? `${Math.round(v / 100) / 10}k` : String(Math.round(v))),
+    empty: "Conclua treinos pra ver sua carga (volume) evoluir.",
+    legendText: "Volume por treino (peso × reps).",
+    legend: null,
+  };
 }

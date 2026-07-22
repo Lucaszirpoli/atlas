@@ -17,9 +17,12 @@ import {
   type Goal,
   type ProfileCalc,
 } from "../../api/profile";
+import { resetCoachingBaseline } from "../../api/coaching";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { HelpDot } from "../../components/HelpDot";
+import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
 import { mensagemDeErro } from "../../utils/errorMessage";
 
@@ -30,6 +33,8 @@ const GOAL_OPTIONS: [Goal, string][] = [
   ["performance", "Performance"],
   ["recomposicao", "Recomposição"],
 ];
+
+const GOAL_LABEL: Record<string, string> = Object.fromEntries(GOAL_OPTIONS);
 
 const ACTIVITY_OPTIONS: [ActivityLevel, string][] = [
   ["sedentary", "Sedentário"],
@@ -42,9 +47,13 @@ const ACTIVITY_OPTIONS: [ActivityLevel, string][] = [
 export function GoalSettingsScreen() {
   const { colors, type, spacing, radius } = useTheme();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  const isPro = user?.plan === "pro";
 
   const [currentGoal, setCurrentGoal] = useState<CalorieGoal | null>(null);
   const [profile, setProfile] = useState<ProfileCalc | null>(null);
+  // Prompt "recomeçar análise do coach" ao trocar de objetivo (só Pro tem coach).
+  const [baselinePrompt, setBaselinePrompt] = useState<{ from: string; to: string } | null>(null);
 
   // Campos editáveis do cálculo automático (string pra permitir edição livre).
   const [sex, setSex] = useState<BiologicalSex>("female");
@@ -103,6 +112,8 @@ export function GoalSettingsScreen() {
       Alert.alert("Peso inválido", "Informe um peso entre 30 e 300 kg.");
       return;
     }
+    const objetivoAnterior = profile?.goal;
+    const mudouObjetivo = !!objetivoAnterior && objetivoAnterior !== goal;
     setIsSubmitting(true);
     try {
       // 1) salva os dados no perfil (peso vira um novo registro no histórico)
@@ -116,11 +127,26 @@ export function GoalSettingsScreen() {
       });
       // 2) recalcula e aplica a meta a partir dos dados atualizados
       setCurrentGoal(await applyAutoGoal());
-      Alert.alert("Meta atualizada", "Sua meta calórica foi recalculada com seus dados.");
+      setProfile((p) => (p ? { ...p, goal } : p)); // reflete o novo objetivo
+      // Trocou de objetivo e tem coach (Pro)? Oferece recomeçar a análise —
+      // ConfirmDialog (não Alert.alert, que é no-op no web).
+      if (mudouObjetivo && isPro) {
+        setBaselinePrompt({ from: GOAL_LABEL[objetivoAnterior!] ?? objetivoAnterior!, to: GOAL_LABEL[goal] ?? goal });
+      } else {
+        Alert.alert("Meta atualizada", "Sua meta calórica foi recalculada com seus dados.");
+      }
     } catch (err: any) {
       Alert.alert("Não foi possível calcular", mensagemDeErro(err, "Tente novamente."));
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function confirmarResetCoach() {
+    try {
+      await resetCoachingBaseline();
+    } catch {
+      // silencioso — não é destrutivo; a análise só não recomeça
     }
   }
 
@@ -257,6 +283,19 @@ export function GoalSettingsScreen() {
           <Button title="Salvar meta manual" variant="ghost" onPress={handleApplyManual} loading={isSubmitting} />
         </View>
       </Card>
+
+      <ConfirmDialog
+        visible={!!baselinePrompt}
+        onClose={() => setBaselinePrompt(null)}
+        title="Recomeçar a análise do coach?"
+        message={
+          baselinePrompt
+            ? `Você trocou de ${baselinePrompt.from} pra ${baselinePrompt.to}. Recomeço a análise a partir de agora pra ela não misturar a fase anterior? Seu histórico e gráficos continuam intactos.`
+            : undefined
+        }
+        confirmLabel="Recomeçar análise"
+        onConfirm={confirmarResetCoach}
+      />
     </ScrollView>
   );
 }

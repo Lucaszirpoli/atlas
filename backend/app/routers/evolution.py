@@ -222,9 +222,15 @@ def nutrition_history(
     ).scalars()
 
     per_day: dict[str, float] = defaultdict(float)
+    prot_day: dict[str, float] = defaultdict(float)
+    carb_day: dict[str, float] = defaultdict(float)
+    fat_day: dict[str, float] = defaultdict(float)
     for meal in meals:
         key = meal.logged_at.date().isoformat()
         per_day[key] += sum(i.kcal for i in meal.items)
+        prot_day[key] += sum(i.protein_g for i in meal.items)
+        carb_day[key] += sum(i.carbs_g for i in meal.items)
+        fat_day[key] += sum(i.fat_g for i in meal.items)
 
     goal = db.execute(
         select(CalorieGoal)
@@ -238,7 +244,13 @@ def nutrition_history(
     for offset in range(days):
         d = (since + timedelta(days=offset)).date()
         key = d.isoformat()
-        result.append({"date": d.isoformat(), "kcal": round(per_day.get(key, 0.0))})
+        result.append({
+            "date": d.isoformat(),
+            "kcal": round(per_day.get(key, 0.0)),
+            "protein_g": round(prot_day.get(key, 0.0), 1),
+            "carbs_g": round(carb_day.get(key, 0.0), 1),
+            "fat_g": round(fat_day.get(key, 0.0), 1),
+        })
 
     logged_days = [r for r in result if r["kcal"] > 0]
     within = (
@@ -249,6 +261,9 @@ def nutrition_history(
     return {
         "days": result,
         "goal_kcal": goal_kcal,
+        "goal_protein_g": goal.protein_g if goal else None,
+        "goal_carbs_g": goal.carbs_g if goal else None,
+        "goal_fat_g": goal.fat_g if goal else None,
         "days_logged": len(logged_days),
         "days_within_goal": within,
     }

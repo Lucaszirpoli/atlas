@@ -54,6 +54,22 @@ class Finding:
 
 
 @dataclass
+class Insight:
+    """Barra horizontal por dimensão (peso/calorias/macros/sono/carga/treino),
+    SEMPRE presente, explicando o status EM RELAÇÃO AO OBJETIVO. `chart` diz qual
+    gráfico abrir ao tocar no ícone; `finding_key`+`adjustment` só quando há um
+    ajuste aplicável (ex.: caloria)."""
+
+    key: str            # peso | calorias | macros | sono | carga | treino
+    severity: str
+    title: str
+    detail: str
+    chart: str | None = None
+    finding_key: str | None = None
+    adjustment: dict | None = None
+
+
+@dataclass
 class WeeklyAnalysis:
     window_days: int
     goal: str | None
@@ -61,12 +77,207 @@ class WeeklyAnalysis:
     confidence: str          # "alta" | "parcial" | "baixa"
     headline: str
     findings: list[Finding] = field(default_factory=list)
+    insights: list[Insight] = field(default_factory=list)
     data_gaps: list[str] = field(default_factory=list)
     metrics: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         d = asdict(self)
         return d
+
+
+# Ritmo de peso ideal por objetivo (% do peso corporal por semana; sinal importa).
+_GOAL_WEIGHT_TARGET = {
+    "emagrecimento": -0.5,
+    "hipertrofia": 0.25,
+    "manutencao": 0.0,
+    "recomposicao": 0.0,
+    "performance": 0.0,
+}
+
+
+def _pct_off(actual: float, target: float) -> str:
+    """'~X% do esperado' quando indo na direção certa."""
+    if target == 0:
+        return ""
+    return f" — cerca de {abs(round(actual / target * 100))}% do esperado"
+
+
+def _peso_insight(m: Metrics) -> Insight:
+    w = m.weight
+    # Ajuste aplicável (vem do finding de peso, se houver) — o botão fica aqui.
+    wf = _weight_findings(m)
+    adj_key = next((f.key for f in wf if f.adjustment), None)
+    adj = next((f.adjustment for f in wf if f.adjustment), None)
+
+    if w.points < MIN_WEIGHT_POINTS or w.span_days < MIN_WEIGHT_SPAN_DAYS or w.pct_bodyweight_per_week is None:
+        return Insight("peso", SEV_INFO, "Peso", "Registre o peso 2–3× por semana (mesmo horário, em jejum) "
+                       "pra eu ler sua tendência.", chart="peso")
+    pct = w.pct_bodyweight_per_week
+    tgt = _GOAL_WEIGHT_TARGET.get(m.goal or "", 0.0)
+    trend_txt = f"{w.trend_kg_per_week:+.2f} kg/sem ({pct:+.2f}%/sem)"
+
+    if tgt == 0:  # manutenção/recomp/performance
+        if abs(pct) <= MAINTAIN_DRIFT:
+            return Insight("peso", SEV_INFO, "Peso estável", f"Seu peso está firme ({trend_txt}), como o "
+                           "objetivo de manter pede. Segue assim.", chart="peso")
+        return Insight("peso", SEV_ATTENTION, "Peso derivando", f"O objetivo é manter, mas o peso está a "
+                       f"{trend_txt}. Vale segurar pra estabilizar.", chart="peso",
+                       finding_key=adj_key, adjustment=adj)
+
+    deveria = "perder" if tgt < 0 else "ganhar"
+    direcao_certa = (tgt < 0) == (pct < 0) and abs(pct) > 0.05
+    if direcao_certa and abs(pct) >= abs(tgt) * 0.7:
+        return Insight("peso", SEV_INFO, "Peso no ritmo", f"Pra {m.goal} o ideal é {deveria} ~{abs(tgt):.2f}%/sem; "
+                       f"você está a {abs(pct):.2f}%/sem. No ritmo certo.", chart="peso")
+    if not direcao_certa:
+        return Insight("peso", SEV_ACTION, "Peso fora do rumo", f"Pra {m.goal} você deveria {deveria} "
+                       f"~{abs(tgt):.2f}%/sem, mas está a {trend_txt} — o oposto do esperado.", chart="peso",
+                       finding_key=adj_key, adjustment=adj)
+    return Insight("peso", SEV_ATTENTION, "Peso abaixo do esperado", f"Pra {m.goal} o ideal é {deveria} "
+                   f"~{abs(tgt):.2f}%/sem; você está a {abs(pct):.2f}%/sem{_pct_off(pct, tgt)}.", chart="peso",
+                   finding_key=adj_key, adjustment=adj)
+
+
+def _calorias_insight(m: Metrics) -> Insight:
+    n = m.nutrition
+    if n.avg_kcal_logged is None or n.goal_kcal is None:
+        return Insight("calorias", SEV_INFO, "Calorias", "Registre as refeições na maioria dos dias pra eu "
+                       "comparar com a sua meta.", chart="calorias")
+    diff = round(n.avg_kcal_logged - n.goal_kcal)
+    if abs(diff) <= n.goal_kcal * 0.05:
+        return Insight("calorias", SEV_INFO, "Calorias na meta", f"Média de {n.avg_kcal_logged} kcal/dia, "
+                       f"batendo a meta de {round(n.goal_kcal)} pro seu objetivo.", chart="calorias")
+    sentido = "acima" if diff > 0 else "abaixo"
+    return Insight("calorias", SEV_ATTENTION, f"Calorias {sentido} da meta", f"Média de {n.avg_kcal_logged} "
+                   f"kcal/dia — {abs(diff)} {sentido} da meta de {round(n.goal_kcal)} pro seu objetivo.",
+                   chart="calorias")
+
+
+def _macros_insight(m: Metrics) -> Insight:
+    n = m.nutrition
+    trios = [
+        ("proteína", n.avg_protein_logged, n.goal_protein_g, "g"),
+        ("carboidrato", n.avg_carbs_logged, n.goal_carbs_g, "g"),
+        ("gordura", n.avg_fat_logged, n.goal_fat_g, "g"),
+    ]
+    if any(avg is None or goal is None for _, avg, goal, _ in trios):
+        return Insight("macros", SEV_INFO, "Macros", "Registre as refeições pra eu acompanhar proteína, "
+                       "carbo e gordura.", chart="macros")
+    # O macro MAIS fora da meta (maior desvio relativo) manda no título.
+    pior = max(trios, key=lambda t: abs(t[1] - t[2]) / (t[2] or 1))
+    nome, avg, goal, u = pior
+    desvio = round(avg - goal)
+    resumo = ", ".join(f"{n_}: {a:.0f}/{g:.0f}{u}" for n_, a, g, u in trios)
+    if abs(desvio) <= max(goal * 0.12, 8):
+        return Insight("macros", SEV_INFO, "Macros no alvo", f"Média diária dentro do esperado ({resumo}).",
+                       chart="macros")
+    sentido = "acima" if desvio > 0 else "abaixo"
+    # Proteína ACIMA do alvo não é problema — é bom (protege músculo). Só vira
+    # alerta quando a proteína está BAIXA; excesso de carbo/gordura sinaliza sobra.
+    if nome == "proteína" and desvio > 0:
+        return Insight("macros", SEV_INFO, "Proteína acima do alvo", f"Você está com boa proteína "
+                       f"({avg:.0f}{u} vs alvo {goal:.0f}{u}) — ótimo pra preservar músculo. Média dos três: "
+                       f"{resumo}.", chart="macros")
+    sev = SEV_ACTION if nome == "proteína" else SEV_ATTENTION
+    return Insight("macros", sev, f"{nome.capitalize()} {sentido} do alvo",
+                   f"Pra seu objetivo a média diária deveria ser ~{goal:.0f}{u} de {nome}, mas ficou "
+                   f"{avg:.0f}{u}. Média dos três: {resumo}.", chart="macros")
+
+
+def _sono_insight(m: Metrics) -> Insight:
+    s = m.sleep
+    if s.nights < 3 or s.avg_hours is None:
+        return Insight("sono", SEV_INFO, "Sono", "Registre o sono por alguns dias — ele explica muita "
+                       "oscilação de treino e fome.", chart="sono")
+    alvo = 7.5
+    if s.avg_hours >= SLEEP_SHORT_HOURS:
+        return Insight("sono", SEV_INFO, "Sono na média", f"Média de {s.avg_hours:.1f} h/noite — dentro do que "
+                       "o corpo precisa pra recuperar e sustentar seu objetivo. Continue assim.", chart="sono")
+    falta = round((alvo - s.avg_hours) / alvo * 100)
+    return Insight("sono", SEV_ATTENTION, "Sono curto", f"Média de {s.avg_hours:.1f} h/noite — cerca de {falta}% "
+                   "abaixo do ideal (~7,5 h). Dormir pouco atrapalha treino, fome e recuperação.", chart="sono")
+
+
+def _carga_insight(m: Metrics) -> Insight:
+    v = m.training.volume_trend_pct
+    if v is None:
+        return Insight("carga", SEV_INFO, "Carga", "Conclua alguns treinos pra eu acompanhar sua carga total "
+                       "(peso × reps).", chart="carga")
+    if v >= 3:
+        return Insight("carga", SEV_INFO, "Carga subindo", f"Seu volume total subiu ~{v:.0f}% no período — "
+                       "sobrecarga progressiva acontecendo, é o que puxa o resultado.", chart="carga")
+    if v <= -8:
+        return Insight("carga", SEV_ATTENTION, "Carga caindo", f"Seu volume total caiu ~{abs(v):.0f}% no período. "
+                       "Se não for deload proposital, vale revisar energia e recuperação.", chart="carga")
+    return Insight("carga", SEV_ATTENTION, "Carga estável", "Seu volume total está praticamente parado. Pra "
+                   "evoluir, mire somar uma série ou uma repetição aos poucos.", chart="carga")
+
+
+# Técnica de intensidade sugerida pra furar platô, por tipo de exercício. O
+# MESMO mapa serve à barra (mostra o botão) e ao endpoint que aplica (que não
+# confia no cliente e rederiva daqui) — determinístico, como todo o resto do
+# coach. As chaves batem com o enum SetType (rest_pause / drop_set).
+STALL_TECHNIQUE: dict[bool, tuple[str, str, str]] = {
+    True: (
+        "rest_pause",
+        "Rest-pause",
+        "Rest-pause na última série valendo: chegue à falha, descanse 15–20s e faça mais "
+        "reps com a mesma carga. Repita 1–2 micro-séries. Ótimo pra furar platô em composto.",
+    ),
+    False: (
+        "drop_set",
+        "Drop-set",
+        "Drop-set na última série: ao falhar, tire ~20–30% da carga e continue sem descanso "
+        "até falhar de novo. Um choque de volume pra destravar o isolado.",
+    ),
+}
+
+
+def suggest_stall_technique(is_compound: bool) -> tuple[str, str, str]:
+    """(chave, rótulo, como-fazer) da técnica pra um exercício travado. Composto
+    -> rest-pause; isolado -> drop-set."""
+    return STALL_TECHNIQUE[bool(is_compound)]
+
+
+def _treino_insight(m: Metrics) -> Insight:
+    t = m.training
+    if t.window_days >= 14 and t.sessions_per_week < MIN_SESSIONS_PER_WEEK:
+        return Insight("treino", SEV_ATTENTION, "Frequência de treino baixa", f"Média de {t.sessions_per_week:.1f} "
+                       "treinos/semana. Abaixo de 2× por grupo o estímulo cai — mire 2–3×.", chart="carga")
+    if t.stalled_lifts:
+        lift = t.stalled_lifts[0]  # o principal (compostos primeiro na ordenação)
+        tech_key, tech_label, _ = suggest_stall_technique(lift["is_compound"])
+        nomes = ", ".join(s["name"] for s in t.stalled_lifts)
+        return Insight(
+            "treino", SEV_ATTENTION, "Progressão travada",
+            f"{nomes} não subiu de carga/reps nas últimas semanas. Dá pra atacar com "
+            f"{tech_label.lower()} — aplico no seu treino.",
+            chart="carga",
+            finding_key=f"stalled_lift:{lift['exercise_id']}",
+            adjustment={
+                "technique": tech_key,
+                "technique_label": tech_label,
+                "exercise_id": lift["exercise_id"],
+                "exercise_name": lift["name"],
+            },
+        )
+    if t.sessions == 0:
+        return Insight("treino", SEV_INFO, "Treino", "Conclua treinos pra eu acompanhar frequência e progressão.",
+                       chart="carga")
+    return Insight("treino", SEV_INFO, "Treino em dia", f"{t.sessions_per_week:.1f} treinos/semana e progressão "
+                   "saudável. Mantém a consistência.", chart="carga")
+
+
+def _insights(m: Metrics) -> list[Insight]:
+    return [
+        _peso_insight(m),
+        _calorias_insight(m),
+        _macros_insight(m),
+        _sono_insight(m),
+        _carga_insight(m),
+        _treino_insight(m),
+    ]
 
 
 def _protein_target(m: Metrics) -> float | None:
@@ -234,6 +445,7 @@ def analyze(m: Metrics) -> WeeklyAnalysis:
         confidence=confidence,
         headline=headline,
         findings=findings,
+        insights=_insights(m),
         data_gaps=gaps,
         metrics=_metrics_public(m),
     )
@@ -264,7 +476,13 @@ def _metrics_public(m: Metrics) -> dict:
         "goal_kcal": m.nutrition.goal_kcal,
         "avg_protein_g": m.nutrition.avg_protein_logged,
         "protein_target_g": _protein_target(m),
+        "avg_carbs_g": m.nutrition.avg_carbs_logged,
+        "goal_carbs_g": m.nutrition.goal_carbs_g,
+        "avg_fat_g": m.nutrition.avg_fat_logged,
+        "goal_fat_g": m.nutrition.goal_fat_g,
         "days_logged": m.nutrition.days_logged,
         "sessions_per_week": m.training.sessions_per_week,
+        "volume_trend_pct": m.training.volume_trend_pct,
         "avg_sleep_hours": m.sleep.avg_hours,
+        "baseline_at": m.baseline_at.isoformat() if m.baseline_at else None,
     }

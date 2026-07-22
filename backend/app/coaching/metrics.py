@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.calorie_goal import CalorieGoal
+from app.models.coaching_baseline import CoachingBaseline
 from app.models.exercise import Exercise
 from app.models.meal import MealLog
 from app.models.sleep_log import SleepLog
@@ -34,8 +35,12 @@ class WeightMetrics:
 class NutritionMetrics:
     goal_kcal: float | None
     goal_protein_g: float | None
+    goal_carbs_g: float | None
+    goal_fat_g: float | None
     avg_kcal_logged: float | None  # média nos dias COM registro
     avg_protein_logged: float | None
+    avg_carbs_logged: float | None
+    avg_fat_logged: float | None
     days_logged: int
     window_days: int
 
@@ -46,8 +51,12 @@ class TrainingMetrics:
     sessions_per_week: float
     window_days: int
     # Exercícios principais que pararam de progredir na janela.
-    # Cada item: {"name": str, "sessions": int, "span_days": int}
+    # Cada item: {"exercise_id": int, "name": str, "sessions": int,
+    #             "span_days": int, "is_compound": bool}
     stalled_lifts: list[dict]
+    # Tendência da carga total (volume = Σ peso×reps por sessão): % da metade
+    # recente vs a inicial. Positivo = subindo. None = poucos treinos.
+    volume_trend_pct: float | None
 
 
 @dataclass
@@ -66,6 +75,10 @@ class Metrics:
     nutrition: NutritionMetrics
     training: TrainingMetrics
     sleep: SleepMetrics
+    # Preenchido quando um marco de recomeço (troca de objetivo) está DENTRO da
+    # janela e recortou a leitura — a UI usa pra explicar por que o período é
+    # menor. None = sem marco ativo afetando a janela.
+    baseline_at: datetime | None = None
 
 
 def _linreg_slope(xs: list[float], ys: list[float]) -> float | None:
@@ -125,14 +138,19 @@ def _nutrition_metrics(db: Session, user_id: int, since: datetime, window_days: 
 
     kcal_by_day: dict[str, float] = defaultdict(float)
     prot_by_day: dict[str, float] = defaultdict(float)
+    carb_by_day: dict[str, float] = defaultdict(float)
+    fat_by_day: dict[str, float] = defaultdict(float)
     for meal in meals:
         key = meal.logged_at.date().isoformat()
         kcal_by_day[key] += sum(i.kcal for i in meal.items)
         prot_by_day[key] += sum(i.protein_g for i in meal.items)
+        carb_by_day[key] += sum(i.carbs_g for i in meal.items)
+        fat_by_day[key] += sum(i.fat_g for i in meal.items)
 
     days_logged = len(kcal_by_day)
-    avg_kcal = round(sum(kcal_by_day.values()) / days_logged) if days_logged else None
-    avg_prot = round(sum(prot_by_day.values()) / days_logged, 1) if days_logged else None
+
+    def _avg(d: dict[str, float], nd: int = 0) -> float | None:
+        return round(sum(d.values()) / days_logged, nd) if days_logged else None
 
     goal = db.execute(
         select(CalorieGoal)
@@ -144,8 +162,12 @@ def _nutrition_metrics(db: Session, user_id: int, since: datetime, window_days: 
     return NutritionMetrics(
         goal_kcal=goal.kcal if goal else None,
         goal_protein_g=goal.protein_g if goal else None,
-        avg_kcal_logged=avg_kcal,
-        avg_protein_logged=avg_prot,
+        goal_carbs_g=goal.carbs_g if goal else None,
+        goal_fat_g=goal.fat_g if goal else None,
+        avg_kcal_logged=None if _avg(kcal_by_day) is None else round(sum(kcal_by_day.values()) / days_logged),
+        avg_protein_logged=_avg(prot_by_day, 1),
+        avg_carbs_logged=_avg(carb_by_day, 1),
+        avg_fat_logged=_avg(fat_by_day, 1),
         days_logged=days_logged,
         window_days=window_days,
     )
@@ -204,12 +226,43 @@ def _stalled_lifts(db: Session, user_id: int, since: datetime) -> list[dict]:
         melhor_recente = max(e for _, e in dias[meio:])
         if melhor_recente <= melhor_inicio * 1.01:  # não subiu de forma relevante
             stalled.append(
-                {"name": d["name"], "sessions": len(dias), "span_days": span, "is_compound": d["is_compound"]}
+                {"exercise_id": ex_id, "name": d["name"], "sessions": len(dias),
+                 "span_days": span, "is_compound": d["is_compound"]}
             )
 
     # compostos primeiro, depois os mais treinados
     stalled.sort(key=lambda s: (not s["is_compound"], -s["sessions"]))
-    return [{"name": s["name"], "sessions": s["sessions"], "span_days": s["span_days"]} for s in stalled[:2]]
+    return [
+        {"exercise_id": s["exercise_id"], "name": s["name"], "sessions": s["sessions"],
+         "span_days": s["span_days"], "is_compound": s["is_compound"]}
+        for s in stalled[:2]
+    ]
+
+
+def _volume_trend(db: Session, user_id: int, since: datetime) -> float | None:
+    """Carga: volume total (Σ peso×reps) por sessão, tendência recente vs inicial.
+    Precisa de ≥4 sessões pra comparar duas metades com sentido."""
+    rows = db.execute(
+        select(WorkoutSession.started_at, WorkoutSetLog.weight_kg, WorkoutSetLog.reps)
+        .join(WorkoutSetLog, WorkoutSetLog.session_id == WorkoutSession.id)
+        .where(
+            WorkoutSession.user_id == user_id,
+            WorkoutSession.started_at >= since,
+            WorkoutSession.completed_at.is_not(None),
+        )
+    ).all()
+    vol_by_session: dict[str, float] = defaultdict(float)
+    for started_at, w, reps in rows:
+        vol_by_session[started_at.isoformat()] += (w or 0) * (reps or 0)
+    vols = [v for _, v in sorted(vol_by_session.items())]
+    if len(vols) < 4:
+        return None
+    meio = len(vols) // 2
+    ini = sum(vols[:meio]) / meio
+    rec = sum(vols[meio:]) / (len(vols) - meio)
+    if ini <= 0:
+        return None
+    return round((rec - ini) / ini * 100, 1)
 
 
 def _training_metrics(db: Session, user_id: int, since: datetime, window_days: int) -> TrainingMetrics:
@@ -229,6 +282,7 @@ def _training_metrics(db: Session, user_id: int, since: datetime, window_days: i
         sessions_per_week=round(n / weeks, 2),
         window_days=window_days,
         stalled_lifts=_stalled_lifts(db, user_id, since),
+        volume_trend_pct=_volume_trend(db, user_id, since),
     )
 
 
@@ -253,6 +307,25 @@ def compute_metrics(db: Session, user_id: int, window_days: int = 28, *, now: da
     now = now or datetime.now(timezone.utc)
     since = (now - timedelta(days=window_days)).replace(hour=0, minute=0, second=0, microsecond=0)
 
+    # Marco de recomeço (troca de objetivo): se estiver DENTRO da janela, recorta
+    # a leitura pra não misturar a fase antiga. Não apaga nada — só move o início
+    # da leitura do coach (os gráficos usam outra rota e seguem mostrando tudo).
+    baseline_from = db.execute(
+        select(CoachingBaseline.effective_from)
+        .where(CoachingBaseline.user_id == user_id)
+        .order_by(CoachingBaseline.created_at.desc(), CoachingBaseline.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    # SQLite (dev) devolve datetime SEM tzinfo; `since` é aware. Normaliza pra UTC
+    # antes de comparar, senão TypeError (aware vs naive). Postgres já traz aware.
+    if baseline_from is not None and baseline_from.tzinfo is None:
+        baseline_from = baseline_from.replace(tzinfo=timezone.utc)
+    baseline_at: datetime | None = None
+    if baseline_from is not None and baseline_from > since:
+        since = baseline_from
+        baseline_at = baseline_from
+        window_days = max(1, (now - since).days)  # janela efetiva, pra ratios justos
+
     profile = db.execute(
         select(UserProfile).where(UserProfile.user_id == user_id)
     ).scalar_one_or_none()
@@ -267,4 +340,5 @@ def compute_metrics(db: Session, user_id: int, window_days: int = 28, *, now: da
         nutrition=_nutrition_metrics(db, user_id, since, window_days),
         training=_training_metrics(db, user_id, since, window_days),
         sleep=_sleep_metrics(db, user_id, since),
+        baseline_at=baseline_at,
     )

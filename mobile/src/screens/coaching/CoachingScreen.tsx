@@ -1,17 +1,18 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import {
   applyDietAdjustment,
+  applyTechnique,
   getCoachingAnalysis,
   listCoachingAdjustments,
   revertAdjustment,
   type CoachingAdjustment,
   type CoachingAnalysis,
-  type CoachingFinding,
-  type CoachingMetrics,
+  type CoachingChart,
+  type CoachingInsight,
 } from "../../api/coaching";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
@@ -21,12 +22,20 @@ import { useTheme } from "../../theme/ThemeProvider";
 import { mensagemDeErro } from "../../utils/errorMessage";
 import { CoachingProgress } from "./CoachingProgress";
 
-// Períodos de análise/gráfico — 4/8/12 semanas.
+// Períodos de análise/gráfico. "Semanal" = a análise da semana atual (como foi
+// x como deveria ter sido); depois 4/8/12 semanas.
 const PERIODS: { label: string; days: number }[] = [
+  { label: "Semanal", days: 7 },
   { label: "4 sem", days: 28 },
   { label: "8 sem", days: 56 },
   { label: "12 sem", days: 84 },
 ];
+
+// "2026-07-21T..." -> "21/07"
+function formatDia(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
 
 /**
  * Coaching — a área-diferencial do plano Pro. Reúne objetivo, metas, medidas,
@@ -47,9 +56,21 @@ export function CoachingScreen() {
   const [analysis, setAnalysis] = useState<CoachingAnalysis | null>(null);
   const [adjustments, setAdjustments] = useState<CoachingAdjustment[]>([]);
   const [periodDays, setPeriodDays] = useState(28);
+  const [chartMetric, setChartMetric] = useState<CoachingChart>("peso");
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState(false);
   const [aviso, setAviso] = useState<{ title: string; message: string } | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const chartY = useRef(0);
+
+  // Toque no quadradinho de gráfico de uma barra: troca a métrica do gráfico e
+  // rola até ele (o gráfico fica logo abaixo das barras).
+  const onOpenChart = useCallback((chart: CoachingChart) => {
+    setChartMetric(chart);
+    requestAnimationFrame(() =>
+      scrollRef.current?.scrollTo({ y: Math.max(0, chartY.current - 12), animated: true })
+    );
+  }, []);
 
   const load = useCallback(() => {
     if (!isPro) return Promise.resolve();
@@ -86,6 +107,7 @@ export function CoachingScreen() {
 
   return (
     <ScrollView
+      ref={scrollRef}
       style={{ flex: 1, backgroundColor: colors.bg }}
       contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
       keyboardShouldPersistTaps="handled"
@@ -138,7 +160,7 @@ export function CoachingScreen() {
           </Text>
         </Card>
       ) : analysis ? (
-        <AnalysisView analysis={analysis} onApplied={onApplied} />
+        <AnalysisView analysis={analysis} onApplied={onApplied} onOpenChart={onOpenChart} />
       ) : null}
 
       {/* Pergunte ao coach — a IA que EXPLICA a análise (não muda plano). */}
@@ -178,9 +200,16 @@ export function CoachingScreen() {
         <Ionicons name="chevron-forward" size={18} color={colors.primary} />
       </TouchableOpacity>
 
-      {/* Gráfico simples do período — UM de cada vez (peso/calorias/treino),
-          com registro de peso ali mesmo. Absorve a antiga tela de Evolução. */}
-      <CoachingProgress periodDays={periodDays} onDataChanged={load} />
+      {/* Gráfico simples do período — UM de cada vez, controlado pelas barras
+          (o quadradinho de gráfico troca a métrica). Absorve a Evolução. */}
+      <View onLayout={(e) => (chartY.current = e.nativeEvent.layout.y)}>
+        <CoachingProgress
+          periodDays={periodDays}
+          metric={chartMetric}
+          onMetricChange={setChartMetric}
+          onDataChanged={load}
+        />
+      </View>
 
       {/* Ajustes que a pessoa aplicou — com Desfazer. */}
       {adjustments.length > 0 ? (
@@ -223,12 +252,13 @@ export function CoachingScreen() {
 function AnalysisView({
   analysis,
   onApplied,
+  onOpenChart,
 }: {
   analysis: CoachingAnalysis;
   onApplied: (title: string, message: string) => void;
+  onOpenChart: (chart: CoachingChart) => void;
 }) {
   const { colors, type, spacing, radius } = useTheme();
-  const m = analysis.metrics;
 
   return (
     <>
@@ -254,14 +284,21 @@ function AnalysisView({
         <Text style={[type.caption, { color: colors.textSecondary, marginTop: 6 }]}>
           Análise por regras dos seus registros — confiança {analysis.confidence}.
         </Text>
+        {analysis.metrics.baseline_at ? (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 8 }}>
+            <Ionicons name="flag" size={13} color={colors.primary} />
+            <Text style={[type.caption, { color: colors.textSecondary, flex: 1 }]}>
+              Análise recomeçada em {formatDia(analysis.metrics.baseline_at)} (troca de objetivo) — o histórico
+              completo segue nos gráficos.
+            </Text>
+          </View>
+        ) : null}
       </Card>
 
-      {/* Métricas destiladas (só quando há dado que sustente) */}
-      {analysis.has_enough_data ? <MetricStrip m={m} /> : null}
-
-      {/* Achados com ajuste proposto */}
-      {analysis.findings.map((f) => (
-        <FindingCard key={f.key} f={f} onApplied={onApplied} />
+      {/* Barras por dimensão — cada uma compara com o esperado PRO OBJETIVO,
+          com atalho pro gráfico daquela info. Substituem os antigos tiles. */}
+      {analysis.insights.map((ins) => (
+        <InsightBar key={ins.key} ins={ins} onApplied={onApplied} onOpenChart={onOpenChart} />
       ))}
 
       {/* Lacunas de dado — o que registrar pra afinar a análise */}
@@ -282,73 +319,37 @@ function AnalysisView({
   );
 }
 
-function MetricStrip({ m }: { m: CoachingMetrics }) {
-  const { colors, type, spacing, radius } = useTheme();
-
-  const trend =
-    m.weight_trend_kg_per_week != null
-      ? `${m.weight_trend_kg_per_week > 0 ? "+" : ""}${m.weight_trend_kg_per_week.toFixed(2)} kg/sem`
-      : "—";
-  const kcal = m.avg_kcal != null ? `${m.avg_kcal}` : "—";
-  const kcalSub = m.goal_kcal != null ? `meta ${Math.round(m.goal_kcal)}` : "sem meta";
-  const prot = m.avg_protein_g != null ? `${Math.round(m.avg_protein_g)} g` : "—";
-  const protSub = m.protein_target_g != null ? `alvo ${Math.round(m.protein_target_g)} g` : "proteína";
-  const treino = m.sessions_per_week != null ? `${m.sessions_per_week.toFixed(1)}` : "—";
-  const sono = m.avg_sleep_hours != null ? `${m.avg_sleep_hours.toFixed(1)} h` : "—";
-
-  const tiles = [
-    { label: "Peso (tendência)", value: trend, sub: m.weight_points ? `${m.weight_points} registros` : "registre o peso" },
-    { label: "Calorias/dia", value: kcal, sub: kcalSub },
-    { label: "Proteína/dia", value: prot, sub: protSub },
-    { label: "Treinos/semana", value: treino, sub: "concluídos" },
-    { label: "Sono", value: sono, sub: "por noite" },
-  ];
-
-  return (
-    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md }}>
-      {tiles.map((t) => (
-        <View
-          key={t.label}
-          style={{
-            width: "47.5%",
-            backgroundColor: colors.surface,
-            borderRadius: radius.button,
-            padding: spacing.md,
-          }}
-        >
-          <Text style={[type.caption, { color: colors.textSecondary }]}>{t.label}</Text>
-          <Text style={[type.h2, { color: colors.textPrimary, fontSize: 20, marginTop: 2 }]}>{t.value}</Text>
-          <Text style={[type.caption, { color: colors.textSecondary, marginTop: 1 }]}>{t.sub}</Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-function FindingCard({
-  f,
+// Barra horizontal por dimensão (peso/calorias/macros/sono/carga/treino).
+// Explica o status vs objetivo; se houver ajuste, mostra "Aplicar"; e traz um
+// quadradinho de gráfico que abre o gráfico daquela info.
+function InsightBar({
+  ins,
   onApplied,
+  onOpenChart,
 }: {
-  f: CoachingFinding;
+  ins: CoachingInsight;
   onApplied: (title: string, message: string) => void;
+  onOpenChart: (chart: CoachingChart) => void;
 }) {
   const { colors, type, spacing, radius } = useTheme();
   const [applying, setApplying] = useState(false);
+  const [aplicado, setAplicado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const tint =
-    f.severity === "action" ? colors.primary : f.severity === "attention" ? colors.warning : colors.success;
-  const icon =
-    f.severity === "action" ? "flash" : f.severity === "attention" ? "alert-circle" : "checkmark-circle";
+    ins.severity === "action" ? colors.primary : ins.severity === "attention" ? colors.warning : colors.success;
 
-  // Ajuste aplicável em 1 toque (só nos achados de caloria). Muda a meta de
-  // verdade — por isso pede confirmação antes.
-  const podeAplicar = typeof f.adjustment?.kcal_delta === "number" && f.adjustment.kcal_delta !== 0;
+  const delta = ins.adjustment?.kcal_delta;
+  const podeAplicarDieta = typeof delta === "number" && delta !== 0 && !!ins.finding_key;
+
+  const tecnica = ins.adjustment?.technique_label;
+  const podeAplicarTecnica = !!ins.adjustment?.technique && !!ins.finding_key;
 
   async function aplicar() {
+    if (!ins.finding_key) return;
     setErro(null);
     setApplying(true);
     try {
-      const r = await applyDietAdjustment(f.key);
+      const r = await applyDietAdjustment(ins.finding_key);
       onApplied("Meta ajustada", r.message);
     } catch (e: any) {
       setErro(mensagemDeErro(e, "Não consegui aplicar agora."));
@@ -357,45 +358,85 @@ function FindingCard({
     }
   }
 
-  return (
-    <Card accent={tint} style={{ marginBottom: spacing.md }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
-        <Ionicons name={icon as keyof typeof Ionicons.glyphMap} size={18} color={tint} />
-        <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700", flex: 1 }]}>{f.title}</Text>
-      </View>
-      <Text style={[type.bodySmall, { color: colors.textSecondary, lineHeight: 20 }]}>{f.detail}</Text>
-      {f.proposal ? (
-        <View
-          style={{
-            marginTop: spacing.sm,
-            padding: spacing.sm,
-            borderRadius: radius.button,
-            backgroundColor: tint + "14",
-            borderWidth: 1,
-            borderColor: tint + "33",
-          }}
-        >
-          <Text style={[type.caption, { color: tint, fontWeight: "700", marginBottom: 2 }]}>Sugestão</Text>
-          <Text style={[type.bodySmall, { color: colors.textPrimary, lineHeight: 20 }]}>{f.proposal}</Text>
-        </View>
-      ) : null}
+  async function aplicarTec() {
+    if (!ins.finding_key) return;
+    setErro(null);
+    setApplying(true);
+    try {
+      const r = await applyTechnique(ins.finding_key);
+      setAplicado(true);
+      onApplied("Técnica aplicada", r.message);
+    } catch (e: any) {
+      setErro(mensagemDeErro(e, "Não consegui aplicar agora."));
+    } finally {
+      setApplying(false);
+    }
+  }
 
-      {podeAplicar ? (
+  return (
+    <Card accent={tint} style={{ marginBottom: spacing.sm }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: tint }} />
+        <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700", flex: 1 }]}>{ins.title}</Text>
+        {/* Quadradinho de gráfico — abre o gráfico dessa dimensão. */}
+        {ins.chart ? (
+          <TouchableOpacity
+            onPress={() => onOpenChart(ins.chart as CoachingChart)}
+            hitSlop={8}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              backgroundColor: colors.surfaceAlt,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons name="stats-chart" size={15} color={colors.textSecondary} />
+          </TouchableOpacity>
+        ) : null}
+      </View>
+      <Text style={[type.bodySmall, { color: colors.textSecondary, lineHeight: 20 }]}>{ins.detail}</Text>
+
+      {podeAplicarDieta ? (
         <View style={{ marginTop: spacing.sm }}>
           <Button
-            title={
-              applying
-                ? "Aplicando..."
-                : `Aplicar ajuste (${f.adjustment!.kcal_delta! > 0 ? "+" : ""}${f.adjustment!.kcal_delta} kcal)`
-            }
+            title={applying ? "Aplicando..." : `Aplicar ajuste (${delta! > 0 ? "+" : ""}${delta} kcal)`}
             variant="secondary"
             compact
             loading={applying}
             onPress={aplicar}
           />
           <Text style={[type.caption, { color: colors.textSecondary, marginTop: 4, textAlign: "center" }]}>
-            Cria uma nova versão da sua meta. Você pode mudar quando quiser em Objetivo e metas.
+            Cria uma nova versão da sua meta. Dá pra desfazer depois.
           </Text>
+          {erro ? (
+            <Text style={[type.caption, { color: colors.warning, marginTop: 4, textAlign: "center" }]}>{erro}</Text>
+          ) : null}
+        </View>
+      ) : podeAplicarTecnica ? (
+        <View style={{ marginTop: spacing.sm }}>
+          {aplicado ? (
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+              <Text style={[type.caption, { color: colors.success, fontWeight: "700" }]}>
+                Aplicado — aparece na prévia do treino
+              </Text>
+            </View>
+          ) : (
+            <>
+              <Button
+                title={applying ? "Aplicando..." : `Aplicar ${tecnica} no treino`}
+                variant="secondary"
+                compact
+                loading={applying}
+                onPress={aplicarTec}
+              />
+              <Text style={[type.caption, { color: colors.textSecondary, marginTop: 4, textAlign: "center" }]}>
+                Vira uma dica na prévia do treino. Dá pra remover lá.
+              </Text>
+            </>
+          )}
           {erro ? (
             <Text style={[type.caption, { color: colors.warning, marginTop: 4, textAlign: "center" }]}>{erro}</Text>
           ) : null}
