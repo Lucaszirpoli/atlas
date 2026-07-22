@@ -15,7 +15,6 @@ import { EvolutionScreen } from "../screens/evolution/EvolutionScreen";
 import { DashboardScreen } from "../screens/main/DashboardScreen";
 import { PaywallScreen } from "../screens/main/PaywallScreen";
 import { ProfileScreen } from "../screens/main/ProfileScreen";
-import { OnboardingScreen } from "../screens/onboarding/OnboardingScreen";
 import { SleepScreen } from "../screens/sleep/SleepScreen";
 import { WaterScreen } from "../screens/water/WaterScreen";
 import { useTheme } from "../theme/ThemeProvider";
@@ -148,12 +147,12 @@ export function RootNavigator() {
     );
   }
 
-  const showApp = user && user.onboarding_completed;
-
+  // Sem onboarding de entrada: criou a conta, cai direto no app. O objetivo é
+  // definido depois, quando a pessoa entra no Coaching (fluxo sob demanda lá).
   return (
     <NavigationContainer ref={navigationRef}>
-      {!user ? <AuthStack /> : !user.onboarding_completed ? <OnboardingScreen /> : <AppStack />}
-      {showApp ? <ActiveWorkoutBadge /> : null}
+      {!user ? <AuthStack /> : <AppStack />}
+      {user ? <ActiveWorkoutBadge /> : null}
     </NavigationContainer>
   );
 }

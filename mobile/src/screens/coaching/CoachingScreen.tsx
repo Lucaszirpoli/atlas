@@ -28,6 +28,7 @@ import { InfoDialog } from "../../components/InfoDialog";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
 import { mensagemDeErro } from "../../utils/errorMessage";
+import { OnboardingScreen } from "../onboarding/OnboardingScreen";
 import { CoachingProgress } from "./CoachingProgress";
 
 // Objetivo -> rótulo + ícone (a análise gira em torno do objetivo atual).
@@ -137,6 +138,13 @@ export function CoachingScreen() {
     },
     [load]
   );
+
+  // Sem onboarding de entrada: o objetivo é criado AQUI, na primeira vez que a
+  // pessoa entra no Coaching. Vale pra Free e Pro (definir objetivo é básico) —
+  // depois o Free vê o paywall e o Pro vê a análise. Ao concluir, recarrega.
+  if (user && !user.onboarding_completed) {
+    return <OnboardingScreen onDone={load} />;
+  }
 
   if (!isPro) {
     return <CoachingPaywall />;
