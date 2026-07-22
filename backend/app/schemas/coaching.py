@@ -182,6 +182,19 @@ class RemoveActionResult(BaseModel):
     message: str
 
 
+class SetPaceRequest(BaseModel):
+    pace: str  # slow | normal | fast
+
+
+class SetTargetWeightRequest(BaseModel):
+    target_weight_kg: float | None = Field(default=None, ge=25, le=400)
+
+
+class SetGoalConfigResult(BaseModel):
+    ok: bool
+    message: str
+
+
 class CheckinLine(BaseModel):
     key: str
     status: str            # good | warn | info

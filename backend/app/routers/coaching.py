@@ -16,6 +16,7 @@ from app.models.coaching_baseline import CoachingBaseline
 from app.models.coaching_technique_cue import CoachingTechniqueCue
 from app.models.exercise import Exercise, quality_order
 from app.models.user import Plan, User
+from app.models.user_profile import GoalPace
 from app.services import goal_service
 from app.schemas.coaching import (
     ApplyActionRequest,
@@ -34,6 +35,9 @@ from app.schemas.coaching import (
     RemoveCueResult,
     ResetBaselineResult,
     RevertResult,
+    SetGoalConfigResult,
+    SetPaceRequest,
+    SetTargetWeightRequest,
     TechniqueCueRead,
     WorkoutOverlay,
 )
@@ -83,7 +87,23 @@ def coaching_analysis(
     active_deload = _active_deload(db, current_user.id) is not None
     result = analyze(metrics, active_deload=active_deload).to_dict()
     _inject_transition(result, db, current_user)
+    result["metrics"]["pace"] = _pace_block(db, current_user)
     return result
+
+
+def _pace_block(db: Session, user: User) -> dict | None:
+    """Ritmo atual + as 3 opções (kcal/velocidade/tempo até o alvo) pro card de
+    objetivo. options=[] quando o ritmo não se aplica (manutenção/performance)."""
+    profile = getattr(user, "profile", None)
+    if profile is None:
+        return None
+    weight = goal_service.get_latest_weight_kg(db, user.id)
+    return {
+        "current": (profile.goal_pace.value if profile.goal_pace else "normal"),
+        "target_weight_kg": profile.target_weight_kg,
+        "current_weight_kg": weight,
+        "options": goal_service.pace_options(profile, weight),
+    }
 
 
 def _inject_transition(result: dict, db: Session, user: User) -> None:
@@ -209,6 +229,52 @@ def apply_diet_adjustment(
         message=f"Pronto — {sentido} sua meta em {abs(actual_delta)} kcal, agora {round(new_kcal)} kcal/dia. "
         "Reavalie em 2 semanas.",
     )
+
+
+@router.post("/pace", response_model=SetGoalConfigResult)
+def set_pace(
+    payload: SetPaceRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> SetGoalConfigResult:
+    """Troca o ritmo do objetivo (devagar/normal/rápido) e recalcula a meta. Se a
+    mudança de kcal for grande, entra na transição gradual (não estoura de uma
+    vez). Pro."""
+    _require_pro(current_user)
+    profile = getattr(current_user, "profile", None)
+    if profile is None:
+        raise HTTPException(status_code=400, detail="Complete seu perfil primeiro.")
+    try:
+        profile.goal_pace = GoalPace(payload.pace)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Ritmo inválido.")
+    db.commit()
+    try:
+        sug = goal_service.compute_suggestion(db, current_user.id, profile)
+        goal = goal_service.apply_auto_goal(db, current_user.id, sug)
+    except ValueError:
+        return SetGoalConfigResult(ok=True, message="Ritmo atualizado. Registre seu peso pra eu ajustar a meta.")
+    rot = {"slow": "mais devagar", "normal": "no ritmo recomendado", "fast": "mais rápido"}.get(payload.pace, "")
+    return SetGoalConfigResult(ok=True, message=f"Ritmo {rot} — meta agora {round(goal.kcal)} kcal/dia.")
+
+
+@router.post("/target-weight", response_model=SetGoalConfigResult)
+def set_target_weight(
+    payload: SetTargetWeightRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> SetGoalConfigResult:
+    """Define (ou limpa) o peso-alvo — é o que dá a estimativa de tempo por ritmo.
+    Não recalcula a meta (o alvo é referência de tempo, não muda o déficit). Pro."""
+    _require_pro(current_user)
+    profile = getattr(current_user, "profile", None)
+    if profile is None:
+        raise HTTPException(status_code=400, detail="Complete seu perfil primeiro.")
+    profile.target_weight_kg = payload.target_weight_kg
+    db.commit()
+    if payload.target_weight_kg is None:
+        return SetGoalConfigResult(ok=True, message="Peso-alvo removido.")
+    return SetGoalConfigResult(ok=True, message=f"Peso-alvo: {payload.target_weight_kg:g} kg. Agora estimo o tempo por ritmo.")
 
 
 @router.post("/apply/transition", response_model=ApplyDietResult)

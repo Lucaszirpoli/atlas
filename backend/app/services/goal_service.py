@@ -5,9 +5,16 @@ from sqlalchemy.orm import Session
 
 from app.models.calorie_goal import CalorieGoal, GoalMode
 from app.models.coaching_transition import CoachingTransition
-from app.models.user_profile import UserProfile
+from app.models.user_profile import GoalPace, UserProfile
 from app.models.weight_log import WeightLog
-from app.services.nutrition_calc import compute_auto_goal
+from app.services.nutrition_calc import (
+    PACE_APPLIES,
+    calculate_bmr,
+    calculate_tdee,
+    compute_auto_goal,
+    goal_adjustment_for,
+    weekly_rate_kg,
+)
 
 SIGNIFICANT_KCAL_DELTA = 100
 # Passo máximo de mudança de meta por vez, quando a troca é grande. Acima disso o
@@ -48,6 +55,7 @@ def compute_suggestion(db: Session, user_id: int, profile: UserProfile) -> dict:
         age=profile.age,
         activity_level=profile.activity_level,
         goal=profile.goal,
+        pace=profile.goal_pace or GoalPace.NORMAL,
     )
 
     current = get_current_goal(db, user_id)
@@ -61,6 +69,33 @@ def compute_suggestion(db: Session, user_id: int, profile: UserProfile) -> dict:
         "changed_significantly": changed_significantly,
         "objective": profile.goal.value,
     }
+
+
+def pace_options(profile: UserProfile, current_weight_kg: float | None) -> list[dict]:
+    """As 3 opções de ritmo pro objetivo atual, cada uma com kcal, velocidade
+    (kg/sem) e tempo estimado até o peso-alvo (se houver). Vazio quando o ritmo
+    não se aplica (manutenção/performance) — aí não há déficit deliberado."""
+    if profile.goal not in PACE_APPLIES:
+        return []
+    tdee = calculate_tdee(
+        calculate_bmr(profile.biological_sex, current_weight_kg or 0, profile.height_cm, profile.age),
+        profile.activity_level,
+    )
+    alvo = profile.target_weight_kg
+    diff = (current_weight_kg - alvo) if (alvo and current_weight_kg) else None
+    out: list[dict] = []
+    for pace in (GoalPace.SLOW, GoalPace.NORMAL, GoalPace.FAST):
+        rate = weekly_rate_kg(tdee, profile.goal, pace)  # kg/sem, com sinal
+        kcal = round(tdee * (1 + goal_adjustment_for(profile.goal, pace)))
+        weeks: int | None = None
+        # só estima tempo quando o ritmo aponta pra direção do alvo
+        if diff is not None and rate != 0 and ((diff > 0 and rate < 0) or (diff < 0 and rate > 0)):
+            weeks = max(1, round(abs(diff) / abs(rate)))
+        out.append({
+            "pace": pace.value, "kcal": kcal,
+            "rate_kg_per_week": round(rate, 2), "weeks": weeks,
+        })
+    return out
 
 
 def active_transition(db: Session, user_id: int) -> CoachingTransition | None:

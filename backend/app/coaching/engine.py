@@ -39,6 +39,15 @@ SEV_INFO = "info"
 SEV_ATTENTION = "attention"
 SEV_ACTION = "action"
 
+VOLUME_DROP_DELOAD = -8  # queda de carga (%) a partir da qual o coach oferece deload
+
+
+def _deload_worthy(m: Metrics) -> bool:
+    """True quando a carga caiu o bastante pra o coach sugerir uma semana leve.
+    Enquanto isso vale, ele NÃO manda subir carga — seria um paradoxo."""
+    v = m.training.volume_trend_pct
+    return v is not None and v <= VOLUME_DROP_DELOAD
+
 
 @dataclass
 class Finding:
@@ -212,7 +221,7 @@ def _carga_insight(m: Metrics, active_deload: bool = False) -> Insight:
     if v >= 3:
         return Insight("carga", SEV_INFO, "Carga subindo", f"Seu volume total subiu ~{v:.0f}% no período — "
                        "sobrecarga progressiva acontecendo, é o que puxa o resultado.", chart="carga")
-    if v <= -8:
+    if v <= VOLUME_DROP_DELOAD:
         # Queda de carga persistente costuma ser fadiga acumulada — o coach oferece
         # uma semana leve (deload) de propósito, com botão de aplicar.
         return Insight("carga", SEV_ATTENTION, "Carga caindo", f"Seu volume total caiu ~{abs(v):.0f}% no período. "
@@ -303,7 +312,9 @@ def _treino_insight(m: Metrics, active_deload: bool = False) -> Insight:
                 "exercise_name": lift["name"],
             },
         )
-    if t.progression_lifts:
+    # Só manda subir carga se a carga NÃO está caindo (senão o coach pediria
+    # deload e progressão ao mesmo tempo — paradoxo). Recuperar vem primeiro.
+    if t.progression_lifts and not _deload_worthy(m):
         p = t.progression_lifts[0]
         inc, novo, _ = progression_step(p["muscle"], p["equipment"], p["top_weight"])
         if novo is not None:

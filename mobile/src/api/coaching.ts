@@ -42,6 +42,13 @@ export type CoachingMetrics = {
     remaining_kcal: number;
     days_until_next: number;
   } | null;
+  // Ritmo do objetivo + as 3 opções. options=[] quando não se aplica.
+  pace: {
+    current: "slow" | "normal" | "fast";
+    target_weight_kg: number | null;
+    current_weight_kg: number | null;
+    options: { pace: "slow" | "normal" | "fast"; kcal: number; rate_kg_per_week: number; weeks: number | null }[];
+  } | null;
 };
 
 export type CoachingChart = "peso" | "calorias" | "macros" | "sono" | "carga";
@@ -253,6 +260,18 @@ export type CoachingCheckin = {
 /** Check-in semanal proativo — o resumo de segunda-feira do coach (7 dias). */
 export async function getCoachingCheckin(): Promise<CoachingCheckin> {
   const { data } = await api.get<CoachingCheckin>("/coaching/checkin");
+  return data;
+}
+
+/** Troca o ritmo do objetivo (devagar/normal/rápido) e recalcula a meta. */
+export async function setGoalPace(pace: "slow" | "normal" | "fast"): Promise<{ ok: boolean; message: string }> {
+  const { data } = await api.post("/coaching/pace", { pace });
+  return data;
+}
+
+/** Define/limpa o peso-alvo (referência pra estimativa de tempo). */
+export async function setTargetWeight(kg: number | null): Promise<{ ok: boolean; message: string }> {
+  const { data } = await api.post("/coaching/target-weight", { target_weight_kg: kg });
   return data;
 }
 

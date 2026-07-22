@@ -1,13 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import React, { useCallback, useRef, useState } from "react";
-import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 import {
   applyCoachAction,
   applyDietAdjustment,
   applyTechnique,
   applyTransitionStep,
+  setGoalPace,
+  setTargetWeight,
   getCoachingAnalysis,
   getCoachingCheckin,
   listCoachingChanges,
@@ -35,6 +37,32 @@ const GOAL_META: Record<string, { label: string; icon: keyof typeof Ionicons.gly
   manutencao: { label: "Manutenção", icon: "remove" },
   recomposicao: { label: "Recomposição", icon: "sync" },
   performance: { label: "Performance", icon: "flash" },
+};
+
+// Rótulo curto por dimensão — pras pílulas compactas das barras "tudo certo".
+const KEY_LABEL: Record<string, string> = {
+  peso: "Peso",
+  calorias: "Calorias",
+  macros: "Macros",
+  sono: "Sono",
+  carga: "Carga",
+  treino: "Treino",
+};
+
+// Ritmo do objetivo: rótulo + risco/benefício (o "?" de cada opção).
+const PACE_META: Record<string, { label: string; info: string }> = {
+  slow: {
+    label: "Devagar",
+    info: "Mais devagar: preserva mais músculo e é mais fácil de manter no dia a dia. O custo é levar mais tempo pra chegar no alvo.",
+  },
+  normal: {
+    label: "Normal",
+    info: "Recomendado: o equilíbrio. Resultado consistente com baixo risco de perder músculo (no corte) ou acumular gordura (no ganho).",
+  },
+  fast: {
+    label: "Rápido",
+    info: "Mais rápido: chega antes no alvo, mas sobe o risco — perder músculo no corte ou ganhar mais gordura no bulk — e é mais difícil de sustentar.",
+  },
 };
 
 // "há quanto tempo no objetivo" a partir do marco (baseline). Null = sem marco.
@@ -65,24 +93,17 @@ export function CoachingScreen() {
   const [analysis, setAnalysis] = useState<CoachingAnalysis | null>(null);
   const [changes, setChanges] = useState<CoachingChange[]>([]);
   const [checkin, setCheckin] = useState<CoachingCheckin | null>(null);
-  const [chartMetric, setChartMetric] = useState<CoachingChart>("peso");
-  // Janela dos gráficos = a mesma da análise (o período do objetivo). Sem
-  // seletor de semanas: o coach fala do objetivo atual, não de 4/8/12 semanas.
+  // Gráfico aberto num modal (null = fechado). Não fica mais fixo na tela — abre
+  // ao tocar o ícone de gráfico de uma barra e fecha no "x".
+  const [chartOpen, setChartOpen] = useState<CoachingChart | null>(null);
+  // Janela dos gráficos = a mesma da análise (o período do objetivo).
   const chartWindow = analysis?.window_days ?? 56;
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState(false);
   const [aviso, setAviso] = useState<{ title: string; message: string } | null>(null);
   const scrollRef = useRef<ScrollView>(null);
-  const chartY = useRef(0);
 
-  // Toque no quadradinho de gráfico de uma barra: troca a métrica do gráfico e
-  // rola até ele (o gráfico fica logo abaixo das barras).
-  const onOpenChart = useCallback((chart: CoachingChart) => {
-    setChartMetric(chart);
-    requestAnimationFrame(() =>
-      scrollRef.current?.scrollTo({ y: Math.max(0, chartY.current - 12), animated: true })
-    );
-  }, []);
+  const onOpenChart = useCallback((chart: CoachingChart) => setChartOpen(chart), []);
 
   const load = useCallback(() => {
     if (!isPro) return Promise.resolve();
@@ -187,17 +208,6 @@ export function CoachingScreen() {
         <Ionicons name="chevron-forward" size={18} color={colors.primary} />
       </TouchableOpacity>
 
-      {/* Gráfico simples do período — UM de cada vez, controlado pelas barras
-          (o quadradinho de gráfico troca a métrica). Absorve a Evolução. */}
-      <View onLayout={(e) => (chartY.current = e.nativeEvent.layout.y)}>
-        <CoachingProgress
-          periodDays={chartWindow}
-          metric={chartMetric}
-          onMetricChange={setChartMetric}
-          onDataChanged={load}
-        />
-      </View>
-
       {/* O que o coach mudou — dieta + técnica + ações num painel só, enxuto:
           ativos em cima com Desfazer, o resto no histórico recolhido. */}
       {changes.length > 0 ? (
@@ -230,7 +240,86 @@ export function CoachingScreen() {
         title={aviso?.title ?? ""}
         message={aviso?.message}
       />
+
+      {/* Gráfico em modal — abre ao tocar o ícone de gráfico de uma barra, fecha
+          no "x". Não fica mais fixo ocupando a tela. */}
+      <ChartModal
+        chart={chartOpen}
+        insights={analysis?.insights ?? []}
+        periodDays={chartWindow}
+        onClose={() => setChartOpen(null)}
+        onDataChanged={load}
+      />
     </ScrollView>
+  );
+}
+
+// Modal do gráfico de uma dimensão (peso/calorias/macros/sono/carga). Reusa o
+// CoachingProgress (com seu seletor interno pra trocar de gráfico) num overlay.
+function ChartModal({
+  chart,
+  insights,
+  periodDays,
+  onClose,
+  onDataChanged,
+}: {
+  chart: CoachingChart | null;
+  insights: CoachingInsight[];
+  periodDays: number;
+  onClose: () => void;
+  onDataChanged: () => void;
+}) {
+  const { colors, type, spacing, radius } = useTheme();
+  // Estado local do gráfico visível — começa no que a barra pediu, e o seletor
+  // interno do CoachingProgress deixa trocar sem fechar.
+  const [metric, setMetric] = useState<CoachingChart>("peso");
+  useEffect(() => {
+    if (chart != null) setMetric(chart);
+  }, [chart]);
+  // O MESMO texto que aparecia na barra daquela dimensão — acompanha a troca de
+  // métrica dentro do modal (carga usa a barra 'carga', não 'treino').
+  const ins = insights.find((i) => i.key === metric) ?? insights.find((i) => i.chart === metric);
+  const tint = ins
+    ? ins.severity === "action"
+      ? colors.primary
+      : ins.severity === "attention"
+      ? colors.warning
+      : colors.success
+    : colors.primary;
+  return (
+    <Modal visible={chart != null} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", padding: spacing.md }}>
+        <View style={{ backgroundColor: colors.surface, borderRadius: radius.card, padding: spacing.md, maxHeight: "85%" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
+            <Text style={[type.h2, { color: colors.textPrimary, flex: 1 }]}>Seu progresso</Text>
+            <TouchableOpacity
+              onPress={onClose}
+              hitSlop={10}
+              style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors.surfaceAlt, alignItems: "center", justifyContent: "center" }}
+            >
+              <Ionicons name="close" size={20} color={colors.textPrimary} />
+            </TouchableOpacity>
+          </View>
+          {chart != null ? (
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {/* A leitura do coach daquela dimensão (mesmo texto da barra). */}
+              {ins ? (
+                <View style={{ borderLeftWidth: 3, borderLeftColor: tint, paddingLeft: spacing.sm, marginBottom: spacing.md }}>
+                  <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700", marginBottom: 2 }]}>{ins.title}</Text>
+                  <Text style={[type.bodySmall, { color: colors.textSecondary, lineHeight: 20 }]}>{ins.detail}</Text>
+                </View>
+              ) : null}
+              <CoachingProgress
+                periodDays={periodDays}
+                metric={metric}
+                onMetricChange={setMetric}
+                onDataChanged={onDataChanged}
+              />
+            </ScrollView>
+          ) : null}
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -281,6 +370,9 @@ function AnalysisView({
         <Text style={[type.caption, { color: colors.textSecondary, marginTop: 6 }]}>
           Leitura do seu período no objetivo — confiança {analysis.confidence}.
         </Text>
+        {analysis.metrics.pace && analysis.metrics.pace.options.length > 0 ? (
+          <PaceSelector pace={analysis.metrics.pace} onChanged={onApplied} />
+        ) : null}
         {transition?.active ? (
           <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: 10, backgroundColor: colors.surfaceAlt, borderRadius: radius.card, padding: spacing.sm }}>
             <Ionicons name="swap-vertical" size={14} color={colors.primary} style={{ marginTop: 1 }} />
@@ -296,11 +388,24 @@ function AnalysisView({
       {/* CHECK-IN DA SEMANA — o pulso da semana atual (domingo → hoje). */}
       {checkin && checkin.has_data ? <WeeklyCheckin checkin={checkin} /> : null}
 
-      {/* Barras por dimensão — cada uma compara com o esperado PRO OBJETIVO,
-          com atalho pro gráfico daquela info. Substituem os antigos tiles. */}
-      {analysis.insights.map((ins) => (
-        <InsightBar key={ins.key} ins={ins} onApplied={onApplied} onOpenChart={onOpenChart} />
-      ))}
+      {/* Barras em DUAS CAMADAS: em cima, em card cheio, as que pedem uma decisão
+          (com ajuste primeiro); embaixo, as que estão "tudo certo" viram pílulas
+          compactas — clicáveis pro gráfico, mas sem ocupar a tela. */}
+      {(() => {
+        const rank = (i: CoachingInsight) => (i.adjustment ? 0 : 10) + (i.severity === "action" ? 0 : 1);
+        const acionaveis = analysis.insights
+          .filter((i) => i.severity !== "info")
+          .sort((a, b) => rank(a) - rank(b));
+        const ok = analysis.insights.filter((i) => i.severity === "info");
+        return (
+          <>
+            {acionaveis.map((ins) => (
+              <InsightBar key={ins.key} ins={ins} onApplied={onApplied} onOpenChart={onOpenChart} />
+            ))}
+            {ok.length > 0 ? <StatusPills bars={ok} onOpenChart={onOpenChart} /> : null}
+          </>
+        );
+      })()}
 
       {/* Lacunas de dado — o que registrar pra afinar a análise */}
       {analysis.data_gaps.length > 0 ? (
@@ -317,6 +422,220 @@ function AnalysisView({
         </Card>
       ) : null}
     </>
+  );
+}
+
+// Seletor de ritmo do objetivo (devagar/normal/rápido). Cada opção mostra o
+// tempo estimado até o peso-alvo (ou a velocidade, sem alvo) + um "?" com o
+// risco/benefício. Trocar recalcula a meta (com transição gradual se for grande).
+function PaceSelector({
+  pace,
+  onChanged,
+}: {
+  pace: NonNullable<CoachingAnalysis["metrics"]["pace"]>;
+  onChanged: (title: string, message: string) => void;
+}) {
+  const { colors, type, spacing, radius } = useTheme();
+  const [saving, setSaving] = useState<string | null>(null);
+  const [info, setInfo] = useState<{ title: string; message: string } | null>(null);
+  const [targetOpen, setTargetOpen] = useState(false);
+  const [targetInput, setTargetInput] = useState(pace.target_weight_kg ? String(pace.target_weight_kg) : "");
+
+  async function escolher(p: "slow" | "normal" | "fast") {
+    if (p === pace.current || saving) return;
+    setSaving(p);
+    try {
+      const r = await setGoalPace(p);
+      onChanged("Ritmo atualizado", r.message);
+    } catch {
+      setSaving(null);
+    }
+  }
+
+  async function salvarAlvo() {
+    const kg = parseFloat(targetInput.replace(",", "."));
+    setTargetOpen(false);
+    try {
+      const r = await setTargetWeight(Number.isFinite(kg) ? kg : null);
+      onChanged("Peso-alvo", r.message);
+    } catch {
+      // recarrega no próximo foco
+    }
+  }
+  async function limparAlvo() {
+    setTargetOpen(false);
+    setTargetInput("");
+    try {
+      const r = await setTargetWeight(null);
+      onChanged("Peso-alvo", r.message);
+    } catch {}
+  }
+
+  function tempoTexto(o: (typeof pace.options)[number]): string {
+    if (o.weeks != null) {
+      if (o.weeks >= 8) return `~${Math.round(o.weeks / 4)} meses`;
+      return `~${o.weeks} sem`;
+    }
+    const r = o.rate_kg_per_week;
+    return `${r > 0 ? "+" : ""}${r.toFixed(2)} kg/sem`;
+  }
+
+  return (
+    <View style={{ marginTop: spacing.md }}>
+      <Text style={[type.caption, { color: colors.textSecondary, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: spacing.xs }]}>
+        Ritmo
+      </Text>
+      {pace.options.map((o) => {
+        const on = o.pace === pace.current;
+        const m = PACE_META[o.pace];
+        return (
+          <View
+            key={o.pace}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 10,
+              borderWidth: 1,
+              borderColor: on ? colors.primary : colors.border,
+              backgroundColor: on ? colors.primary + "12" : "transparent",
+              borderRadius: radius.card,
+              paddingVertical: 9,
+              paddingHorizontal: spacing.sm,
+              marginBottom: spacing.xs,
+            }}
+          >
+            <TouchableOpacity
+              onPress={() => escolher(o.pace)}
+              activeOpacity={0.7}
+              style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}
+            >
+              <Ionicons
+                name={on ? "radio-button-on" : "radio-button-off"}
+                size={18}
+                color={on ? colors.primary : colors.textSecondary}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: on ? "700" : "600" }]}>
+                  {m.label}
+                  {o.pace === "normal" ? "  ·  recomendado" : ""}
+                </Text>
+                <Text style={[type.caption, { color: colors.textSecondary, marginTop: 1 }]}>
+                  {tempoTexto(o)} · {o.kcal} kcal
+                </Text>
+              </View>
+              {saving === o.pace ? <ActivityIndicator size="small" color={colors.primary} /> : null}
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setInfo({ title: m.label, message: m.info })} hitSlop={8}>
+              <Ionicons name="help-circle-outline" size={19} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        );
+      })}
+
+      {/* Peso-alvo — a referência que dá o tempo estimado. */}
+      <TouchableOpacity
+        onPress={() => {
+          setTargetInput(pace.target_weight_kg ? String(pace.target_weight_kg) : "");
+          setTargetOpen(true);
+        }}
+        style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}
+      >
+        <Ionicons name="flag-outline" size={14} color={colors.primary} />
+        <Text style={[type.caption, { color: colors.primary, fontWeight: "600" }]}>
+          {pace.target_weight_kg ? `Peso-alvo: ${pace.target_weight_kg} kg (tocar pra mudar)` : "Definir peso-alvo pra estimar o tempo"}
+        </Text>
+      </TouchableOpacity>
+
+      <InfoDialog
+        visible={info != null}
+        onClose={() => setInfo(null)}
+        title={info?.title ?? ""}
+        message={info?.message}
+      />
+
+      {/* Modal simples pra digitar o peso-alvo. */}
+      <Modal visible={targetOpen} transparent animationType="fade" onRequestClose={() => setTargetOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", padding: spacing.lg }}>
+          <View style={{ backgroundColor: colors.surface, borderRadius: radius.card, padding: spacing.lg }}>
+            <Text style={[type.h2, { color: colors.textPrimary, marginBottom: spacing.sm }]}>Peso-alvo</Text>
+            <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.md }]}>
+              Onde você quer chegar. É a partir daqui que eu estimo o tempo de cada ritmo.
+            </Text>
+            <TextInput
+              value={targetInput}
+              onChangeText={setTargetInput}
+              keyboardType="numeric"
+              placeholder="ex: 75"
+              placeholderTextColor={colors.textSecondary}
+              style={{
+                borderWidth: 1, borderColor: colors.border, borderRadius: radius.card,
+                paddingVertical: 10, paddingHorizontal: spacing.md, color: colors.textPrimary,
+                fontSize: 16, marginBottom: spacing.md,
+              }}
+            />
+            <View style={{ flexDirection: "row", gap: spacing.sm }}>
+              <View style={{ flex: 1 }}>
+                <Button title="Salvar" onPress={salvarAlvo} />
+              </View>
+              {pace.target_weight_kg ? (
+                <TouchableOpacity onPress={limparAlvo} style={{ justifyContent: "center", paddingHorizontal: spacing.md }}>
+                  <Text style={[type.bodySmall, { color: colors.textSecondary }]}>Limpar</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity onPress={() => setTargetOpen(false)} style={{ justifyContent: "center", paddingHorizontal: spacing.md }}>
+                  <Text style={[type.bodySmall, { color: colors.textSecondary }]}>Cancelar</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+// Faixa compacta das dimensões que estão "tudo certo" (info). Cada uma é uma
+// pílula com bolinha verde + nome + ícone de gráfico; toca e abre o gráfico.
+function StatusPills({
+  bars,
+  onOpenChart,
+}: {
+  bars: CoachingInsight[];
+  onOpenChart: (chart: CoachingChart) => void;
+}) {
+  const { colors, type, spacing, radius } = useTheme();
+  return (
+    <View style={{ marginBottom: spacing.md }}>
+      <Text style={[type.caption, { color: colors.textSecondary, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: spacing.xs }]}>
+        Tudo certo
+      </Text>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
+        {bars.map((b) => (
+          <TouchableOpacity
+            key={b.key}
+            activeOpacity={0.7}
+            onPress={() => b.chart && onOpenChart(b.chart)}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              backgroundColor: colors.surface,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: radius.pill,
+              paddingVertical: 7,
+              paddingHorizontal: 11,
+            }}
+          >
+            <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: colors.success }} />
+            <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "600" }]}>
+              {KEY_LABEL[b.key] ?? b.title}
+            </Text>
+            {b.chart ? <Ionicons name="stats-chart" size={13} color={colors.textSecondary} /> : null}
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
   );
 }
 

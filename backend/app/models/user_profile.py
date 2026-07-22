@@ -1,10 +1,18 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import ARRAY, JSON, DateTime, Enum, ForeignKey, String, Text, func
+from sqlalchemy import ARRAY, JSON, DateTime, Enum, Float, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
+
+
+class GoalPace(str, enum.Enum):
+    """Ritmo do objetivo — escala o déficit/superávit. 'normal' é o recomendado."""
+
+    SLOW = "slow"      # mais devagar, preserva mais músculo, leva mais tempo
+    NORMAL = "normal"  # o equilíbrio recomendado pelo coaching
+    FAST = "fast"      # mais rápido, mais risco, mais difícil de sustentar
 
 
 class BiologicalSex(str, enum.Enum):
@@ -64,6 +72,14 @@ class UserProfile(Base):
         Enum(ActivityLevel, name="activity_level")
     )
     goal: Mapped[Goal] = mapped_column(Enum(Goal, name="goal"))
+    # Ritmo do objetivo (devagar/normal/rápido) e peso-alvo (opcional). O ritmo
+    # escala o déficit/superávit; o alvo dá a estimativa de tempo. Colunas novas
+    # -> ensure_columns no init_db (ALTER cedo), não quebra banco antigo.
+    goal_pace: Mapped[GoalPace] = mapped_column(
+        Enum(GoalPace, name="goal_pace", native_enum=False),
+        default=GoalPace.NORMAL, server_default="NORMAL",
+    )
+    target_weight_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
     experience_level: Mapped[ExperienceLevel] = mapped_column(
         Enum(ExperienceLevel, name="experience_level")
     )

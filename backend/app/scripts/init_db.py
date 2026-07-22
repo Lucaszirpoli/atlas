@@ -25,6 +25,28 @@ from app.scripts import (
 )
 
 
+def _ensure_profile_columns() -> None:
+    """ALTER idempotente (SQLite dev + Postgres prod) pras colunas novas de
+    user_profiles: goal_pace (VARCHAR, default NORMAL) e target_weight_kg (float).
+    Roda logo após o create_all, ANTES de qualquer select(UserProfile)."""
+    from sqlalchemy import inspect, text
+
+    existentes = {c["name"] for c in inspect(engine).get_columns("user_profiles")}
+    add_cols = [
+        ("goal_pace", "VARCHAR(10) NOT NULL DEFAULT 'NORMAL'", "VARCHAR(10) NOT NULL DEFAULT 'NORMAL'"),
+        ("target_weight_kg", "DOUBLE PRECISION", "FLOAT"),
+    ]
+    pg = engine.dialect.name == "postgresql"
+    with engine.begin() as conn:
+        for col, pg_type, sqlite_type in add_cols:
+            if col in existentes:
+                continue
+            if pg:
+                conn.execute(text(f"ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS {col} {pg_type}"))
+            else:
+                conn.execute(text(f"ALTER TABLE user_profiles ADD COLUMN {col} {sqlite_type}"))
+
+
 def run() -> None:
     print(f"Criando schema em {engine.url} ...")
     Base.metadata.create_all(bind=engine)
@@ -49,6 +71,11 @@ def run() -> None:
     # API registrar qualquer refeição num banco antigo. A tabela food_portions é
     # nova, então o create_all acima já a cria; o backfill roda depois dos seeds.
     seed_food_portions.ensure_columns()
+
+    # Ritmo do objetivo + peso-alvo em user_profiles: mesma regra — a API faz
+    # select(UserProfile) o tempo todo, então num banco antigo essas colunas
+    # PRECISAM existir antes de qualquer consulta, senão o boot morre (502).
+    _ensure_profile_columns()
 
     db = SessionLocal()
     try:
