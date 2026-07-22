@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.coaching import chat as coach_chat
 from app.coaching.engine import analyze, progression_step, suggest_stall_technique, weekly_checkin
@@ -16,6 +16,7 @@ from app.models.coaching_baseline import CoachingBaseline
 from app.models.coaching_technique_cue import CoachingTechniqueCue
 from app.models.exercise import Exercise, quality_order
 from app.models.user import Plan, User
+from app.services import goal_service
 from app.schemas.coaching import (
     ApplyActionRequest,
     ApplyActionResult,
@@ -48,19 +49,88 @@ def _require_pro(user: User) -> None:
         )
 
 
+def _janela_do_objetivo(db: Session, user_id: int, now: datetime) -> int:
+    """Janela da análise = DESDE que a pessoa começou o objetivo atual (o marco).
+    Sem marco, usa 56 dias (fase recente). Cap de 180 dias pra não pesar."""
+    baseline = _aware(db.execute(
+        select(CoachingBaseline.effective_from)
+        .where(CoachingBaseline.user_id == user_id)
+        .order_by(CoachingBaseline.created_at.desc(), CoachingBaseline.id.desc())
+        .limit(1)
+    ).scalar_one_or_none())
+    if baseline is None:
+        return 56
+    return max(7, min((now - baseline).days, 180))
+
+
 @router.get("/analysis", response_model=CoachingAnalysis)
 def coaching_analysis(
-    window_days: int = 28,
+    window_days: int | None = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Análise semanal do Coaching: métricas -> detecção -> ajustes propostos,
-    100% determinística (sem token). Exclusiva do Pro — o acompanhamento é o
-    valor do plano na reformulação."""
+    """Análise do Coaching: métricas -> detecção -> ajustes propostos, 100%
+    determinística (sem token). Exclusiva do Pro. A janela é o PERÍODO DO OBJETIVO
+    atual (desde o marco) — não mais 4/8/12 semanas fixas. Enquanto um deload
+    está ativo, a análise não manda forçar (coerência)."""
     _require_pro(current_user)
-    window_days = max(7, min(window_days, 90))  # 7 = "Semanal"
-    metrics = compute_metrics(db, current_user.id, window_days=window_days)
-    return analyze(metrics).to_dict()
+    now = datetime.now(timezone.utc)
+    if window_days is None:
+        window_days = _janela_do_objetivo(db, current_user.id, now)
+    else:
+        window_days = max(7, min(window_days, 180))
+    metrics = compute_metrics(db, current_user.id, window_days=window_days, now=now)
+    active_deload = _active_deload(db, current_user.id) is not None
+    result = analyze(metrics, active_deload=active_deload).to_dict()
+    _inject_transition(result, db, current_user)
+    return result
+
+
+def _inject_transition(result: dict, db: Session, user: User) -> None:
+    """Quando há uma transição de objetivo em andamento, a barra de CALORIAS passa
+    a falar da transição (com o passo pra aplicar, respeitando o intervalo) e o
+    header ganha o status. Sem transição, nada muda."""
+    tr = goal_service.active_transition(db, user.id)
+    result["metrics"]["transition"] = None
+    if tr is None:
+        return
+    profile = getattr(user, "profile", None)
+    current = goal_service.get_current_goal(db, user.id)
+    if profile is None or current is None:
+        return
+    try:
+        sug = goal_service.compute_suggestion(db, user.id, profile)
+        target = float(sug["kcal"])
+    except ValueError:
+        target = float(tr.target_kcal)
+    falta = round(target - current.kcal)
+    dias = goal_service.days_since_last_goal(db, user.id) or 0
+    faltam_dias = max(0, goal_service.TRANSITION_MIN_DAYS - dias)
+    subindo = falta > 0
+
+    result["metrics"]["transition"] = {
+        "active": True, "target_kcal": round(target), "current_kcal": round(current.kcal),
+        "remaining_kcal": falta, "days_until_next": faltam_dias,
+    }
+    if abs(falta) <= 50:  # praticamente no alvo — o próximo passo conclui
+        return
+
+    ins = next((i for i in result["insights"] if i["key"] == "calorias"), None)
+    if ins is None:
+        return
+    sentido = "subindo" if subindo else "descendo"
+    ins["title"] = "Transição de objetivo"
+    ins["severity"] = "action"
+    base = (f"Estou {sentido} sua meta aos poucos pro novo objetivo — de {round(current.kcal)} pra "
+            f"~{round(target)} kcal (faltam {abs(falta)}). Mudança gradual protege o resultado e o corpo.")
+    if faltam_dias > 0:
+        ins["detail"] = base + f" Próximo passo em {faltam_dias} dia(s)."
+        ins["finding_key"] = None
+        ins["adjustment"] = None
+    else:
+        ins["detail"] = base
+        ins["finding_key"] = "transition_step"
+        ins["adjustment"] = {"kind": "transition"}
 
 
 @router.post("/apply/diet", response_model=ApplyDietResult)
@@ -139,6 +209,40 @@ def apply_diet_adjustment(
         message=f"Pronto — {sentido} sua meta em {abs(actual_delta)} kcal, agora {round(new_kcal)} kcal/dia. "
         "Reavalie em 2 semanas.",
     )
+
+
+@router.post("/apply/transition", response_model=ApplyDietResult)
+def apply_transition_step(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ApplyDietResult:
+    """Dá o próximo passo da transição de objetivo — move a meta um degrau (±250
+    kcal) rumo ao alvo, respeitando o intervalo mínimo entre passos. Loga como
+    ajuste de dieta (aparece no painel 'O que o coach mudou', com Desfazer)."""
+    _require_pro(current_user)
+    profile = getattr(current_user, "profile", None)
+    if profile is None:
+        raise HTTPException(status_code=400, detail="Complete seu perfil primeiro.")
+    try:
+        r = goal_service.step_transition_goal(db, current_user.id, profile)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    prev, novo = r["prev_goal"], r["new_goal"]
+    delta = int(round(novo.kcal - prev.kcal))
+    db.add(CoachingAdjustment(
+        user_id=current_user.id, finding_key="transition_step", kind="diet_transition",
+        kcal_delta=delta, prev_kcal=prev.kcal, prev_protein_g=prev.protein_g,
+        prev_carbs_g=prev.carbs_g, prev_fat_g=prev.fat_g, new_kcal=novo.kcal,
+    ))
+    db.commit()
+    if r["completed"]:
+        msg = f"Transição concluída — sua meta chegou em {round(novo.kcal)} kcal, o alvo do novo objetivo. 🎯"
+    else:
+        msg = (f"Mais um passo: meta agora {round(novo.kcal)} kcal (rumo a ~{round(r['target_kcal'])}). "
+               "Segue firme uns dias antes do próximo.")
+    return ApplyDietResult(applied=True, previous_kcal=prev.kcal, new_kcal=novo.kcal,
+                           kcal_delta=delta, message=msg)
 
 
 @router.post("/apply/technique", response_model=ApplyTechniqueResult)
@@ -252,6 +356,34 @@ def _aware(dt: datetime | None) -> datetime | None:
     return dt
 
 
+DELOAD_DAYS = 7
+
+
+def _active_deload(db: Session, user_id: int) -> CoachingAction | None:
+    """Deload em andamento (aplicado há < 7 dias e não desfeito). É o que torna o
+    coach COERENTE: enquanto vale, ele não manda subir carga nem aplicar técnica."""
+    now = datetime.now(timezone.utc)
+    for a in db.execute(
+        select(CoachingAction).where(
+            CoachingAction.user_id == user_id,
+            CoachingAction.kind == "deload",
+            CoachingAction.reverted_at.is_(None),
+        )
+    ).scalars():
+        criado = _aware(a.created_at)
+        if criado is None or (now - criado).days < DELOAD_DAYS:
+            return a
+    return None
+
+
+def _semana_atual_inicio(now: datetime) -> datetime:
+    """Início da SEMANA-calendário (domingo 00:00), como o app já mostra
+    (D S T Q Q S S). Não é janela móvel de 7 dias — é a semana de verdade."""
+    dias_desde_domingo = (now.weekday() + 1) % 7  # Mon=0..Sun=6 -> domingo=0
+    inicio = now - timedelta(days=dias_desde_domingo)
+    return inicio.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
 def _swap_alternative(db: Session, ex_id: int) -> Exercise | None:
     """Melhor substituto (dos 50 visíveis) pra um exercício travado: mesmo grupo
     muscular, mesmo tipo (composto/isolado), equipamento DIFERENTE de preferência
@@ -304,6 +436,10 @@ def apply_action(
             ex_id = int(fk.split(":", 1)[1])
         except ValueError:
             raise HTTPException(status_code=400, detail="Sugestão inválida.")
+        # Coerência: não manda subir carga durante um deload.
+        if _active_deload(db, current_user.id) is not None:
+            raise HTTPException(status_code=409, detail="Você está numa semana de deload — o foco agora é "
+                                "recuperar. Subir carga volta quando o deload terminar.")
         p = next((x for x in m.training.progression_lifts if x["exercise_id"] == ex_id), None)
         if p is None:
             raise HTTPException(status_code=409, detail="Esse exercício não está mais pronto pra subir — "
@@ -332,6 +468,18 @@ def apply_action(
         if existing:
             return ApplyActionResult(applied=True, kind="deload", title=existing.title,
                                      message="Você já está numa semana de deload.")
+        # Coerência: um deload cancela as ações que mandam FORÇAR (subir carga,
+        # trocar por estímulo novo) — elas se contradizem com uma semana leve.
+        # Voltam a ser oferecidas depois, quando a análise rodar de novo.
+        agora = datetime.now(timezone.utc)
+        for act in db.execute(
+            select(CoachingAction).where(
+                CoachingAction.user_id == current_user.id,
+                CoachingAction.kind.in_(["progression", "exercise_swap"]),
+                CoachingAction.reverted_at.is_(None),
+            )
+        ).scalars():
+            act.reverted_at = agora
         title = "Semana de deload"
         detail = ("Semana leve pra recuperar: reduza a carga em ~40% (ou faça metade das séries valendo), "
                   "mantenha a técnica afiada e pare 2–3 reps antes da falha. Semana que vem você volta mais "
@@ -382,6 +530,14 @@ def workout_overlays(
     (progressão/troca por exercício, deload global). A prévia e a execução leem
     isto e mostram em cima do exercício certo (ou no topo, no caso do deload)."""
     out: list[WorkoutOverlay] = []
+    deload = _active_deload(db, current_user.id)
+    # Coerência: durante o deload, o treino mostra SÓ o banner de deload — nada de
+    # técnica de intensidade nem "subir carga", que contradizem a semana leve.
+    if deload is not None:
+        return [WorkoutOverlay(source="action", id=deload.id, kind="deload",
+                               exercise_id=None, exercise_name=None,
+                               title=deload.title, detail=deload.detail, payload={})]
+
     for c in db.execute(
         select(CoachingTechniqueCue).where(
             CoachingTechniqueCue.user_id == current_user.id,
@@ -391,18 +547,13 @@ def workout_overlays(
         out.append(WorkoutOverlay(source="technique", id=c.id, kind="technique",
                                   exercise_id=c.exercise_id, exercise_name=c.exercise_name,
                                   title=c.technique_label, detail=c.cue_text, payload={}))
-    now = datetime.now(timezone.utc)
     for a in db.execute(
         select(CoachingAction).where(
             CoachingAction.user_id == current_user.id,
+            CoachingAction.kind != "deload",
             CoachingAction.reverted_at.is_(None),
         )
     ).scalars():
-        # deload expira sozinho em 7 dias (some do treino sem precisar desfazer).
-        if a.kind == "deload":
-            criado = _aware(a.created_at)
-            if criado is not None and (now - criado).days >= 7:
-                continue
         out.append(WorkoutOverlay(source="action", id=a.id, kind=a.kind,
                                   exercise_id=a.exercise_id, exercise_name=a.exercise_name,
                                   title=a.title, detail=a.detail, payload=a.payload or {}))
@@ -487,10 +638,11 @@ def coaching_checkin(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Check-in semanal proativo — o resumo de segunda-feira do coach. Janela de
-    7 dias, determinístico. Exclusivo do Pro."""
+    """Check-in proativo — o balanço da SEMANA-calendário (domingo → agora), não
+    uma janela móvel de 7 dias. Determinístico. Exclusivo do Pro."""
     _require_pro(current_user)
-    m = compute_metrics(db, current_user.id, window_days=7)
+    now = datetime.now(timezone.utc)
+    m = compute_metrics(db, current_user.id, now=now, since_override=_semana_atual_inicio(now))
     return weekly_checkin(m)
 
 

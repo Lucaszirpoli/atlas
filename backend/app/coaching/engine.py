@@ -199,7 +199,12 @@ def _sono_insight(m: Metrics) -> Insight:
                    "abaixo do ideal (~7,5 h). Dormir pouco atrapalha treino, fome e recuperação.", chart="sono")
 
 
-def _carga_insight(m: Metrics) -> Insight:
+def _carga_insight(m: Metrics, active_deload: bool = False) -> Insight:
+    # Em semana de deload, a carga CAINDO é o esperado — não re-oferecer deload
+    # nem tratar como problema (senão o coach se contradiz).
+    if active_deload:
+        return Insight("carga", SEV_INFO, "Carga em deload", "Você está numa semana leve de propósito. Cair a "
+                       "carga agora é o certo — a sobrecarga volta a subir quando o deload terminar.", chart="carga")
     v = m.training.volume_trend_pct
     if v is None:
         return Insight("carga", SEV_INFO, "Carga", "Conclua alguns treinos pra eu acompanhar sua carga total "
@@ -269,8 +274,14 @@ def progression_step(muscle: str, equipment: str, top_weight: float) -> tuple[fl
     )
 
 
-def _treino_insight(m: Metrics) -> Insight:
+def _treino_insight(m: Metrics, active_deload: bool = False) -> Insight:
     t = m.training
+    # Em deload, o coach NÃO manda forçar (nem progressão, nem técnica de
+    # intensidade) — seria se contradizer. Foco é recuperar.
+    if active_deload:
+        return Insight("treino", SEV_INFO, "Semana de deload", "Você está numa semana leve pra recuperar. "
+                       "Sem forçar progressão nem técnica de intensidade agora — semana que vem o coach volta a "
+                       "puxar. Deload é o que permite continuar progredindo.", chart="carga")
     if t.window_days >= 14 and t.sessions_per_week < MIN_SESSIONS_PER_WEEK:
         return Insight("treino", SEV_ATTENTION, "Frequência de treino baixa", f"Média de {t.sessions_per_week:.1f} "
                        "treinos/semana. Abaixo de 2× por grupo o estímulo cai — mire 2–3×.", chart="carga")
@@ -319,14 +330,14 @@ def _treino_insight(m: Metrics) -> Insight:
                    "saudável. Mantém a consistência.", chart="carga")
 
 
-def _insights(m: Metrics) -> list[Insight]:
+def _insights(m: Metrics, active_deload: bool = False) -> list[Insight]:
     return [
         _peso_insight(m),
         _calorias_insight(m),
         _macros_insight(m),
         _sono_insight(m),
-        _carga_insight(m),
-        _treino_insight(m),
+        _carga_insight(m, active_deload),
+        _treino_insight(m, active_deload),
     ]
 
 
@@ -464,7 +475,7 @@ def _data_gaps(m: Metrics) -> list[str]:
     return gaps
 
 
-def analyze(m: Metrics) -> WeeklyAnalysis:
+def analyze(m: Metrics, *, active_deload: bool = False) -> WeeklyAnalysis:
     findings: list[Finding] = []
     findings += _weight_findings(m)
     findings += _nutrition_findings(m)
@@ -495,7 +506,7 @@ def analyze(m: Metrics) -> WeeklyAnalysis:
         confidence=confidence,
         headline=headline,
         findings=findings,
-        insights=_insights(m),
+        insights=_insights(m, active_deload),
         data_gaps=gaps,
         metrics=_metrics_public(m),
     )

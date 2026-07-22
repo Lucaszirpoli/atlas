@@ -388,10 +388,24 @@ def _sleep_metrics(db: Session, user_id: int, since: datetime) -> SleepMetrics:
     return SleepMetrics(avg_hours=avg_h, avg_quality=avg_q, nights=len(logs))
 
 
-def compute_metrics(db: Session, user_id: int, window_days: int = 28, *, now: datetime | None = None) -> Metrics:
+def compute_metrics(
+    db: Session,
+    user_id: int,
+    window_days: int = 28,
+    *,
+    now: datetime | None = None,
+    since_override: datetime | None = None,
+) -> Metrics:
     """Destila as métricas da janela (padrão 4 semanas). `now` é injetável só
-    pra teste — em produção usa o relógio."""
+    pra teste. `since_override` fixa o início da janela (ex.: o check-in usa o
+    começo da SEMANA-calendário, não uma janela móvel de 7 dias) — quando dado,
+    pula o clamp de marco (a semana é a semana)."""
     now = now or datetime.now(timezone.utc)
+    if since_override is not None:
+        since = since_override
+        window_days = max(1, (now - since).days)
+        return _assemble_metrics(db, user_id, since, window_days, now, baseline_at=None)
+
     since = (now - timedelta(days=window_days)).replace(hour=0, minute=0, second=0, microsecond=0)
 
     # Marco de recomeço (troca de objetivo): se estiver DENTRO da janela, recorta
@@ -413,6 +427,18 @@ def compute_metrics(db: Session, user_id: int, window_days: int = 28, *, now: da
         baseline_at = baseline_from
         window_days = max(1, (now - since).days)  # janela efetiva, pra ratios justos
 
+    return _assemble_metrics(db, user_id, since, window_days, now, baseline_at=baseline_at)
+
+
+def _assemble_metrics(
+    db: Session,
+    user_id: int,
+    since: datetime,
+    window_days: int,
+    now: datetime,
+    *,
+    baseline_at: datetime | None,
+) -> Metrics:
     profile = db.execute(
         select(UserProfile).where(UserProfile.user_id == user_id)
     ).scalar_one_or_none()
