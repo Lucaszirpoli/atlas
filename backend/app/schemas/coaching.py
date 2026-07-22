@@ -195,6 +195,17 @@ class SetGoalConfigResult(BaseModel):
     message: str
 
 
+class SetTrainingPrefsRequest(BaseModel):
+    """Preferências de treino do Coaching. Atualização PARCIAL: só os campos
+    enviados (model_fields_set) são alterados — um campo omitido não é mexido,
+    e enviar null limpa (ex.: tirar o ponto fraco)."""
+
+    weak_point: str | None = None       # grupo muscular | null (nenhum)
+    session_length: str | None = None   # curto | medio | longo | null
+    wants_cardio: bool | None = None     # true | false | null (não escolheu)
+    periodization: str | None = None     # auto | linear | ondulatoria
+
+
 class CheckinLine(BaseModel):
     key: str
     status: str            # good | warn | info

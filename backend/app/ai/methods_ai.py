@@ -74,6 +74,7 @@ def generate_method_plan(
     phase_index: int = 0,
     use_ai: bool = True,
     weak_point: str | None = None,
+    session_target: int | None = None,
 ) -> dict:
     """Gera o plano fiel do método. `use_ai=True` tenta enriquecer com a IA
     sandbox; qualquer falha cai no plano determinístico puro.
@@ -81,6 +82,9 @@ def generate_method_plan(
     `weak_point` (nome do grupo muscular) prioriza esse músculo nos acessórios —
     só nos métodos desenhados pra isso. Valor inválido é ignorado em silêncio:
     é preferência de treino, não vale derrubar a geração inteira por causa dela.
+
+    `session_target` (nº-alvo de exercícios por sessão, vindo do tempo disponível)
+    ajusta o tamanho do treino dentro de um limite seguro.
     """
     method = get_method(method_key)
     if method is None:
@@ -94,7 +98,8 @@ def generate_method_plan(
             wp = None
 
     plan = build_plan(
-        db, method, available_days=available_days, phase_index=phase_index, weak_point=wp
+        db, method, available_days=available_days, phase_index=phase_index,
+        weak_point=wp, session_target=session_target,
     )
     problems = validate_plan(method, plan)
 

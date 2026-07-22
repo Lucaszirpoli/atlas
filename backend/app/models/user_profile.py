@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import ARRAY, JSON, DateTime, Enum, Float, ForeignKey, String, Text, func
+from sqlalchemy import ARRAY, JSON, Boolean, DateTime, Enum, Float, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -101,6 +101,19 @@ class UserProfile(Base):
     preferred_advanced_technique: Mapped[str | None] = mapped_column(
         String(50), nullable=True
     )
+
+    # --- Preferências de treino do Coaching (o "cérebro de treino") ----------
+    # Como o coach monta/ajusta o treino da pessoa. Todas OPCIONAIS: sem escolha,
+    # o coach usa padrões seguros. Colunas novas -> ensure_columns no init_db
+    # (ALTER cedo, antes de qualquer select), senão banco antigo quebra o boot.
+    # Guardadas como texto simples (valores validados no service) pra evitar as
+    # complicações de tipo enum no ALTER — mesma lição do goal_pace.
+    weak_point: Mapped[str | None] = mapped_column(String(20), nullable=True)  # grupo muscular | None
+    session_length: Mapped[str | None] = mapped_column(String(10), nullable=True)  # curto|medio|longo
+    wants_cardio: Mapped[bool | None] = mapped_column(Boolean, nullable=True)  # None = não escolheu
+    periodization: Mapped[str] = mapped_column(
+        String(12), default="auto", server_default="auto"
+    )  # auto|linear|ondulatoria
 
     trains_with_partner: Mapped[bool] = mapped_column(default=False)
     partner_user_id: Mapped[int | None] = mapped_column(

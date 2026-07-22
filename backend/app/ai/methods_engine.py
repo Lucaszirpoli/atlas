@@ -310,16 +310,24 @@ def build_plan(
     available_days: int | None = None,
     phase_index: int = 0,
     weak_point: MuscleGroup | None = None,
+    session_target: int | None = None,
 ) -> WorkoutPlan:
     """weak_point: músculo a priorizar nos acessórios. Só faz sentido nos
     métodos desenhados pra isso (Westside: "3-5 acessórios de 10-20 reps para
     pontos fracos"; Mountain Dog). Quando informado, o músculo entra no início
     do rodízio de TODO dia que o treine — é o que faz a escolha mudar o treino
-    de verdade em vez de virar enfeite na tela."""
+    de verdade em vez de virar enfeite na tela.
+
+    session_target: nº-alvo de exercícios por sessão (vem do tempo disponível da
+    pessoa — Curto/Médio/Longo). Sobrepõe o padrão do método, mas dentro de um
+    limite seguro (3–9) pra não descaracterizar métodos minimalistas nem estourar
+    a proporção composto/isolado que a validação cobra."""
     days = resolve_days(method, available_days)
     split = _split_for(method, days)
     phase = _active_phase(method, phase_index)
     per_session = _exercises_per_session(method)
+    if session_target is not None:
+        per_session = max(3, min(int(session_target), 9))
 
     # Proporção composto/isolado (default 0.5 quando o método não fixa).
     ratio = method.compound_ratio if method.compound_ratio is not None else 0.5

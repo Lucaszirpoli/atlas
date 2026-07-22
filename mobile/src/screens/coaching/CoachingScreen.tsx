@@ -10,6 +10,7 @@ import {
   applyTransitionStep,
   setGoalPace,
   setTargetWeight,
+  setTrainingPrefs,
   getCoachingAnalysis,
   getCoachingCheckin,
   listCoachingChanges,
@@ -21,6 +22,7 @@ import {
   type CoachingChart,
   type CoachingCheckin,
   type CoachingInsight,
+  type TrainingPrefs,
 } from "../../api/coaching";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
@@ -393,6 +395,12 @@ function AnalysisView({
         ) : null}
       </Card>
 
+      {/* COMO EU MONTO SEU TREINO — ponto fraco, tempo, cardio, periodização.
+          É o que o coach usa pra montar/ajustar treino e escolher técnica/deload. */}
+      {analysis.metrics.training_prefs ? (
+        <TrainingPrefsCard prefs={analysis.metrics.training_prefs} onChanged={onApplied} />
+      ) : null}
+
       {/* CHECK-IN DA SEMANA — o pulso da semana atual (domingo → hoje). */}
       {checkin && checkin.has_data ? <WeeklyCheckin checkin={checkin} /> : null}
 
@@ -599,6 +607,207 @@ function PaceSelector({
         </View>
       </Modal>
     </View>
+  );
+}
+
+// "Como eu monto seu treino": ponto fraco, tempo por sessão, cardio e
+// periodização. Quatro linhas simples; cada uma abre uma folha de opções com
+// explicação. O coach usa tudo isto pra montar/ajustar o treino, escolher a
+// técnica avançada certa e decidir quando desloadar — sem poluir a tela.
+type PrefSheetField = "weak_point" | "session_length" | "cardio" | "periodization";
+
+function TrainingPrefsCard({
+  prefs,
+  onChanged,
+}: {
+  prefs: TrainingPrefs;
+  onChanged: (title: string, message: string) => void;
+}) {
+  const { colors, type, spacing, radius } = useTheme();
+  const [sheet, setSheet] = useState<PrefSheetField | null>(null);
+
+  async function salvar(update: Parameters<typeof setTrainingPrefs>[0], titulo: string) {
+    setSheet(null);
+    try {
+      const r = await setTrainingPrefs(update);
+      onChanged(titulo, r.message);
+    } catch {
+      // silencioso — recarrega no próximo foco
+    }
+  }
+
+  const pontoFracoTxt = prefs.weak_point_label ?? "Nenhum";
+  const tempoOpt = prefs.session_length_options.find((x) => x.value === prefs.session_length);
+  const tempoTxt = tempoOpt ? `${tempoOpt.label} · ${tempoOpt.range}` : "Não definido";
+  const cardioTxt = prefs.wants_cardio == null ? "Não definido" : prefs.wants_cardio ? "Com cardio" : "Sem cardio";
+  const periodTxt = prefs.periodization_options.find((x) => x.value === prefs.periodization)?.label ?? "Automática";
+
+  // Config da folha de opções aberta (título, texto e as opções + o que fazer).
+  const sheetConfig =
+    sheet === "weak_point"
+      ? {
+          title: "Ponto fraco",
+          subtitle: "Um grupo pra priorizar nos acessórios. Opcional — o coach dá um empurrão extra nele quando montar o treino.",
+          current: prefs.weak_point ?? "__none__",
+          options: [
+            { value: "__none__", label: "Nenhum" },
+            ...prefs.weak_point_options.map((o) => ({ value: o.value, label: o.label })),
+          ],
+          pick: (v: string) => salvar({ weak_point: v === "__none__" ? null : v }, "Ponto fraco"),
+        }
+      : sheet === "session_length"
+      ? {
+          title: "Tempo por sessão",
+          subtitle: "Quanto tempo você tem por treino. Define o tamanho do treino que o coach monta.",
+          current: prefs.session_length ?? "",
+          options: prefs.session_length_options.map((o) => ({ value: o.value, label: o.label, desc: o.range })),
+          pick: (v: string) => salvar({ session_length: v as any }, "Tempo por sessão"),
+        }
+      : sheet === "cardio"
+      ? {
+          title: "Cardio",
+          subtitle: "Se você quer cardio no plano. Sem cardio, o coach avisa quando o seu objetivo pedir.",
+          current: prefs.wants_cardio == null ? "" : prefs.wants_cardio ? "sim" : "nao",
+          options: [
+            { value: "sim", label: "Com cardio", desc: "Inclui condicionamento junto da musculação." },
+            { value: "nao", label: "Sem cardio", desc: "Só musculação. Bom pra quem prioriza força/massa." },
+          ],
+          pick: (v: string) => salvar({ wants_cardio: v === "sim" }, "Cardio"),
+        }
+      : sheet === "periodization"
+      ? {
+          title: "Periodização",
+          subtitle: "Como a carga e o volume evoluem ao longo das semanas — e se tem deload.",
+          current: prefs.periodization,
+          options: prefs.periodization_options.map((o) => ({ value: o.value, label: o.label, desc: o.desc })),
+          pick: (v: string) => salvar({ periodization: v as any }, "Periodização"),
+        }
+      : null;
+
+  return (
+    <Card style={{ marginBottom: spacing.md }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: spacing.xs }}>
+        <Ionicons name="construct" size={16} color={colors.primary} />
+        <Text style={[type.caption, { color: colors.primary, fontWeight: "800", letterSpacing: 0.5, textTransform: "uppercase" }]}>
+          Como eu monto seu treino
+        </Text>
+      </View>
+      <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.sm, lineHeight: 17 }]}>
+        O coach usa isto pra montar e ajustar seu treino: priorizar um músculo, caber no seu tempo e escolher técnica e deload na hora certa.
+      </Text>
+
+      <PrefRow icon="fitness" label="Ponto fraco" value={pontoFracoTxt} onPress={() => setSheet("weak_point")} />
+      <PrefRow icon="time" label="Tempo por sessão" value={tempoTxt} onPress={() => setSheet("session_length")} />
+      <PrefRow icon="heart" label="Cardio" value={cardioTxt} onPress={() => setSheet("cardio")} />
+      <PrefRow icon="repeat" label="Periodização" value={periodTxt} onPress={() => setSheet("periodization")} last />
+
+      {prefs.cardio_warning ? (
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: spacing.sm, backgroundColor: colors.warning + "14", borderRadius: radius.card, padding: spacing.sm }}>
+          <Ionicons name="alert-circle" size={15} color={colors.warning} style={{ marginTop: 1 }} />
+          <Text style={[type.caption, { color: colors.textSecondary, flex: 1, lineHeight: 18 }]}>{prefs.cardio_warning}</Text>
+        </View>
+      ) : null}
+
+      <OptionSheet visible={sheet != null} config={sheetConfig} onClose={() => setSheet(null)} />
+    </Card>
+  );
+}
+
+// Uma linha da lista "Como eu monto seu treino": ícone + rótulo + valor atual.
+function PrefRow({
+  icon,
+  label,
+  value,
+  onPress,
+  last,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+  onPress: () => void;
+  last?: boolean;
+}) {
+  const { colors, type } = useTheme();
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
+      style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 11, borderBottomWidth: last ? 0 : 1, borderBottomColor: colors.border }}
+    >
+      <Ionicons name={icon} size={17} color={colors.textSecondary} />
+      <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "600", flex: 1 }]}>{label}</Text>
+      <Text style={[type.caption, { color: colors.textSecondary, maxWidth: 160, textAlign: "right" }]} numberOfLines={1}>
+        {value}
+      </Text>
+      <Ionicons name="chevron-forward" size={15} color={colors.textSecondary} />
+    </TouchableOpacity>
+  );
+}
+
+// Folha de opções (sobe de baixo): radio + descrição por opção. Toca e aplica.
+function OptionSheet({
+  visible,
+  config,
+  onClose,
+}: {
+  visible: boolean;
+  config:
+    | {
+        title: string;
+        subtitle: string;
+        current: string;
+        options: { value: string; label: string; desc?: string }[];
+        pick: (v: string) => void;
+      }
+    | null;
+  onClose: () => void;
+}) {
+  const { colors, type, spacing, radius } = useTheme();
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <TouchableOpacity activeOpacity={1} onPress={onClose} style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }}>
+        <TouchableOpacity activeOpacity={1} onPress={() => {}} style={{ backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: spacing.lg, paddingBottom: spacing.xl }}>
+          {config ? (
+            <>
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.xs }}>
+                <Text style={[type.h2, { color: colors.textPrimary, flex: 1 }]}>{config.title}</Text>
+                <TouchableOpacity onPress={onClose} hitSlop={10} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surfaceAlt, alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="close" size={18} color={colors.textPrimary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.md, lineHeight: 18 }]}>{config.subtitle}</Text>
+              {config.options.map((o) => {
+                const on = o.value === config.current;
+                return (
+                  <TouchableOpacity
+                    key={o.value}
+                    activeOpacity={0.7}
+                    onPress={() => config.pick(o.value)}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "flex-start",
+                      gap: 10,
+                      borderWidth: 1,
+                      borderColor: on ? colors.primary : colors.border,
+                      backgroundColor: on ? colors.primary + "12" : "transparent",
+                      borderRadius: radius.card,
+                      padding: spacing.sm,
+                      marginBottom: spacing.xs,
+                    }}
+                  >
+                    <Ionicons name={on ? "radio-button-on" : "radio-button-off"} size={18} color={on ? colors.primary : colors.textSecondary} style={{ marginTop: 1 }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: on ? "700" : "600" }]}>{o.label}</Text>
+                      {o.desc ? <Text style={[type.caption, { color: colors.textSecondary, marginTop: 2, lineHeight: 17 }]}>{o.desc}</Text> : null}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </>
+          ) : null}
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
   );
 }
 

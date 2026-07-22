@@ -49,6 +49,23 @@ export type CoachingMetrics = {
     current_weight_kg: number | null;
     options: { pace: "slow" | "normal" | "fast"; kcal: number; rate_kg_per_week: number; weeks: number | null }[];
   } | null;
+  // Preferências de treino do Coaching ("Como eu monto seu treino") + opções.
+  training_prefs: TrainingPrefs | null;
+};
+
+export type SessionLength = "curto" | "medio" | "longo";
+export type Periodization = "auto" | "linear" | "ondulatoria";
+
+export type TrainingPrefs = {
+  weak_point: string | null;
+  weak_point_label: string | null;
+  weak_point_options: { value: string; label: string }[];
+  session_length: SessionLength | null;
+  session_length_options: { value: SessionLength; label: string; range: string }[];
+  wants_cardio: boolean | null;
+  periodization: Periodization;
+  periodization_options: { value: Periodization; label: string; desc: string }[];
+  cardio_warning: string | null;
 };
 
 export type CoachingChart = "peso" | "calorias" | "macros" | "sono" | "carga";
@@ -87,11 +104,12 @@ export type CoachingAnalysis = {
   metrics: CoachingMetrics;
 };
 
-/** Análise do Coaching no período (Pro). Determinística no backend — sem token.
- * windowDays: janela de análise (28/56/84 = 4/8/12 semanas). */
-export async function getCoachingAnalysis(windowDays = 28): Promise<CoachingAnalysis> {
+/** Análise do Coaching (Pro). Determinística no backend — sem token. Sem
+ * windowDays, o backend usa a janela do OBJETIVO atual (desde o marco). Passe um
+ * número só pra forçar uma janela específica. */
+export async function getCoachingAnalysis(windowDays?: number): Promise<CoachingAnalysis> {
   const { data } = await api.get<CoachingAnalysis>("/coaching/analysis", {
-    params: { window_days: windowDays },
+    params: windowDays != null ? { window_days: windowDays } : undefined,
   });
   return data;
 }
@@ -272,6 +290,22 @@ export async function setGoalPace(pace: "slow" | "normal" | "fast"): Promise<{ o
 /** Define/limpa o peso-alvo (referência pra estimativa de tempo). */
 export async function setTargetWeight(kg: number | null): Promise<{ ok: boolean; message: string }> {
   const { data } = await api.post("/coaching/target-weight", { target_weight_kg: kg });
+  return data;
+}
+
+// Atualização PARCIAL das preferências de treino — só os campos enviados mudam.
+export type TrainingPrefsUpdate = {
+  weak_point?: string | null;
+  session_length?: SessionLength | null;
+  wants_cardio?: boolean | null;
+  periodization?: Periodization;
+};
+
+/** Define preferências de treino do Coaching (ponto fraco, tempo, cardio,
+ * periodização). É o que o coach usa pra montar/ajustar treino e escolher
+ * técnica/deload. */
+export async function setTrainingPrefs(prefs: TrainingPrefsUpdate): Promise<{ ok: boolean; message: string }> {
+  const { data } = await api.post("/coaching/training-prefs", prefs);
   return data;
 }
 

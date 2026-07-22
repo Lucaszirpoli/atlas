@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 
 from app.coaching import chat as coach_chat
-from app.coaching.engine import analyze, progression_step, suggest_stall_technique, weekly_checkin
+from app.coaching import training_brain
+from app.coaching.engine import analyze, progression_step, weekly_checkin
 from app.coaching.metrics import compute_metrics
 from app.core.db import get_db
 from app.core.security import get_current_user
@@ -38,6 +39,7 @@ from app.schemas.coaching import (
     SetGoalConfigResult,
     SetPaceRequest,
     SetTargetWeightRequest,
+    SetTrainingPrefsRequest,
     TechniqueCueRead,
     WorkoutOverlay,
 )
@@ -67,6 +69,76 @@ def _janela_do_objetivo(db: Session, user_id: int, now: datetime) -> int:
     return max(7, min((now - baseline).days, 180))
 
 
+def _periodization_of(user: User) -> str:
+    profile = getattr(user, "profile", None)
+    return training_brain.valid_periodization(getattr(profile, "periodization", None))
+
+
+def _weeks_accumulating(db: Session, user_id: int, now: datetime) -> float | None:
+    """Semanas acumulando desde o começo do ciclo atual — o marco é o ÚLTIMO
+    deload aplicado (mesmo já terminado); sem deload, o início do objetivo
+    (baseline). É o que diz à ondulatória quando fechar o mesociclo e ao seletor
+    de técnica se estamos em acumulação ou intensificação. None = sem referência."""
+    ref = _aware(db.execute(
+        select(CoachingAction.created_at)
+        .where(CoachingAction.user_id == user_id, CoachingAction.kind == "deload")
+        .order_by(CoachingAction.created_at.desc(), CoachingAction.id.desc())
+        .limit(1)
+    ).scalar_one_or_none())
+    if ref is None:
+        ref = _aware(db.execute(
+            select(CoachingBaseline.effective_from)
+            .where(CoachingBaseline.user_id == user_id)
+            .order_by(CoachingBaseline.created_at.desc(), CoachingBaseline.id.desc())
+            .limit(1)
+        ).scalar_one_or_none())
+    if ref is None:
+        return None
+    return max(0.0, (now - ref).days / 7.0)
+
+
+def _cycle_context(db: Session, user: User, now: datetime) -> dict:
+    """Contexto do ciclo pro coach: periodização escolhida, semanas acumulando,
+    se um deload está PLANEJADO (fim de mesociclo na ondulatória) e o período
+    (acumulação/intensificação) que escolhe a técnica avançada."""
+    periodization = _periodization_of(user)
+    weeks = _weeks_accumulating(db, user.id, now)
+    return {
+        "periodization": periodization,
+        "weeks": weeks,
+        "planned_deload": training_brain.is_planned_deload(periodization, weeks),
+        "period": training_brain.training_period(weeks),
+    }
+
+
+def _training_prefs_block(db: Session, user: User) -> dict | None:
+    """Preferências de treino do Coaching + as opções pro card 'Como eu monto seu
+    treino'. Inclui o aviso de cardio quando a pessoa optou por treinar sem ele
+    e o objetivo se beneficiaria."""
+    profile = getattr(user, "profile", None)
+    if profile is None:
+        return None
+    goal = profile.goal.value if profile.goal else None
+    wp = training_brain.valid_weak_point(profile.weak_point)
+    return {
+        "weak_point": wp,
+        "weak_point_label": training_brain.WEAK_POINT_LABEL.get(wp) if wp else None,
+        "weak_point_options": [{"value": v, "label": l} for v, l in training_brain.WEAK_POINTS],
+        "session_length": training_brain.valid_session_length(profile.session_length),
+        "session_length_options": [
+            {"value": v, "label": label, "range": faixa}
+            for v, label, faixa, _ in training_brain.SESSION_LENGTHS
+        ],
+        "wants_cardio": profile.wants_cardio,
+        "periodization": _periodization_of(user),
+        "periodization_options": [
+            {"value": v, "label": label, "desc": desc}
+            for v, label, desc in training_brain.PERIODIZATIONS
+        ],
+        "cardio_warning": training_brain.cardio_warning(goal, profile.wants_cardio),
+    }
+
+
 @router.get("/analysis", response_model=CoachingAnalysis)
 def coaching_analysis(
     window_days: int | None = None,
@@ -85,9 +157,17 @@ def coaching_analysis(
         window_days = max(7, min(window_days, 180))
     metrics = compute_metrics(db, current_user.id, window_days=window_days, now=now)
     active_deload = _active_deload(db, current_user.id) is not None
-    result = analyze(metrics, active_deload=active_deload).to_dict()
+    cyc = _cycle_context(db, current_user, now)
+    result = analyze(
+        metrics,
+        active_deload=active_deload,
+        periodization=cyc["periodization"],
+        planned_deload=cyc["planned_deload"],
+        period=cyc["period"],
+    ).to_dict()
     _inject_transition(result, db, current_user)
     result["metrics"]["pace"] = _pace_block(db, current_user)
+    result["metrics"]["training_prefs"] = _training_prefs_block(db, current_user)
     return result
 
 
@@ -277,6 +357,33 @@ def set_target_weight(
     return SetGoalConfigResult(ok=True, message=f"Peso-alvo: {payload.target_weight_kg:g} kg. Agora estimo o tempo por ritmo.")
 
 
+@router.post("/training-prefs", response_model=SetGoalConfigResult)
+def set_training_prefs(
+    payload: SetTrainingPrefsRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> SetGoalConfigResult:
+    """Define as preferências de treino do Coaching — ponto fraco, tempo por
+    sessão, cardio e periodização. Atualização PARCIAL (só os campos enviados) e
+    validada aqui: valor inválido não derruba a requisição, cai no seguro. É isto
+    que o coach usa pra montar/ajustar treino, escolher técnica e decidir deload."""
+    _require_pro(current_user)
+    profile = getattr(current_user, "profile", None)
+    if profile is None:
+        raise HTTPException(status_code=400, detail="Complete seu perfil primeiro.")
+    enviados = payload.model_fields_set
+    if "weak_point" in enviados:
+        profile.weak_point = training_brain.valid_weak_point(payload.weak_point)
+    if "session_length" in enviados:
+        profile.session_length = training_brain.valid_session_length(payload.session_length)
+    if "wants_cardio" in enviados:
+        profile.wants_cardio = payload.wants_cardio
+    if "periodization" in enviados:
+        profile.periodization = training_brain.valid_periodization(payload.periodization)
+    db.commit()
+    return SetGoalConfigResult(ok=True, message="Preferências de treino atualizadas — o coach já monta e ajusta com elas.")
+
+
 @router.post("/apply/transition", response_model=ApplyDietResult)
 def apply_transition_step(
     current_user: User = Depends(get_current_user),
@@ -338,7 +445,10 @@ def apply_technique(
             detail="Esse exercício não está mais travado — sua análise mudou. Veja as sugestões atuais.",
         )
 
-    tech_key, tech_label, cue_text = suggest_stall_technique(lift["is_compound"])
+    # Rederiva a técnica do MESMO jeito que a barra sugeriu: por tipo de exercício
+    # + período do ciclo. Não confia num valor vindo do app.
+    period = _cycle_context(db, current_user, datetime.now(timezone.utc))["period"]
+    tech_key, tech_label, cue_text = training_brain.suggest_technique(lift["is_compound"], period)
 
     # Idempotente: se já existe dica ativa pra esse exercício, não duplica.
     existing = db.execute(
@@ -526,10 +636,18 @@ def apply_action(
                                  "na próxima vez. Aparece no treino.")
 
     if fk == "deload":
+        # A periodização manda: linear nunca desloada; ondulatória aceita o deload
+        # PLANEJADO (fim de mesociclo) mesmo com a carga ainda subindo; automática
+        # exige que a carga esteja caindo (fadiga). Rederiva do estado atual.
+        cyc = _cycle_context(db, current_user, datetime.now(timezone.utc))
+        if cyc["periodization"] == "linear":
+            raise HTTPException(status_code=409, detail="No seu plano linear a gente não usa deload — se a carga "
+                                "travou, o caminho é cuidar do sono e da recuperação, não aliviar. Veja as sugestões atuais.")
         v = m.training.volume_trend_pct
-        if v is None or v > -8:
-            raise HTTPException(status_code=409, detail="Sua carga não está mais caindo — o deload não é "
-                                "necessário agora. Veja as sugestões atuais.")
+        worthy = v is not None and v <= -8
+        if not (cyc["planned_deload"] or worthy):
+            raise HTTPException(status_code=409, detail="O deload não é necessário agora — sua carga não está caindo "
+                                "e você ainda não fechou o mesociclo. Veja as sugestões atuais.")
         existing = _ja_ativa("deload", None)
         if existing:
             return ApplyActionResult(applied=True, kind="deload", title=existing.title,

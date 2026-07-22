@@ -27,7 +27,8 @@ from app.scripts import (
 
 def _ensure_profile_columns() -> None:
     """ALTER idempotente (SQLite dev + Postgres prod) pras colunas novas de
-    user_profiles: goal_pace (VARCHAR, default NORMAL) e target_weight_kg (float).
+    user_profiles: goal_pace, target_weight_kg e as preferências de treino do
+    Coaching (weak_point, session_length, wants_cardio, periodization).
     Roda logo após o create_all, ANTES de qualquer select(UserProfile)."""
     from sqlalchemy import inspect, text
 
@@ -35,6 +36,11 @@ def _ensure_profile_columns() -> None:
     add_cols = [
         ("goal_pace", "VARCHAR(10) NOT NULL DEFAULT 'NORMAL'", "VARCHAR(10) NOT NULL DEFAULT 'NORMAL'"),
         ("target_weight_kg", "DOUBLE PRECISION", "FLOAT"),
+        # Preferências de treino do Coaching (o "cérebro de treino").
+        ("weak_point", "VARCHAR(20)", "VARCHAR(20)"),
+        ("session_length", "VARCHAR(10)", "VARCHAR(10)"),
+        ("wants_cardio", "BOOLEAN", "BOOLEAN"),
+        ("periodization", "VARCHAR(12) NOT NULL DEFAULT 'auto'", "VARCHAR(12) NOT NULL DEFAULT 'auto'"),
     ]
     pg = engine.dialect.name == "postgresql"
     with engine.begin() as conn:

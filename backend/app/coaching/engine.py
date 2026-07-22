@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 
+from app.coaching import training_brain
 from app.coaching.metrics import Metrics
 
 # --- Limiares (a régua do coach, explícita e auditável) -------------------
@@ -208,7 +209,13 @@ def _sono_insight(m: Metrics) -> Insight:
                    "abaixo do ideal (~7,5 h). Dormir pouco atrapalha treino, fome e recuperação.", chart="sono")
 
 
-def _carga_insight(m: Metrics, active_deload: bool = False) -> Insight:
+def _carga_insight(
+    m: Metrics,
+    active_deload: bool = False,
+    periodization: str = "auto",
+    offer_deload: bool = False,
+    planned_deload: bool = False,
+) -> Insight:
     # Em semana de deload, a carga CAINDO é o esperado — não re-oferecer deload
     # nem tratar como problema (senão o coach se contradiz).
     if active_deload:
@@ -218,44 +225,39 @@ def _carga_insight(m: Metrics, active_deload: bool = False) -> Insight:
     if v is None:
         return Insight("carga", SEV_INFO, "Carga", "Conclua alguns treinos pra eu acompanhar sua carga total "
                        "(peso × reps).", chart="carga")
-    if v >= 3:
-        return Insight("carga", SEV_INFO, "Carga subindo", f"Seu volume total subiu ~{v:.0f}% no período — "
-                       "sobrecarga progressiva acontecendo, é o que puxa o resultado.", chart="carga")
-    if v <= VOLUME_DROP_DELOAD:
-        # Queda de carga persistente costuma ser fadiga acumulada — o coach oferece
-        # uma semana leve (deload) de propósito, com botão de aplicar.
+    # A periodização é quem decide se o coach OFERECE deload aqui — é o que evita
+    # o paradoxo (deload + subir carga juntos).
+    if offer_deload:
+        if planned_deload:  # ondulatória: fim do mesociclo, deload PLANEJADO
+            return Insight("carga", SEV_ATTENTION, "Fim de ciclo — hora do deload",
+                           "Você vem acumulando volume e intensidade já faz um mesociclo (modelo ondulatório). "
+                           "Puxar uma semana de deload agora dessensibiliza a fadiga e destrava o próximo salto — "
+                           "é parte do plano, não perda de progresso.", chart="carga",
+                           finding_key="deload", adjustment={"kind": "deload"})
         return Insight("carga", SEV_ATTENTION, "Carga caindo", f"Seu volume total caiu ~{abs(v):.0f}% no período. "
                        "Se não é deload proposital, pode ser fadiga acumulada — dá pra puxar uma semana leve pra "
                        "recuperar e voltar mais forte.", chart="carga",
                        finding_key="deload", adjustment={"kind": "deload"})
+    if v >= 3:
+        return Insight("carga", SEV_INFO, "Carga subindo", f"Seu volume total subiu ~{v:.0f}% no período — "
+                       "sobrecarga progressiva acontecendo, é o que puxa o resultado.", chart="carga")
+    if v <= VOLUME_DROP_DELOAD:
+        # Carga caindo, mas o modo não desloada (linear): a correção é recuperar,
+        # não aliviar o plano.
+        if periodization == "linear":
+            return Insight("carga", SEV_ATTENTION, "Carga caindo", f"Seu volume total caiu ~{abs(v):.0f}% no período. "
+                           "No plano linear a gente não desloada — antes de forçar, cuida da recuperação: capriche "
+                           "no sono e na proteína e segure a carga até estabilizar.", chart="carga")
+        return Insight("carga", SEV_ATTENTION, "Carga caindo", f"Seu volume total caiu ~{abs(v):.0f}% no período. "
+                       "Pode ser fadiga acumulada — cuida do sono e da recuperação e retoma a carga aos poucos.",
+                       chart="carga")
     return Insight("carga", SEV_ATTENTION, "Carga estável", "Seu volume total está praticamente parado. Pra "
                    "evoluir, mire somar uma série ou uma repetição aos poucos.", chart="carga")
 
 
-# Técnica de intensidade sugerida pra furar platô, por tipo de exercício. O
-# MESMO mapa serve à barra (mostra o botão) e ao endpoint que aplica (que não
-# confia no cliente e rederiva daqui) — determinístico, como todo o resto do
-# coach. As chaves batem com o enum SetType (rest_pause / drop_set).
-STALL_TECHNIQUE: dict[bool, tuple[str, str, str]] = {
-    True: (
-        "rest_pause",
-        "Rest-pause",
-        "Rest-pause na última série valendo: chegue à falha, descanse 15–20s e faça mais "
-        "reps com a mesma carga. Repita 1–2 micro-séries. Ótimo pra furar platô em composto.",
-    ),
-    False: (
-        "drop_set",
-        "Drop-set",
-        "Drop-set na última série: ao falhar, tire ~20–30% da carga e continue sem descanso "
-        "até falhar de novo. Um choque de volume pra destravar o isolado.",
-    ),
-}
-
-
-def suggest_stall_technique(is_compound: bool) -> tuple[str, str, str]:
-    """(chave, rótulo, como-fazer) da técnica pra um exercício travado. Composto
-    -> rest-pause; isolado -> drop-set."""
-    return STALL_TECHNIQUE[bool(is_compound)]
+# A técnica de intensidade pra furar platô agora vem do training_brain
+# (escolhida por tipo de exercício + PERÍODO do ciclo). A barra e o endpoint que
+# aplica rederivam de lá — determinístico, como todo o resto do coach.
 
 
 # Grupos onde uma progressão de carga costuma ser maior (grandes cadeias). Fora
@@ -283,7 +285,12 @@ def progression_step(muscle: str, equipment: str, top_weight: float) -> tuple[fl
     )
 
 
-def _treino_insight(m: Metrics, active_deload: bool = False) -> Insight:
+def _treino_insight(
+    m: Metrics,
+    active_deload: bool = False,
+    offer_deload: bool = False,
+    period: str = "intensificacao",
+) -> Insight:
     t = m.training
     # Em deload, o coach NÃO manda forçar (nem progressão, nem técnica de
     # intensidade) — seria se contradizer. Foco é recuperar.
@@ -296,7 +303,9 @@ def _treino_insight(m: Metrics, active_deload: bool = False) -> Insight:
                        "treinos/semana. Abaixo de 2× por grupo o estímulo cai — mire 2–3×.", chart="carga")
     if t.stalled_lifts:
         lift = t.stalled_lifts[0]  # o principal (compostos primeiro na ordenação)
-        tech_key, tech_label, _ = suggest_stall_technique(lift["is_compound"])
+        # Técnica avançada escolhida pelo PERÍODO do ciclo (acumulação -> volume/
+        # densidade; intensificação -> intensidade) e pelo tipo de exercício.
+        tech_key, tech_label, _ = training_brain.suggest_technique(lift["is_compound"], period)
         nomes = ", ".join(s["name"] for s in t.stalled_lifts)
         return Insight(
             "treino", SEV_ATTENTION, "Progressão travada",
@@ -312,9 +321,9 @@ def _treino_insight(m: Metrics, active_deload: bool = False) -> Insight:
                 "exercise_name": lift["name"],
             },
         )
-    # Só manda subir carga se a carga NÃO está caindo (senão o coach pediria
-    # deload e progressão ao mesmo tempo — paradoxo). Recuperar vem primeiro.
-    if t.progression_lifts and not _deload_worthy(m):
+    # Só manda subir carga se o coach NÃO está oferecendo deload agora (senão
+    # pediria deload e progressão ao mesmo tempo — paradoxo). Recuperar vem antes.
+    if t.progression_lifts and not offer_deload:
         p = t.progression_lifts[0]
         inc, novo, _ = progression_step(p["muscle"], p["equipment"], p["top_weight"])
         if novo is not None:
@@ -341,14 +350,27 @@ def _treino_insight(m: Metrics, active_deload: bool = False) -> Insight:
                    "saudável. Mantém a consistência.", chart="carga")
 
 
-def _insights(m: Metrics, active_deload: bool = False) -> list[Insight]:
+def _insights(
+    m: Metrics,
+    active_deload: bool = False,
+    periodization: str = "auto",
+    planned_deload: bool = False,
+    period: str = "intensificacao",
+) -> list[Insight]:
+    # Decisão ÚNICA de oferecer deload (mata o paradoxo): a periodização manda.
+    offer = training_brain.offer_deload(
+        periodization=periodization,
+        volume_worthy=_deload_worthy(m),
+        planned=planned_deload,
+        active_deload=active_deload,
+    )
     return [
         _peso_insight(m),
         _calorias_insight(m),
         _macros_insight(m),
         _sono_insight(m),
-        _carga_insight(m, active_deload),
-        _treino_insight(m, active_deload),
+        _carga_insight(m, active_deload, periodization, offer, planned_deload),
+        _treino_insight(m, active_deload, offer, period),
     ]
 
 
@@ -486,7 +508,14 @@ def _data_gaps(m: Metrics) -> list[str]:
     return gaps
 
 
-def analyze(m: Metrics, *, active_deload: bool = False) -> WeeklyAnalysis:
+def analyze(
+    m: Metrics,
+    *,
+    active_deload: bool = False,
+    periodization: str = "auto",
+    planned_deload: bool = False,
+    period: str = "intensificacao",
+) -> WeeklyAnalysis:
     findings: list[Finding] = []
     findings += _weight_findings(m)
     findings += _nutrition_findings(m)
@@ -517,7 +546,7 @@ def analyze(m: Metrics, *, active_deload: bool = False) -> WeeklyAnalysis:
         confidence=confidence,
         headline=headline,
         findings=findings,
-        insights=_insights(m, active_deload),
+        insights=_insights(m, active_deload, periodization, planned_deload, period),
         data_gaps=gaps,
         metrics=_metrics_public(m),
     )
