@@ -584,12 +584,17 @@ def weekly_checkin(m: Metrics) -> dict:
 
     has_data = len(lines) > 0 and not (len(lines) == 1 and lines[0]["key"] == "treino" and t.sessions == 0)
     warns = [l for l in lines if l["status"] == "warn"]
+
+    def _plural(n: int, sing: str, plur: str) -> str:
+        return f"{n} {sing if n == 1 else plur}"
+
     if not has_data:
         headline = "Ainda não tenho dados dessa semana. Registra treino, peso e refeições que eu te dou o balanço."
     elif not warns:
         headline = "Semana redonda 👏 Você fez o combinado — segue nesse ritmo."
     elif wins and warns:
-        headline = f"Boa semana no geral — {wins} coisa(s) no lugar. Fica de olho em {len(warns)}."
+        headline = (f"Boa semana no geral — {_plural(wins, 'coisa no lugar', 'coisas no lugar')}. "
+                    f"Fica de olho em {_plural(len(warns), 'ponto', 'pontos')}.")
     else:
         headline = "Tem alguns pontos pra ajustar essa semana — nada grave, dá pra corrigir."
 

@@ -7,6 +7,7 @@ import {
   applyCoachAction,
   applyDietAdjustment,
   applyTechnique,
+  applyTransitionStep,
   getCoachingAnalysis,
   getCoachingCheckin,
   listCoachingChanges,
@@ -27,19 +28,22 @@ import { useTheme } from "../../theme/ThemeProvider";
 import { mensagemDeErro } from "../../utils/errorMessage";
 import { CoachingProgress } from "./CoachingProgress";
 
-// Períodos de análise/gráfico. "Semanal" = a análise da semana atual (como foi
-// x como deveria ter sido); depois 4/8/12 semanas.
-const PERIODS: { label: string; days: number }[] = [
-  { label: "Semanal", days: 7 },
-  { label: "4 sem", days: 28 },
-  { label: "8 sem", days: 56 },
-  { label: "12 sem", days: 84 },
-];
+// Objetivo -> rótulo + ícone (a análise gira em torno do objetivo atual).
+const GOAL_META: Record<string, { label: string; icon: keyof typeof Ionicons.glyphMap }> = {
+  emagrecimento: { label: "Emagrecimento", icon: "trending-down" },
+  hipertrofia: { label: "Hipertrofia", icon: "barbell" },
+  manutencao: { label: "Manutenção", icon: "remove" },
+  recomposicao: { label: "Recomposição", icon: "sync" },
+  performance: { label: "Performance", icon: "flash" },
+};
 
-// "2026-07-21T..." -> "21/07"
-function formatDia(iso: string): string {
-  const d = new Date(iso);
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+// "há quanto tempo no objetivo" a partir do marco (baseline). Null = sem marco.
+function faseTexto(iso: string | null): string | null {
+  if (!iso) return null;
+  const dias = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  if (dias < 7) return dias <= 0 ? "começou hoje" : `há ${dias} dia${dias === 1 ? "" : "s"}`;
+  const sem = Math.round(dias / 7);
+  return `há ${sem} semana${sem === 1 ? "" : "s"}`;
 }
 
 /**
@@ -61,8 +65,10 @@ export function CoachingScreen() {
   const [analysis, setAnalysis] = useState<CoachingAnalysis | null>(null);
   const [changes, setChanges] = useState<CoachingChange[]>([]);
   const [checkin, setCheckin] = useState<CoachingCheckin | null>(null);
-  const [periodDays, setPeriodDays] = useState(28);
   const [chartMetric, setChartMetric] = useState<CoachingChart>("peso");
+  // Janela dos gráficos = a mesma da análise (o período do objetivo). Sem
+  // seletor de semanas: o coach fala do objetivo atual, não de 4/8/12 semanas.
+  const chartWindow = analysis?.window_days ?? 56;
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState(false);
   const [aviso, setAviso] = useState<{ title: string; message: string } | null>(null);
@@ -82,7 +88,7 @@ export function CoachingScreen() {
     if (!isPro) return Promise.resolve();
     setErro(false);
     return Promise.all([
-      getCoachingAnalysis(periodDays).then(setAnalysis),
+      getCoachingAnalysis().then(setAnalysis),
       // Check-in e "o que o coach mudou" são secundários — não derrubam a tela.
       getCoachingCheckin()
         .then(setCheckin)
@@ -93,7 +99,7 @@ export function CoachingScreen() {
     ])
       .catch(() => setErro(true))
       .finally(() => setLoading(false));
-  }, [isPro, periodDays]);
+  }, [isPro]);
 
   // Recarrega a cada foco: a pessoa registra peso/refeição e volta pra ver o
   // que mudou. Só pro Pro — o Free nem chega aqui (paywall abaixo).
@@ -123,42 +129,9 @@ export function CoachingScreen() {
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
     >
-      {/* Período da análise e dos gráficos — controla a janela inteira. */}
-      <View style={{ flexDirection: "row", gap: spacing.xs, marginBottom: spacing.md }}>
-        {PERIODS.map((p) => {
-          const on = periodDays === p.days;
-          return (
-            <TouchableOpacity
-              key={p.days}
-              onPress={() => setPeriodDays(p.days)}
-              style={{
-                flex: 1,
-                alignItems: "center",
-                backgroundColor: on ? colors.primary : colors.surface,
-                borderWidth: 1,
-                borderColor: on ? colors.primary : colors.border,
-                borderRadius: radius.pill,
-                paddingVertical: 8,
-              }}
-            >
-              <Text
-                style={[
-                  type.caption,
-                  { color: on ? colors.textOnPrimary : colors.textPrimary, fontWeight: on ? "700" : "500" },
-                ]}
-              >
-                {p.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      {/* Check-in semanal — a "mensagem de segunda" do coach, sempre da semana
-          atual (independe do período selecionado acima). */}
-      {checkin && checkin.has_data ? <WeeklyCheckin checkin={checkin} /> : null}
-
-      {/* Análise do período — o motor determinístico (sem IA) lê os registros. */}
+      {/* Análise do período do objetivo — o motor determinístico (sem IA) lê os
+          registros. O card de objetivo + o check-in da semana vêm dentro dela,
+          pra ficarem harmônicos (sem o antigo seletor de 4/8/12 semanas). */}
       {loading && !analysis ? (
         <Card style={{ marginBottom: spacing.md, alignItems: "center", paddingVertical: spacing.xl }}>
           <ActivityIndicator color={colors.primary} />
@@ -174,7 +147,7 @@ export function CoachingScreen() {
           </Text>
         </Card>
       ) : analysis ? (
-        <AnalysisView analysis={analysis} onApplied={onApplied} onOpenChart={onOpenChart} />
+        <AnalysisView analysis={analysis} checkin={checkin} onApplied={onApplied} onOpenChart={onOpenChart} />
       ) : null}
 
       {/* Pergunte ao coach — a IA que EXPLICA a análise (não muda plano). */}
@@ -218,7 +191,7 @@ export function CoachingScreen() {
           (o quadradinho de gráfico troca a métrica). Absorve a Evolução. */}
       <View onLayout={(e) => (chartY.current = e.nativeEvent.layout.y)}>
         <CoachingProgress
-          periodDays={periodDays}
+          periodDays={chartWindow}
           metric={chartMetric}
           onMetricChange={setChartMetric}
           onDataChanged={load}
@@ -263,49 +236,65 @@ export function CoachingScreen() {
 
 function AnalysisView({
   analysis,
+  checkin,
   onApplied,
   onOpenChart,
 }: {
   analysis: CoachingAnalysis;
+  checkin: CoachingCheckin | null;
   onApplied: (title: string, message: string) => void;
   onOpenChart: (chart: CoachingChart) => void;
 }) {
   const { colors, type, spacing, radius } = useTheme();
+  const meta = GOAL_META[analysis.goal ?? ""] ?? { label: "Seu objetivo", icon: "compass" as const };
+  const fase = faseTexto(analysis.metrics.baseline_at);
+  const transition = analysis.metrics.transition;
 
   return (
     <>
-      {/* Manchete + confiança */}
-      <Card style={{ marginBottom: spacing.md }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: spacing.xs }}>
-          <Ionicons name="compass" size={22} color={colors.primary} />
-          <Text style={[type.h2, { color: colors.textPrimary, flex: 1 }]}>Seu Coaching</Text>
+      {/* OBJETIVO & FASE — o quadro geral: o que você está buscando, há quanto
+          tempo, e o balanço do período. (Substituiu o seletor 4/8/12 semanas.) */}
+      <Card accent={colors.primary} style={{ marginBottom: spacing.md }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: spacing.sm }}>
           <View
             style={{
-              backgroundColor: colors.surfaceAlt,
-              borderRadius: radius.pill,
-              paddingVertical: 3,
-              paddingHorizontal: 9,
+              width: 40, height: 40, borderRadius: 12,
+              backgroundColor: colors.primary + "1F",
+              alignItems: "center", justifyContent: "center",
             }}
           >
-            <Text style={[type.caption, { color: colors.textSecondary, fontWeight: "700" }]}>
-              {analysis.window_days} dias
-            </Text>
+            <Ionicons name={meta.icon} size={20} color={colors.primary} />
           </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[type.caption, { color: colors.textSecondary, letterSpacing: 0.5, textTransform: "uppercase" }]}>
+              Seu objetivo
+            </Text>
+            <Text style={[type.h2, { color: colors.textPrimary }]}>{meta.label}</Text>
+          </View>
+          {fase ? (
+            <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: radius.pill, paddingVertical: 4, paddingHorizontal: 10 }}>
+              <Text style={[type.caption, { color: colors.textSecondary, fontWeight: "700" }]}>{fase}</Text>
+            </View>
+          ) : null}
         </View>
         <Text style={[type.body, { color: colors.textPrimary, lineHeight: 22 }]}>{analysis.headline}</Text>
         <Text style={[type.caption, { color: colors.textSecondary, marginTop: 6 }]}>
-          Análise por regras dos seus registros — confiança {analysis.confidence}.
+          Leitura do seu período no objetivo — confiança {analysis.confidence}.
         </Text>
-        {analysis.metrics.baseline_at ? (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 8 }}>
-            <Ionicons name="flag" size={13} color={colors.primary} />
-            <Text style={[type.caption, { color: colors.textSecondary, flex: 1 }]}>
-              Análise recomeçada em {formatDia(analysis.metrics.baseline_at)} (troca de objetivo) — o histórico
-              completo segue nos gráficos.
+        {transition?.active ? (
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: 10, backgroundColor: colors.surfaceAlt, borderRadius: radius.card, padding: spacing.sm }}>
+            <Ionicons name="swap-vertical" size={14} color={colors.primary} style={{ marginTop: 1 }} />
+            <Text style={[type.caption, { color: colors.textSecondary, flex: 1, lineHeight: 18 }]}>
+              Transição de objetivo em andamento: levando sua meta de {Math.round(transition.current_kcal)} pra{" "}
+              ~{Math.round(transition.target_kcal)} kcal aos poucos ({transition.remaining_kcal > 0 ? "+" : ""}
+              {Math.round(transition.remaining_kcal)} restantes). Mudar devagar protege o resultado.
             </Text>
           </View>
         ) : null}
       </Card>
+
+      {/* CHECK-IN DA SEMANA — o pulso da semana atual (domingo → hoje). */}
+      {checkin && checkin.has_data ? <WeeklyCheckin checkin={checkin} /> : null}
 
       {/* Barras por dimensão — cada uma compara com o esperado PRO OBJETIVO,
           com atalho pro gráfico daquela info. Substituem os antigos tiles. */}
@@ -358,6 +347,7 @@ function InsightBar({
 
   const kind = ins.adjustment?.kind;
   const podeAplicarAcao = (kind === "progression" || kind === "deload") && !!ins.finding_key;
+  const podeAplicarTransicao = kind === "transition" && !!ins.finding_key;
   const novoPeso = ins.adjustment?.new_weight;
   const rotuloAcao =
     kind === "progression"
@@ -403,6 +393,19 @@ function InsightBar({
       const r = await applyCoachAction(ins.finding_key);
       setAplicado(true);
       onApplied(r.title, r.message);
+    } catch (e: any) {
+      setErro(mensagemDeErro(e, "Não consegui aplicar agora."));
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  async function aplicarTransicao() {
+    setErro(null);
+    setApplying(true);
+    try {
+      const r = await applyTransitionStep();
+      onApplied("Transição", r.message);
     } catch (e: any) {
       setErro(mensagemDeErro(e, "Não consegui aplicar agora."));
     } finally {
@@ -503,6 +506,22 @@ function InsightBar({
               </Text>
             </>
           )}
+          {erro ? (
+            <Text style={[type.caption, { color: colors.warning, marginTop: 4, textAlign: "center" }]}>{erro}</Text>
+          ) : null}
+        </View>
+      ) : podeAplicarTransicao ? (
+        <View style={{ marginTop: spacing.sm }}>
+          <Button
+            title={applying ? "Aplicando..." : "Dar o próximo passo da transição"}
+            variant="secondary"
+            compact
+            loading={applying}
+            onPress={aplicarTransicao}
+          />
+          <Text style={[type.caption, { color: colors.textSecondary, marginTop: 4, textAlign: "center" }]}>
+            Ajusta a meta um degrau rumo ao alvo. Dá pra desfazer.
+          </Text>
           {erro ? (
             <Text style={[type.caption, { color: colors.warning, marginTop: 4, textAlign: "center" }]}>{erro}</Text>
           ) : null}

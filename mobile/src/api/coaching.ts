@@ -33,6 +33,15 @@ export type CoachingMetrics = {
   avg_sleep_hours: number | null;
   // Presente quando um marco de recomeço (troca de objetivo) recortou a janela.
   baseline_at: string | null;
+  // Presente quando há uma transição de objetivo em andamento (subindo/descendo
+  // calorias aos poucos). null quando não há.
+  transition: {
+    active: boolean;
+    target_kcal: number;
+    current_kcal: number;
+    remaining_kcal: number;
+    days_until_next: number;
+  } | null;
 };
 
 export type CoachingChart = "peso" | "calorias" | "macros" | "sono" | "carga";
@@ -40,7 +49,7 @@ export type CoachingChart = "peso" | "calorias" | "macros" | "sono" | "carga";
 // Ajuste aplicável de uma barra. `kind` diz qual fluxo de aplicar chamar:
 // dieta (kcal_delta, sem kind) | technique | progression | deload.
 export type CoachingAdjustmentInfo = {
-  kind?: "technique" | "progression" | "deload";
+  kind?: "technique" | "progression" | "deload" | "transition";
   kcal_delta?: number;
   technique?: string;
   technique_label?: string;
@@ -91,6 +100,13 @@ export type ApplyDietResult = {
 /** Aplica o ajuste calórico de um achado — cria uma nova versão da meta. */
 export async function applyDietAdjustment(findingKey: string): Promise<ApplyDietResult> {
   const { data } = await api.post<ApplyDietResult>("/coaching/apply/diet", { finding_key: findingKey });
+  return data;
+}
+
+/** Dá o próximo passo da transição de objetivo (sobe/desce a meta um degrau
+ * rumo ao alvo). Reversível como qualquer ajuste de dieta. */
+export async function applyTransitionStep(): Promise<ApplyDietResult> {
+  const { data } = await api.post<ApplyDietResult>("/coaching/apply/transition", {});
   return data;
 }
 
