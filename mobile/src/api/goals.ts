@@ -32,8 +32,13 @@ export async function getAutoSuggestion(): Promise<CalorieGoalSuggestion> {
   return data;
 }
 
-export async function applyAutoGoal(): Promise<CalorieGoal> {
-  const { data } = await api.post<CalorieGoal>("/goals/calorie/auto");
+/** Aplica a meta automática. asFirstObjective = "considerar como primeiro
+ * objetivo": vai direto pra meta nova (sem transição gradual) e recomeça a
+ * análise do coach — pra trocar de fase (ex: cutting→bulking) sem arrasto. */
+export async function applyAutoGoal(asFirstObjective = false): Promise<CalorieGoal> {
+  const { data } = await api.post<CalorieGoal>("/goals/calorie/auto", null, {
+    params: asFirstObjective ? { as_first_objective: true } : undefined,
+  });
   return data;
 }
 

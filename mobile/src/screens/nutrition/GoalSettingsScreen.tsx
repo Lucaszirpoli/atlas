@@ -69,6 +69,11 @@ export function GoalSettingsScreen() {
   const [manualFat, setManualFat] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // "Considerar como primeiro objetivo": vai direto pra meta nova (sem transição
+  // gradual) e faz o coach esquecer a fase anterior. Pra trocar de fase de vez
+  // (ex: encerrar o cutting e começar o bulking do zero).
+  const [asFirstObjective, setAsFirstObjective] = useState(false);
+  const mudouObjetivo = !!profile && profile.goal !== goal;
 
   async function load() {
     setIsLoading(true);
@@ -113,7 +118,9 @@ export function GoalSettingsScreen() {
       return;
     }
     const objetivoAnterior = profile?.goal;
-    const mudouObjetivo = !!objetivoAnterior && objetivoAnterior !== goal;
+    const trocou = !!objetivoAnterior && objetivoAnterior !== goal;
+    // "Primeiro objetivo" só faz sentido quando muda de objetivo.
+    const comoPrimeiro = asFirstObjective && trocou;
     setIsSubmitting(true);
     try {
       // 1) salva os dados no perfil (peso vira um novo registro no histórico)
@@ -126,11 +133,15 @@ export function GoalSettingsScreen() {
         current_weight_kg: weightN,
       });
       // 2) recalcula e aplica a meta a partir dos dados atualizados
-      setCurrentGoal(await applyAutoGoal());
+      setCurrentGoal(await applyAutoGoal(comoPrimeiro));
       setProfile((p) => (p ? { ...p, goal } : p)); // reflete o novo objetivo
-      // Trocou de objetivo e tem coach (Pro)? Oferece recomeçar a análise —
-      // ConfirmDialog (não Alert.alert, que é no-op no web).
-      if (mudouObjetivo && isPro) {
+      setAsFirstObjective(false); // reseta o toggle após aplicar
+      // Com "primeiro objetivo" o backend já recomeçou a análise (sem transição);
+      // não precisa perguntar. Senão, se trocou de objetivo e é Pro, oferece
+      // recomeçar a análise (ConfirmDialog — Alert.alert é no-op no web).
+      if (comoPrimeiro) {
+        Alert.alert("Novo objetivo", "Meta ajustada direto pro novo objetivo e análise recomeçada.");
+      } else if (trocou && isPro) {
         setBaselinePrompt({ from: GOAL_LABEL[objetivoAnterior!] ?? objetivoAnterior!, to: GOAL_LABEL[goal] ?? goal });
       } else {
         Alert.alert("Meta atualizada", "Sua meta calórica foi recalculada com seus dados.");
@@ -243,11 +254,40 @@ export function GoalSettingsScreen() {
 
         {/* Objetivo */}
         <FieldLabel text="Objetivo" />
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginBottom: spacing.md }}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginBottom: mudouObjetivo ? spacing.sm : spacing.md }}>
           {GOAL_OPTIONS.map(([value, label]) => (
             <Chip key={value} label={label} selected={goal === value} onPress={() => setGoal(value)} />
           ))}
         </View>
+
+        {/* "Considerar como primeiro objetivo" — só quando muda de objetivo.
+            Pula a transição gradual e faz o coach esquecer a fase anterior. */}
+        {mudouObjetivo ? (
+          <TouchableOpacity
+            onPress={() => setAsFirstObjective((v) => !v)}
+            activeOpacity={0.7}
+            style={{
+              flexDirection: "row", alignItems: "center", gap: 8, marginBottom: spacing.md,
+              backgroundColor: colors.surfaceAlt, borderRadius: radius.button, padding: spacing.sm,
+              borderWidth: 1, borderColor: asFirstObjective ? colors.primary : colors.border,
+            }}
+          >
+            <Ionicons
+              name={asFirstObjective ? "checkbox" : "square-outline"}
+              size={20}
+              color={asFirstObjective ? colors.primary : colors.textSecondary}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "600" }]}>
+                Considerar como primeiro objetivo
+              </Text>
+              <Text style={[type.caption, { color: colors.textSecondary, marginTop: 1, lineHeight: 16 }]}>
+                Vai direto pra nova meta, sem subir/descer as calorias aos poucos. O coach esquece a fase anterior
+                (ideal pra encerrar um cutting e começar o bulking do zero).
+              </Text>
+            </View>
+          </TouchableOpacity>
+        ) : null}
 
         {/* Nível de atividade */}
         <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>

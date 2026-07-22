@@ -178,7 +178,13 @@ export function CoachingScreen() {
           </Text>
         </Card>
       ) : analysis ? (
-        <AnalysisView analysis={analysis} checkin={checkin} onApplied={onApplied} onOpenChart={onOpenChart} />
+        <AnalysisView
+          analysis={analysis}
+          checkin={checkin}
+          onApplied={onApplied}
+          onOpenChart={onOpenChart}
+          onOpenObjective={() => navigation.navigate("NutritionModule", { screen: "GoalSettings" })}
+        />
       ) : null}
 
       {/* Pergunte ao coach — a IA que EXPLICA a análise (não muda plano). */}
@@ -224,18 +230,12 @@ export function CoachingScreen() {
         <ChangesPanel changes={changes} onChanged={(msg) => onApplied("Pronto", msg)} />
       ) : null}
 
-      {/* Módulos pessoais que passaram a viver dentro do Coaching. */}
+      {/* Módulos pessoais que passaram a viver dentro do Coaching. "Objetivo e
+          metas" saiu daqui: agora abre tocando no card de objetivo lá em cima. */}
       <Text style={[type.caption, { color: colors.textSecondary, letterSpacing: 1, textTransform: "uppercase", marginBottom: spacing.sm }]}>
         Seus dados e análises
       </Text>
 
-      <CoachRow
-        icon="flag"
-        tint={colors.moduleNutrition}
-        title="Objetivo e metas"
-        subtitle="Seu objetivo e a meta de calorias/macros"
-        onPress={() => navigation.navigate("NutritionModule", { screen: "GoalSettings" })}
-      />
       <CoachRow
         icon="body"
         tint={colors.info}
@@ -338,11 +338,13 @@ function AnalysisView({
   checkin,
   onApplied,
   onOpenChart,
+  onOpenObjective,
 }: {
   analysis: CoachingAnalysis;
   checkin: CoachingCheckin | null;
   onApplied: (title: string, message: string) => void;
   onOpenChart: (chart: CoachingChart) => void;
+  onOpenObjective: () => void;
 }) {
   const { colors, type, spacing, radius } = useTheme();
   const meta = GOAL_META[analysis.goal ?? ""] ?? { label: "Seu objetivo", icon: "compass" as const };
@@ -352,9 +354,13 @@ function AnalysisView({
   return (
     <>
       {/* OBJETIVO & FASE — o quadro geral: o que você está buscando, há quanto
-          tempo, e o balanço do período. (Substituiu o seletor 4/8/12 semanas.) */}
+          tempo, e o balanço do período. Tocar o topo abre "Objetivo e metas". */}
       <Card accent={colors.primary} style={{ marginBottom: spacing.md }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: spacing.sm }}>
+        <TouchableOpacity
+          onPress={onOpenObjective}
+          activeOpacity={0.7}
+          style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: spacing.sm }}
+        >
           <View
             style={{
               width: 40, height: 40, borderRadius: 12,
@@ -375,7 +381,8 @@ function AnalysisView({
               <Text style={[type.caption, { color: colors.textSecondary, fontWeight: "700" }]}>{fase}</Text>
             </View>
           ) : null}
-        </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+        </TouchableOpacity>
         <Text style={[type.body, { color: colors.textPrimary, lineHeight: 22 }]}>{analysis.headline}</Text>
         <Text style={[type.caption, { color: colors.textSecondary, marginTop: 6 }]}>
           Leitura do seu período no objetivo — confiança {analysis.confidence}.

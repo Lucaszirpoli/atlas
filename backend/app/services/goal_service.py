@@ -118,17 +118,48 @@ def _macros_at(kcal: float, protein_g: float, sug: dict) -> tuple[float, float]:
     return round(resto * ratio / 4, 1), round(resto * (1 - ratio) / 9, 1)
 
 
-def apply_auto_goal(db: Session, user_id: int, suggestion: dict) -> CalorieGoal:
+def apply_auto_goal(db: Session, user_id: int, suggestion: dict, *, immediate: bool = False) -> CalorieGoal:
     """Aplica a meta automática. Se a mudança for GRANDE (troca de objetivo, salto
-    de calorias), NÃO estoura de uma vez: aplica um passo capado e abre uma
-    TRANSIÇÃO — o coach leva até o alvo aos poucos. Mudança pequena vai direto."""
+    de calorias), NÃO estoura de uma vez: aplica UM passo capado e abre uma
+    TRANSIÇÃO — o coach leva até o alvo aos poucos, pelos passos diários. Mudança
+    pequena vai direto.
+
+    `immediate=True` ("considerar como primeiro objetivo"): esquece a fase
+    anterior e vai DIRETO ao alvo, sem transição gradual (ex.: cutting → bulking
+    tratado como recomeço).
+
+    IDEMPOTENTE por clique: re-aplicar o MESMO objetivo enquanto já há transição
+    pra ele NÃO empilha reduções/aumentos — o ramifica só acontece nos passos
+    diários (era o bug de 'clicar várias vezes baixava as kcal')."""
     now = datetime.now(timezone.utc)
     current = suggestion.get("current_goal")
     target_kcal = float(suggestion["kcal"])
-
+    objective = suggestion.get("objective", "")
     prior = active_transition(db, user_id)
 
+    def _full_goal() -> CalorieGoal:
+        g = CalorieGoal(user_id=user_id, mode=GoalMode.AUTO, kcal=suggestion["kcal"],
+                        protein_g=suggestion["protein_g"], carbs_g=suggestion["carbs_g"],
+                        fat_g=suggestion["fat_g"])
+        db.add(g)
+        return g
+
+    # "Primeiro objetivo": vai direto ao alvo, encerra qualquer transição aberta.
+    if immediate:
+        goal = _full_goal()
+        if prior is not None:
+            prior.completed_at = now
+        db.commit()
+        db.refresh(goal)
+        return goal
+
     if current is not None and abs(target_kcal - current.kcal) > TRANSITION_STEP_KCAL:
+        # Já em transição PRO MESMO objetivo? Re-aplicar é NO-OP: o degrau já foi
+        # dado e o resto do ramp acontece nos passos diários (não a cada clique).
+        if prior is not None and prior.to_objective == objective:
+            return current
+        # Novo rumo: fecha transição antiga (se houver), aplica o 1º degrau capado
+        # e abre a transição a partir da meta ATUAL.
         passo = TRANSITION_STEP_KCAL if target_kcal > current.kcal else -TRANSITION_STEP_KCAL
         new_kcal = round(current.kcal + passo)
         carbs, fat = _macros_at(new_kcal, suggestion["protein_g"], suggestion)
@@ -137,17 +168,14 @@ def apply_auto_goal(db: Session, user_id: int, suggestion: dict) -> CalorieGoal:
         db.add(goal)
         if prior is not None:
             prior.completed_at = now  # troca de rumo cancela a transição antiga
-        db.add(CoachingTransition(user_id=user_id, to_objective=suggestion.get("objective", ""),
+        db.add(CoachingTransition(user_id=user_id, to_objective=objective,
                                   from_kcal=current.kcal, target_kcal=target_kcal))
         db.commit()
         db.refresh(goal)
         return goal
 
     # Mudança pequena (ou primeira meta): aplica cheia e encerra transição aberta.
-    goal = CalorieGoal(user_id=user_id, mode=GoalMode.AUTO, kcal=suggestion["kcal"],
-                       protein_g=suggestion["protein_g"], carbs_g=suggestion["carbs_g"],
-                       fat_g=suggestion["fat_g"])
-    db.add(goal)
+    goal = _full_goal()
     if prior is not None:
         prior.completed_at = now
     db.commit()

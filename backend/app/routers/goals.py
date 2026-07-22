@@ -1,9 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from datetime import datetime, timezone
+
 from app.core.db import get_db
 from app.core.security import get_current_user
 from app.models.calorie_goal import CalorieGoal
+from app.models.coaching_baseline import CoachingBaseline
 from app.models.user import User
 from app.schemas.goal import CalorieGoalAutoSuggestion, CalorieGoalManualCreate, CalorieGoalRead
 from app.services import goal_service
@@ -39,14 +42,27 @@ def get_auto_suggestion(
 
 @router.post("/auto", response_model=CalorieGoalRead)
 def apply_auto_goal(
-    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    as_first_objective: bool = False,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> CalorieGoal:
+    """Aplica a meta automática. `as_first_objective=true` = "considerar como
+    primeiro objetivo": o coach ESQUECE a fase anterior e vai direto pra meta
+    nova (sem transição gradual) — e recomeça a análise a partir de agora (marco
+    novo), pra não misturar cutting com bulking. Sem a flag, salto grande de kcal
+    vira transição gradual."""
     _require_profile(current_user)
     try:
         suggestion = goal_service.compute_suggestion(db, current_user.id, current_user.profile)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return goal_service.apply_auto_goal(db, current_user.id, suggestion)
+    goal = goal_service.apply_auto_goal(db, current_user.id, suggestion, immediate=as_first_objective)
+    if as_first_objective:
+        # Recomeça a leitura do coach a partir de agora — esquece a fase anterior.
+        # Não apaga histórico (regra 4): só move o ponto de partida da análise.
+        db.add(CoachingBaseline(user_id=current_user.id, effective_from=datetime.now(timezone.utc), reason="first_objective"))
+        db.commit()
+    return goal
 
 
 @router.post("/manual", response_model=CalorieGoalRead)
