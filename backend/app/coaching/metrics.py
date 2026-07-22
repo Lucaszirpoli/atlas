@@ -54,6 +54,10 @@ class TrainingMetrics:
     # Cada item: {"exercise_id": int, "name": str, "sessions": int,
     #             "span_days": int, "is_compound": bool}
     stalled_lifts: list[dict]
+    # Exercícios em que a pessoa está PRONTA pra subir a carga (bateu o topo da
+    # faixa de reps com folga). Cada item: {"exercise_id", "name", "is_compound",
+    #   "muscle", "equipment", "top_weight", "top_reps", "sessions"}
+    progression_lifts: list[dict]
     # Tendência da carga total (volume = Σ peso×reps por sessão): % da metade
     # recente vs a inicial. Positivo = subindo. None = poucos treinos.
     volume_trend_pct: float | None
@@ -239,6 +243,86 @@ def _stalled_lifts(db: Session, user_id: int, since: datetime) -> list[dict]:
     ]
 
 
+# Reps que marcam o topo de uma boa faixa de trabalho — bateu isto com folga,
+# está na hora de subir a carga. Peso corporal aguenta mais reps antes do sinal.
+_PROG_REP_CEIL_WEIGHTED = 12
+_PROG_REP_CEIL_BODYWEIGHT = 18
+# set_types que NÃO são série de trabalho (não valem pro sinal de progressão).
+_NON_WORKING_SETS = {"warmup", "feeder"}
+
+
+def _progression_lifts(db: Session, user_id: int, since: datetime, stalled_ids: set[int]) -> list[dict]:
+    """Exercícios prontos pra subir a carga: no treino mais recente a pessoa
+    bateu o TOPO da faixa de reps na série mais pesada, com folga (RIR ≥ 1 ou não
+    informado). É o oposto do platô — por isso exclui quem já está travado. Sinal
+    de coach de verdade: 'você tá voando nesse peso, sobe'.
+
+    Devolve no máximo 3, compostos primeiro (subir num composto rende mais)."""
+    from app.models.exercise import Equipment
+
+    rows = db.execute(
+        select(
+            WorkoutSetLog.exercise_id,
+            Exercise.name,
+            Exercise.is_compound,
+            Exercise.primary_muscle_group,
+            Exercise.equipment,
+            WorkoutSession.started_at,
+            WorkoutSetLog.weight_kg,
+            WorkoutSetLog.reps,
+            WorkoutSetLog.rir,
+            WorkoutSetLog.set_type,
+        )
+        .join(WorkoutSession, WorkoutSession.id == WorkoutSetLog.session_id)
+        .join(Exercise, Exercise.id == WorkoutSetLog.exercise_id)
+        .where(
+            WorkoutSession.user_id == user_id,
+            WorkoutSession.started_at >= since,
+            WorkoutSession.completed_at.is_not(None),
+            WorkoutSetLog.reps > 0,
+        )
+    ).all()
+
+    # exercise_id -> {meta, days: {day -> (peso, reps, rir) da série de trabalho mais pesada}}
+    by_ex: dict[int, dict] = {}
+    for ex_id, name, is_comp, muscle, equip, started_at, w, reps, rir, stype in rows:
+        st = stype.value if hasattr(stype, "value") else str(stype)
+        if st in _NON_WORKING_SETS:
+            continue
+        d = by_ex.setdefault(ex_id, {
+            "name": name, "is_compound": bool(is_comp),
+            "muscle": muscle.value if hasattr(muscle, "value") else str(muscle),
+            "equipment": equip.value if hasattr(equip, "value") else str(equip),
+            "days": {},
+        })
+        day = started_at.date().isoformat()
+        cur = d["days"].get(day)
+        # série de trabalho mais pesada do dia (empate: mais reps)
+        if cur is None or (w or 0, reps) > (cur[0], cur[1]):
+            d["days"][day] = (w or 0.0, reps, rir)
+
+    out: list[dict] = []
+    for ex_id, d in by_ex.items():
+        if ex_id in stalled_ids:
+            continue
+        dias = sorted(d["days"].items())  # cronológico
+        if len(dias) < 2:
+            continue
+        _, (peso, reps, rir) = dias[-1]  # treino mais recente
+        is_bw = d["equipment"] == Equipment.BODYWEIGHT.value
+        teto = _PROG_REP_CEIL_BODYWEIGHT if is_bw else _PROG_REP_CEIL_WEIGHTED
+        folga = rir is None or rir >= 1
+        if reps >= teto and folga and (is_bw or peso > 0):
+            out.append({
+                "exercise_id": ex_id, "name": d["name"], "is_compound": d["is_compound"],
+                "muscle": d["muscle"], "equipment": d["equipment"],
+                "top_weight": round(peso, 1), "top_reps": reps, "sessions": len(dias),
+            })
+
+    out.sort(key=lambda s: (not s["is_compound"], -s["top_reps"]))
+    return out[:3]
+
+
 def _volume_trend(db: Session, user_id: int, since: datetime) -> float | None:
     """Carga: volume total (Σ peso×reps) por sessão, tendência recente vs inicial.
     Precisa de ≥4 sessões pra comparar duas metades com sentido."""
@@ -277,11 +361,14 @@ def _training_metrics(db: Session, user_id: int, since: datetime, window_days: i
     ).scalars().all()
     n = len(sessions)
     weeks = max(window_days / 7.0, 1.0)
+    stalled = _stalled_lifts(db, user_id, since)
+    stalled_ids = {s["exercise_id"] for s in stalled}
     return TrainingMetrics(
         sessions=n,
         sessions_per_week=round(n / weeks, 2),
         window_days=window_days,
-        stalled_lifts=_stalled_lifts(db, user_id, since),
+        stalled_lifts=stalled,
+        progression_lifts=_progression_lifts(db, user_id, since, stalled_ids),
         volume_trend_pct=_volume_trend(db, user_id, since),
     )
 

@@ -4,14 +4,19 @@ import React, { useCallback, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import {
+  applyCoachAction,
   applyDietAdjustment,
   applyTechnique,
   getCoachingAnalysis,
-  listCoachingAdjustments,
+  getCoachingCheckin,
+  listCoachingChanges,
   revertAdjustment,
-  type CoachingAdjustment,
+  revertCoachAction,
+  removeTechniqueCue,
   type CoachingAnalysis,
+  type CoachingChange,
   type CoachingChart,
+  type CoachingCheckin,
   type CoachingInsight,
 } from "../../api/coaching";
 import { Button } from "../../components/Button";
@@ -54,7 +59,8 @@ export function CoachingScreen() {
   const isPro = user?.plan === "pro";
 
   const [analysis, setAnalysis] = useState<CoachingAnalysis | null>(null);
-  const [adjustments, setAdjustments] = useState<CoachingAdjustment[]>([]);
+  const [changes, setChanges] = useState<CoachingChange[]>([]);
+  const [checkin, setCheckin] = useState<CoachingCheckin | null>(null);
   const [periodDays, setPeriodDays] = useState(28);
   const [chartMetric, setChartMetric] = useState<CoachingChart>("peso");
   const [loading, setLoading] = useState(true);
@@ -77,9 +83,13 @@ export function CoachingScreen() {
     setErro(false);
     return Promise.all([
       getCoachingAnalysis(periodDays).then(setAnalysis),
-      listCoachingAdjustments()
-        .then(setAdjustments)
-        .catch(() => {}), // histórico é secundário; não derruba a tela
+      // Check-in e "o que o coach mudou" são secundários — não derrubam a tela.
+      getCoachingCheckin()
+        .then(setCheckin)
+        .catch(() => {}),
+      listCoachingChanges()
+        .then(setChanges)
+        .catch(() => {}),
     ])
       .catch(() => setErro(true))
       .finally(() => setLoading(false));
@@ -143,6 +153,10 @@ export function CoachingScreen() {
           );
         })}
       </View>
+
+      {/* Check-in semanal — a "mensagem de segunda" do coach, sempre da semana
+          atual (independe do período selecionado acima). */}
+      {checkin && checkin.has_data ? <WeeklyCheckin checkin={checkin} /> : null}
 
       {/* Análise do período — o motor determinístico (sem IA) lê os registros. */}
       {loading && !analysis ? (
@@ -211,12 +225,10 @@ export function CoachingScreen() {
         />
       </View>
 
-      {/* Ajustes que a pessoa aplicou — com Desfazer. */}
-      {adjustments.length > 0 ? (
-        <AdjustmentsSection
-          adjustments={adjustments}
-          onReverted={(msg) => onApplied("Ajuste desfeito", msg)}
-        />
+      {/* O que o coach mudou — dieta + técnica + ações num painel só, enxuto:
+          ativos em cima com Desfazer, o resto no histórico recolhido. */}
+      {changes.length > 0 ? (
+        <ChangesPanel changes={changes} onChanged={(msg) => onApplied("Pronto", msg)} />
       ) : null}
 
       {/* Módulos pessoais que passaram a viver dentro do Coaching. */}
@@ -344,6 +356,16 @@ function InsightBar({
   const tecnica = ins.adjustment?.technique_label;
   const podeAplicarTecnica = !!ins.adjustment?.technique && !!ins.finding_key;
 
+  const kind = ins.adjustment?.kind;
+  const podeAplicarAcao = (kind === "progression" || kind === "deload") && !!ins.finding_key;
+  const novoPeso = ins.adjustment?.new_weight;
+  const rotuloAcao =
+    kind === "progression"
+      ? novoPeso
+        ? `Mandar subir pra ${novoPeso} kg`
+        : "Colocar no meu treino"
+      : "Ativar semana de deload";
+
   async function aplicar() {
     if (!ins.finding_key) return;
     setErro(null);
@@ -366,6 +388,21 @@ function InsightBar({
       const r = await applyTechnique(ins.finding_key);
       setAplicado(true);
       onApplied("Técnica aplicada", r.message);
+    } catch (e: any) {
+      setErro(mensagemDeErro(e, "Não consegui aplicar agora."));
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  async function aplicarAcao() {
+    if (!ins.finding_key) return;
+    setErro(null);
+    setApplying(true);
+    try {
+      const r = await applyCoachAction(ins.finding_key);
+      setAplicado(true);
+      onApplied(r.title, r.message);
     } catch (e: any) {
       setErro(mensagemDeErro(e, "Não consegui aplicar agora."));
     } finally {
@@ -441,38 +478,168 @@ function InsightBar({
             <Text style={[type.caption, { color: colors.warning, marginTop: 4, textAlign: "center" }]}>{erro}</Text>
           ) : null}
         </View>
+      ) : podeAplicarAcao ? (
+        <View style={{ marginTop: spacing.sm }}>
+          {aplicado ? (
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+              <Text style={[type.caption, { color: colors.success, fontWeight: "700" }]}>
+                Aplicado — aparece no seu treino
+              </Text>
+            </View>
+          ) : (
+            <>
+              <Button
+                title={applying ? "Aplicando..." : rotuloAcao}
+                variant="secondary"
+                compact
+                loading={applying}
+                onPress={aplicarAcao}
+              />
+              <Text style={[type.caption, { color: colors.textSecondary, marginTop: 4, textAlign: "center" }]}>
+                {kind === "deload"
+                  ? "Vira um lembrete no topo dos treinos por 7 dias. Dá pra desfazer."
+                  : "Vira um lembrete no exercício, no treino. Dá pra desfazer."}
+              </Text>
+            </>
+          )}
+          {erro ? (
+            <Text style={[type.caption, { color: colors.warning, marginTop: 4, textAlign: "center" }]}>{erro}</Text>
+          ) : null}
+        </View>
       ) : null}
     </Card>
   );
 }
 
-function AdjustmentsSection({
-  adjustments,
-  onReverted,
+// "2026-07-21T..." -> "hoje" / "ontem" / "há N dias"
+function quandoRelativo(iso: string): string {
+  const dias = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  if (dias <= 0) return "hoje";
+  if (dias === 1) return "ontem";
+  return `há ${dias} dias`;
+}
+
+// Check-in semanal — o resumo proativo do coach (o que foi bem / o que precisa
+// de foco), sempre da semana atual.
+function WeeklyCheckin({ checkin }: { checkin: CoachingCheckin }) {
+  const { colors, type, spacing } = useTheme();
+  const cor = (s: string) => (s === "good" ? colors.success : s === "warn" ? colors.warning : colors.textSecondary);
+  const icone = (s: string) =>
+    s === "good" ? "checkmark-circle" : s === "warn" ? "alert-circle" : "ellipse-outline";
+  return (
+    <Card accent={colors.primary} style={{ marginBottom: spacing.md }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <Ionicons name="sparkles" size={16} color={colors.primary} />
+        <Text style={[type.caption, { color: colors.primary, fontWeight: "800", letterSpacing: 0.5, textTransform: "uppercase" }]}>
+          Check-in da semana
+        </Text>
+      </View>
+      <Text style={[type.body, { color: colors.textPrimary, fontWeight: "600", lineHeight: 22, marginBottom: spacing.sm }]}>
+        {checkin.headline}
+      </Text>
+      {checkin.lines.map((l, i) => (
+        <View key={i} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start", marginTop: 6 }}>
+          <Ionicons name={icone(l.status) as any} size={15} color={cor(l.status)} style={{ marginTop: 2 }} />
+          <Text style={[type.bodySmall, { color: colors.textSecondary, flex: 1, lineHeight: 19 }]}>{l.text}</Text>
+        </View>
+      ))}
+    </Card>
+  );
+}
+
+// Painel unificado "O que o coach mudou": ativos em cima (com Desfazer), o
+// resto no histórico recolhido. Resolve o "rest-pause não aparecia" (agora tudo
+// num lugar só) e o "vai ficar comprido" (histórico não empilha).
+function ChangesPanel({
+  changes,
+  onChanged,
 }: {
-  adjustments: CoachingAdjustment[];
-  onReverted: (message: string) => void;
+  changes: CoachingChange[];
+  onChanged: (message: string) => void;
 }) {
   const { colors, type, spacing, radius } = useTheme();
-  const [revertingId, setRevertingId] = useState<number | null>(null);
+  const [revertingKey, setRevertingKey] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
 
-  async function desfazer(id: number) {
-    setRevertingId(id);
+  const ativos = changes.filter((c) => c.active);
+  const historico = changes.filter((c) => !c.active);
+
+  async function desfazer(c: CoachingChange) {
+    const k = `${c.source}:${c.ref_id}`;
+    setRevertingKey(k);
     try {
-      const r = await revertAdjustment(id);
-      onReverted(r.message);
+      const r =
+        c.source === "diet"
+          ? await revertAdjustment(c.ref_id)
+          : c.source === "technique"
+          ? await removeTechniqueCue(c.ref_id)
+          : await revertCoachAction(c.ref_id);
+      onChanged((r as any).message ?? "Desfeito.");
     } catch {
-      // silencioso — a lista recarrega no próximo foco
+      // silencioso — recarrega no próximo foco
     } finally {
-      setRevertingId(null);
+      setRevertingKey(null);
     }
   }
 
-  function quando(iso: string): string {
-    const dias = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
-    if (dias <= 0) return "hoje";
-    if (dias === 1) return "ontem";
-    return `há ${dias} dias`;
+  function Linha({ c, faded }: { c: CoachingChange; faded?: boolean }) {
+    const k = `${c.source}:${c.ref_id}`;
+    return (
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 10,
+          paddingVertical: spacing.sm,
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+          opacity: faded ? 0.55 : 1,
+        }}
+      >
+        <View
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 9,
+            backgroundColor: colors.surfaceAlt,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ionicons name={c.icon as any} size={16} color={faded ? colors.textSecondary : colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "600" }]} numberOfLines={1}>
+            {c.title}
+          </Text>
+          <Text style={[type.caption, { color: colors.textSecondary, marginTop: 1 }]}>
+            {c.subtitle} · {quandoRelativo(c.created_at)}
+            {faded ? " · desfeito" : ""}
+          </Text>
+        </View>
+        {c.active ? (
+          <TouchableOpacity
+            onPress={() => desfazer(c)}
+            disabled={revertingKey === k}
+            style={{
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: radius.pill,
+              paddingVertical: 5,
+              paddingHorizontal: 12,
+              opacity: revertingKey === k ? 0.5 : 1,
+            }}
+          >
+            <Text style={[type.caption, { color: colors.textPrimary, fontWeight: "700" }]}>
+              {revertingKey === k ? "..." : "Desfazer"}
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <Ionicons name="arrow-undo" size={15} color={colors.textSecondary} />
+        )}
+      </View>
+    );
   }
 
   return (
@@ -483,55 +650,31 @@ function AdjustmentsSection({
           { color: colors.textSecondary, letterSpacing: 1, textTransform: "uppercase", marginBottom: spacing.sm },
         ]}
       >
-        Ajustes que você aplicou
+        O que o coach mudou
       </Text>
-      <Card style={{ marginBottom: spacing.md }}>
-        {adjustments.map((a, i) => {
-          const revertido = a.reverted_at != null;
-          return (
-            <View
-              key={a.id}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                paddingVertical: spacing.sm,
-                borderTopWidth: i === 0 ? 0 : 1,
-                borderTopColor: colors.border,
-              }}
+      <Card style={{ marginBottom: spacing.md, paddingTop: 0 }}>
+        {ativos.length > 0 ? (
+          ativos.map((c) => <Linha key={`${c.source}:${c.ref_id}`} c={c} />)
+        ) : (
+          <Text style={[type.bodySmall, { color: colors.textSecondary, paddingVertical: spacing.sm }]}>
+            Nenhuma mudança ativa agora.
+          </Text>
+        )}
+
+        {historico.length > 0 ? (
+          <>
+            <TouchableOpacity
+              onPress={() => setShowHistory((v) => !v)}
+              style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border }}
             >
-              <View style={{ flex: 1 }}>
-                <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "600" }]}>
-                  Meta {a.kcal_delta > 0 ? "+" : ""}
-                  {Math.round(a.kcal_delta)} kcal ({Math.round(a.prev_kcal)} → {Math.round(a.new_kcal)})
-                </Text>
-                <Text style={[type.caption, { color: colors.textSecondary, marginTop: 1 }]}>
-                  {quando(a.created_at)}
-                  {revertido ? " · desfeito" : ""}
-                </Text>
-              </View>
-              {revertido ? (
-                <Ionicons name="arrow-undo" size={16} color={colors.textSecondary} />
-              ) : (
-                <TouchableOpacity
-                  onPress={() => desfazer(a.id)}
-                  disabled={revertingId === a.id}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    borderRadius: radius.pill,
-                    paddingVertical: 5,
-                    paddingHorizontal: 12,
-                    opacity: revertingId === a.id ? 0.5 : 1,
-                  }}
-                >
-                  <Text style={[type.caption, { color: colors.textPrimary, fontWeight: "700" }]}>
-                    {revertingId === a.id ? "..." : "Desfazer"}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          );
-        })}
+              <Ionicons name={showHistory ? "chevron-up" : "chevron-down"} size={15} color={colors.textSecondary} />
+              <Text style={[type.caption, { color: colors.textSecondary, fontWeight: "600" }]}>
+                {showHistory ? "Ocultar histórico" : `Ver histórico (${historico.length})`}
+              </Text>
+            </TouchableOpacity>
+            {showHistory ? historico.map((c) => <Linha key={`${c.source}:${c.ref_id}`} c={c} faded />) : null}
+          </>
+        ) : null}
       </Card>
     </>
   );

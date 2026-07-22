@@ -117,3 +117,81 @@ class CoachingAnalysis(BaseModel):
     insights: list[CoachingInsight] = []
     data_gaps: list[str]
     metrics: dict[str, Any]
+
+
+# --- Ações de treino (progressão / troca / deload) e overlays -----------------
+class ApplyActionRequest(BaseModel):
+    finding_key: str  # "progression:{id}" | "deload" | "swap:{id}"
+
+
+class ApplyActionResult(BaseModel):
+    applied: bool
+    kind: str
+    title: str
+    message: str
+
+
+class SwapAlternative(BaseModel):
+    exercise_id: int
+    name: str
+
+
+class CoachingActionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    kind: str
+    exercise_id: int | None
+    exercise_name: str | None
+    title: str
+    detail: str
+    payload: dict[str, Any] = {}
+    created_at: datetime
+    reverted_at: datetime | None
+
+
+class WorkoutOverlay(BaseModel):
+    """Overlay ativo do coach pra o lado do treino. `source` diz qual endpoint
+    desfaz ('technique' | 'action'); `exercise_id` None = banner global (deload)."""
+
+    source: str            # technique | action
+    id: int
+    kind: str              # technique | progression | exercise_swap | deload
+    exercise_id: int | None
+    exercise_name: str | None
+    title: str
+    detail: str
+    payload: dict[str, Any] = {}
+
+
+class CoachingChange(BaseModel):
+    """Item do painel 'O que o coach mudou' — normaliza dieta, técnica e ações
+    numa lista só. `source`+`ref_id` dizem qual endpoint desfaz."""
+
+    source: str            # diet | technique | action
+    ref_id: int
+    icon: str              # nutrition | barbell | trending-up | swap-horizontal | bed
+    title: str
+    subtitle: str
+    created_at: datetime
+    active: bool
+
+
+class RemoveActionResult(BaseModel):
+    removed: bool
+    message: str
+
+
+class CheckinLine(BaseModel):
+    key: str
+    status: str            # good | warn | info
+    text: str
+
+
+class CoachingCheckin(BaseModel):
+    window_days: int
+    goal: str | None
+    has_data: bool
+    headline: str
+    wins_count: int
+    lines: list[CheckinLine]

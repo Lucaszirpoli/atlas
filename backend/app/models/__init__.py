@@ -3,6 +3,7 @@ from app.models.body_measurement import BodyMeasurement, ProgressPhoto
 from app.models.calorie_goal import CalorieGoal
 from app.models.challenge import Challenge, ChallengeParticipant
 from app.models.chat_message import ChatMessage
+from app.models.coaching_action import CoachingAction
 from app.models.coaching_adjustment import CoachingAdjustment
 from app.models.coaching_baseline import CoachingBaseline
 from app.models.coaching_technique_cue import CoachingTechniqueCue
@@ -30,6 +31,7 @@ __all__ = [
     "WeightLog",
     "ConsentRecord",
     "ChatMessage",
+    "CoachingAction",
     "CoachingAdjustment",
     "CoachingBaseline",
     "CoachingTechniqueCue",

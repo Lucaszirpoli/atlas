@@ -208,8 +208,12 @@ def _carga_insight(m: Metrics) -> Insight:
         return Insight("carga", SEV_INFO, "Carga subindo", f"Seu volume total subiu ~{v:.0f}% no período — "
                        "sobrecarga progressiva acontecendo, é o que puxa o resultado.", chart="carga")
     if v <= -8:
+        # Queda de carga persistente costuma ser fadiga acumulada — o coach oferece
+        # uma semana leve (deload) de propósito, com botão de aplicar.
         return Insight("carga", SEV_ATTENTION, "Carga caindo", f"Seu volume total caiu ~{abs(v):.0f}% no período. "
-                       "Se não for deload proposital, vale revisar energia e recuperação.", chart="carga")
+                       "Se não é deload proposital, pode ser fadiga acumulada — dá pra puxar uma semana leve pra "
+                       "recuperar e voltar mais forte.", chart="carga",
+                       finding_key="deload", adjustment={"kind": "deload"})
     return Insight("carga", SEV_ATTENTION, "Carga estável", "Seu volume total está praticamente parado. Pra "
                    "evoluir, mire somar uma série ou uma repetição aos poucos.", chart="carga")
 
@@ -240,6 +244,31 @@ def suggest_stall_technique(is_compound: bool) -> tuple[str, str, str]:
     return STALL_TECHNIQUE[bool(is_compound)]
 
 
+# Grupos onde uma progressão de carga costuma ser maior (grandes cadeias). Fora
+# daqui (peito/costas/ombro/braço/panturrilha), o passo é o menor incremento.
+_BIG_LOWER = {"quads", "hamstrings", "glutes"}
+
+
+def progression_step(muscle: str, equipment: str, top_weight: float) -> tuple[float | None, float | None, str]:
+    """Passo de progressão pra um exercício pronto pra subir.
+
+    Devolve (incremento_kg, novo_peso, como-fazer). No peso corporal não há carga
+    pra somar: incremento/novo_peso = None e a dica é somar reps/peso extra.
+    """
+    if equipment == "bodyweight":
+        return None, None, (
+            "Você já bate o topo das reps com folga. Suba o estímulo: some 1–2 reps por "
+            "série, ou adicione carga (cinto de lastro, mochila, colete)."
+        )
+    inc = 5.0 if muscle in _BIG_LOWER else 2.5
+    novo = round(top_weight + inc, 1)
+    return inc, novo, (
+        f"Você fechou o topo da faixa com folga em {top_weight:g} kg. Sobe pra {novo:g} kg na "
+        f"próxima (+{inc:g} kg) e volta a trabalhar na base da faixa de reps. É assim que a "
+        "sobrecarga progressiva vira resultado."
+    )
+
+
 def _treino_insight(m: Metrics) -> Insight:
     t = m.training
     if t.window_days >= 14 and t.sessions_per_week < MIN_SESSIONS_PER_WEEK:
@@ -256,10 +285,31 @@ def _treino_insight(m: Metrics) -> Insight:
             chart="carga",
             finding_key=f"stalled_lift:{lift['exercise_id']}",
             adjustment={
+                "kind": "technique",
                 "technique": tech_key,
                 "technique_label": tech_label,
                 "exercise_id": lift["exercise_id"],
                 "exercise_name": lift["name"],
+            },
+        )
+    if t.progression_lifts:
+        p = t.progression_lifts[0]
+        inc, novo, _ = progression_step(p["muscle"], p["equipment"], p["top_weight"])
+        if novo is not None:
+            come = f"subir de {p['top_weight']:g} pra {novo:g} kg"
+        else:
+            come = "subir o estímulo (mais reps ou carga extra)"
+        return Insight(
+            "treino", SEV_ACTION, "Pronto pra subir a carga",
+            f"Você fez {p['top_reps']} reps no {p['name']} com folga — tá na hora de {come}. "
+            "Aplico como lembrete no seu treino.",
+            chart="carga",
+            finding_key=f"progression:{p['exercise_id']}",
+            adjustment={
+                "kind": "progression",
+                "exercise_id": p["exercise_id"],
+                "exercise_name": p["name"],
+                "new_weight": novo,
             },
         )
     if t.sessions == 0:
@@ -461,6 +511,85 @@ def _headline(m: Metrics, findings: list[Finding], has_enough: bool) -> str:
     if atencao:
         return atencao[0].title + " — vale um pequeno ajuste."
     return "Você está no caminho. Sem mudanças por agora — mantém a consistência."
+
+
+def weekly_checkin(m: Metrics) -> dict:
+    """Resumo semanal proativo — a 'mensagem de segunda' do coach. Lê a semana e
+    devolve o que foi bem (wins) e o que merece foco, em linguagem curta e sem
+    culpa (regra 7). Determinístico. O router chama com janela de 7 dias."""
+    lines: list[dict] = []       # {key, status: good|warn|info, text}
+    wins = 0
+
+    # Treino (frequência) — o hábito que mais move o ponteiro.
+    t = m.training
+    if t.sessions > 0:
+        if t.sessions_per_week >= MIN_SESSIONS_PER_WEEK:
+            lines.append({"key": "treino", "status": "good",
+                          "text": f"Treinou {t.sessions}× essa semana. Consistência em dia."})
+            wins += 1
+        else:
+            lines.append({"key": "treino", "status": "warn",
+                          "text": f"Treinou {t.sessions}× — mire 2–3× pra manter o estímulo."})
+    else:
+        lines.append({"key": "treino", "status": "info",
+                      "text": "Nenhum treino registrado essa semana. Bora marcar o primeiro?"})
+
+    # Peso — na direção do objetivo?
+    w = m.weight
+    if w.points >= 2 and w.pct_bodyweight_per_week is not None:
+        tgt = _GOAL_WEIGHT_TARGET.get(m.goal or "", 0.0)
+        pct = w.pct_bodyweight_per_week
+        na_direcao = (tgt == 0 and abs(pct) <= MAINTAIN_DRIFT) or (tgt != 0 and (tgt < 0) == (pct < 0) and abs(pct) > 0.05)
+        if na_direcao:
+            lines.append({"key": "peso", "status": "good",
+                          "text": f"Peso a {w.trend_kg_per_week:+.2f} kg/sem — na direção do seu objetivo."})
+            wins += 1
+        else:
+            lines.append({"key": "peso", "status": "warn",
+                          "text": f"Peso a {w.trend_kg_per_week:+.2f} kg/sem — fora do rumo do objetivo."})
+
+    # Proteína — o macro que protege músculo.
+    n = m.nutrition
+    alvo = _protein_target(m)
+    if alvo and n.avg_protein_logged is not None and n.days_logged >= 3:
+        if n.avg_protein_logged >= alvo * PROTEIN_LOW_RATIO:
+            lines.append({"key": "proteina", "status": "good",
+                          "text": f"Proteína média {n.avg_protein_logged:.0f} g/dia — no alvo."})
+            wins += 1
+        else:
+            lines.append({"key": "proteina", "status": "warn",
+                          "text": f"Proteína média {n.avg_protein_logged:.0f} g/dia, abaixo do alvo (~{alvo:.0f} g)."})
+
+    # Sono.
+    s = m.sleep
+    if s.nights >= 2 and s.avg_hours is not None:
+        if s.avg_hours >= SLEEP_SHORT_HOURS:
+            lines.append({"key": "sono", "status": "good",
+                          "text": f"Sono {s.avg_hours:.1f} h/noite — recuperação em dia."})
+            wins += 1
+        else:
+            lines.append({"key": "sono", "status": "warn",
+                          "text": f"Sono {s.avg_hours:.1f} h/noite — curto; atrapalha treino e fome."})
+
+    has_data = len(lines) > 0 and not (len(lines) == 1 and lines[0]["key"] == "treino" and t.sessions == 0)
+    warns = [l for l in lines if l["status"] == "warn"]
+    if not has_data:
+        headline = "Ainda não tenho dados dessa semana. Registra treino, peso e refeições que eu te dou o balanço."
+    elif not warns:
+        headline = "Semana redonda 👏 Você fez o combinado — segue nesse ritmo."
+    elif wins and warns:
+        headline = f"Boa semana no geral — {wins} coisa(s) no lugar. Fica de olho em {len(warns)}."
+    else:
+        headline = "Tem alguns pontos pra ajustar essa semana — nada grave, dá pra corrigir."
+
+    return {
+        "window_days": m.window_days,
+        "goal": m.goal,
+        "has_data": has_data,
+        "headline": headline,
+        "wins_count": wins,
+        "lines": lines,
+    }
 
 
 def _metrics_public(m: Metrics) -> dict:

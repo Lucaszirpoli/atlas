@@ -4,7 +4,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { listTechniqueCues, type TechniqueCue } from "../../api/coaching";
+import { listWorkoutOverlays, type WorkoutOverlay } from "../../api/coaching";
+import { CoachOverlayBlock, DeloadBanner } from "../../components/CoachOverlay";
 import { getRoutine, type Routine } from "../../api/routines";
 import {
   completeWorkoutSession,
@@ -94,7 +95,7 @@ export function WorkoutExecutionScreen() {
   };
 
   const [routine, setRoutine] = useState<Routine | null>(null);
-  const [cues, setCues] = useState<TechniqueCue[]>([]);
+  const [overlays, setOverlays] = useState<WorkoutOverlay[]>([]);
   // Todos os exercícios ficam na tela ao mesmo tempo (rolagem única) — sem
   // "próximo exercício". setsByExercise[i] são as séries do exercício i.
   const [setsByExercise, setSetsByExercise] = useState<SetRow[][]>([]);
@@ -128,16 +129,18 @@ export function WorkoutExecutionScreen() {
     });
   }, [routineId]);
 
-  // Dicas do coach (técnica no exercício travado) — some silenciosa se falhar.
+  // Overlays do coach (técnica / subir carga / troca / deload) — some silencioso.
+  // Só leitura aqui; remover/desfazer é no Coaching ou na prévia.
   useEffect(() => {
-    listTechniqueCues().then(setCues).catch(() => {});
+    listWorkoutOverlays().then(setOverlays).catch(() => {});
   }, []);
 
   if (!routine || setsByExercise.length === 0) {
     return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
   }
 
-  const cueFor = (exerciseId: number) => cues.find((c) => c.exercise_id === exerciseId);
+  const deload = overlays.find((o) => o.kind === "deload");
+  const overlaysFor = (exerciseId: number) => overlays.filter((o) => o.exercise_id === exerciseId);
 
   const totalSets = setsByExercise.reduce((sum, rows) => sum + rows.length, 0);
   const totalCompleted = setsByExercise.reduce((sum, rows) => sum + rows.filter((s) => s.completed).length, 0);
@@ -257,6 +260,8 @@ export function WorkoutExecutionScreen() {
           </Text>
         </View>
 
+        {deload ? <DeloadBanner overlay={deload} /> : null}
+
         {routine.exercises.map((routineExercise, exerciseIndex) => {
           const sets = setsByExercise[exerciseIndex];
           const completedCount = sets.filter((s) => s.completed).length;
@@ -281,32 +286,11 @@ export function WorkoutExecutionScreen() {
                 <Meta icon="checkmark-done" text={`${completedCount}/${sets.length} feitas`} />
               </View>
 
-              {/* Dica do coach: técnica de intensidade pra furar o platô deste
-                  exercício (aplicada no Coaching). Só leitura aqui — remover é lá. */}
-              {(() => {
-                const cue = cueFor(routineExercise.exercise_id);
-                if (!cue) return null;
-                return (
-                  <View
-                    style={{
-                      marginBottom: spacing.sm,
-                      backgroundColor: colors.surfaceAlt,
-                      borderRadius: radius.card,
-                      borderLeftWidth: 3,
-                      borderLeftColor: colors.primary,
-                      padding: spacing.sm,
-                    }}
-                  >
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 3 }}>
-                      <Ionicons name="flash" size={14} color={colors.primary} />
-                      <Text style={[type.caption, { color: colors.primary, fontWeight: "700" }]}>
-                        Coach · {cue.technique_label}
-                      </Text>
-                    </View>
-                    <Text style={[type.caption, { color: colors.textSecondary, lineHeight: 18 }]}>{cue.cue_text}</Text>
-                  </View>
-                );
-              })()}
+              {/* Overlays do coach neste exercício (técnica / subir carga /
+                  troca). Só leitura aqui — desfazer é no Coaching ou na prévia. */}
+              {overlaysFor(routineExercise.exercise_id).map((o) => (
+                <CoachOverlayBlock key={`${o.source}:${o.id}`} overlay={o} />
+              ))}
 
               {/* Cabeçalho da tabela — Série / Anterior / kg / Reps / ✓ */}
               <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.sm, marginBottom: spacing.xs }}>

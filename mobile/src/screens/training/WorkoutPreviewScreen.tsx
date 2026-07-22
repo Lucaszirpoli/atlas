@@ -3,7 +3,13 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
-import { listTechniqueCues, removeTechniqueCue, type TechniqueCue } from "../../api/coaching";
+import {
+  listWorkoutOverlays,
+  removeTechniqueCue,
+  revertCoachAction,
+  type WorkoutOverlay,
+} from "../../api/coaching";
+import { CoachOverlayBlock, DeloadBanner } from "../../components/CoachOverlay";
 import { getRoutine, type Routine } from "../../api/routines";
 import {
   getWorkoutPreview,
@@ -29,7 +35,7 @@ export function WorkoutPreviewScreen() {
 
   const [routine, setRoutine] = useState<Routine | null>(null);
   const [prefill, setPrefill] = useState<ExercisePrefill[]>([]);
-  const [cues, setCues] = useState<TechniqueCue[]>([]);
+  const [overlays, setOverlays] = useState<WorkoutOverlay[]>([]);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
 
@@ -41,23 +47,24 @@ export function WorkoutPreviewScreen() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-    // Dicas do coach (técnica no exercício travado) — some silenciosa se falhar.
-    listTechniqueCues()
-      .then(setCues)
+    // Overlays do coach (técnica / subir carga / troca / deload) — silencioso se falhar.
+    listWorkoutOverlays()
+      .then(setOverlays)
       .catch(() => {});
   }, [routineId]);
 
-  function cueFor(exerciseId: number): TechniqueCue | undefined {
-    return cues.find((c) => c.exercise_id === exerciseId);
+  const deload = overlays.find((o) => o.kind === "deload");
+  function overlaysFor(exerciseId: number): WorkoutOverlay[] {
+    return overlays.filter((o) => o.exercise_id === exerciseId);
   }
 
-  async function removerCue(id: number) {
-    setCues((cs) => cs.filter((c) => c.id !== id)); // otimista
+  async function removerOverlay(o: WorkoutOverlay) {
+    setOverlays((os) => os.filter((x) => !(x.source === o.source && x.id === o.id))); // otimista
     try {
-      await removeTechniqueCue(id);
+      if (o.source === "technique") await removeTechniqueCue(o.id);
+      else await revertCoachAction(o.id);
     } catch {
-      // se falhar, recarrega a lista pra refletir o estado real
-      listTechniqueCues().then(setCues).catch(() => {});
+      listWorkoutOverlays().then(setOverlays).catch(() => {});
     }
   }
 
@@ -108,6 +115,8 @@ export function WorkoutPreviewScreen() {
           Prévia · os pesos são os da sua última vez. O treino ainda não começou.
         </Text>
 
+        {deload ? <DeloadBanner overlay={deload} onRemove={removerOverlay} /> : null}
+
         {routine.exercises.map((ex) => {
           const pf = prefillFor(ex.exercise_id);
           const reps =
@@ -152,35 +161,11 @@ export function WorkoutPreviewScreen() {
                 </Text>
               ) : null}
 
-              {/* Dica do coach: técnica de intensidade pra furar o platô deste
-                  exercício. O "remover" é o desfazer, aqui onde ela vive. */}
-              {(() => {
-                const cue = cueFor(ex.exercise_id);
-                if (!cue) return null;
-                return (
-                  <View
-                    style={{
-                      marginTop: spacing.sm,
-                      backgroundColor: colors.surfaceAlt,
-                      borderRadius: radius.card,
-                      borderLeftWidth: 3,
-                      borderLeftColor: colors.primary,
-                      padding: spacing.sm,
-                    }}
-                  >
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 3 }}>
-                      <Ionicons name="flash" size={14} color={colors.primary} />
-                      <Text style={[type.caption, { color: colors.primary, fontWeight: "700", flex: 1 }]}>
-                        Coach · {cue.technique_label}
-                      </Text>
-                      <TouchableOpacity onPress={() => removerCue(cue.id)} hitSlop={8}>
-                        <Text style={[type.caption, { color: colors.textSecondary }]}>Remover</Text>
-                      </TouchableOpacity>
-                    </View>
-                    <Text style={[type.caption, { color: colors.textSecondary, lineHeight: 18 }]}>{cue.cue_text}</Text>
-                  </View>
-                );
-              })()}
+              {/* Overlays do coach neste exercício (técnica / subir carga /
+                  troca). O "remover" é o desfazer, aqui onde eles vivem. */}
+              {overlaysFor(ex.exercise_id).map((o) => (
+                <CoachOverlayBlock key={`${o.source}:${o.id}`} overlay={o} onRemove={removerOverlay} />
+              ))}
             </Card>
           );
         })}
