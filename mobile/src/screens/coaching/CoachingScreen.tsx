@@ -520,7 +520,7 @@ function ObjetivoCard({
           <TouchableOpacity
             onPress={onOpenObjective}
             activeOpacity={0.7}
-            style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}
+            style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}
           >
             <View
               style={{
@@ -531,18 +531,27 @@ function ObjetivoCard({
             >
               <Ionicons name={meta.icon} size={20} color={colors.primary} />
             </View>
-            <View style={{ flex: 1 }}>
+            {/* Coluna própria pra título + selo "há N semanas" — o selo NÃO
+                fica na mesma linha do título (ficava disputando largura com
+                o nome do objetivo e cortava em telas estreitas de celular). */}
+            <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={[type.caption, { color: colors.textSecondary, letterSpacing: 0.5, textTransform: "uppercase" }]}>
                 Seu objetivo
               </Text>
               <Text style={[type.h2, { color: colors.textPrimary }]}>{meta.label}</Text>
+              {fase ? (
+                <View
+                  style={{
+                    alignSelf: "flex-start", marginTop: 4,
+                    backgroundColor: colors.surfaceAlt, borderRadius: radius.pill,
+                    paddingVertical: 4, paddingHorizontal: 10,
+                  }}
+                >
+                  <Text style={[type.caption, { color: colors.textSecondary, fontWeight: "700" }]}>{fase}</Text>
+                </View>
+              ) : null}
             </View>
           </TouchableOpacity>
-          {fase ? (
-            <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: radius.pill, paddingVertical: 4, paddingHorizontal: 10 }}>
-              <Text style={[type.caption, { color: colors.textSecondary, fontWeight: "700" }]}>{fase}</Text>
-            </View>
-          ) : null}
           <ExpandToggle expanded={expanded} onPress={onToggle} />
         </View>
         <Text style={[type.body, { color: colors.textPrimary, lineHeight: 22 }]}>{analysis.headline}</Text>

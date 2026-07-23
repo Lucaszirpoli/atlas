@@ -321,7 +321,10 @@ export function WorkoutExecutionScreen() {
 
               {/* Cabeçalho da tabela — Série / Anterior / kg / Reps / ✓ */}
               <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.sm, marginBottom: spacing.xs }}>
-                <View style={{ flexDirection: "row", alignItems: "center", width: 34 }}>
+                {/* Sem largura fixa aqui: "Série" + o ponto de interrogação juntos
+                    passavam dos 34px da coluna do badge embaixo e ficavam
+                    sobrepostos na letra (A/P/F) da série. */}
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
                   <Text style={[type.caption, { color: colors.textSecondary }]}>Série</Text>
                   <HelpDot title="Tipos de série" text={SET_LETTER_HELP_TEXT} />
                 </View>
