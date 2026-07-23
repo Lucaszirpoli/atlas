@@ -113,11 +113,16 @@ export function WorkoutExecutionScreen() {
         const pre = prefill.find((p) => p.exercise_id === re.exercise_id);
         return Array.from({ length: re.target_sets }, (_, i) => {
           const previous = pre?.sets[i];
+          // Intenção que o coach definiu ao montar a rotina (até a falha /
+          // feeder) já vem pré-marcada no badge — a pessoa não precisa lembrar
+          // de marcar na hora. Rotina sem intenção (manual) cai no normal.
+          const intent = re.set_intents?.[i];
+          const setType: SetType = intent === "to_failure" || intent === "feeder" ? intent : "straight";
           return {
             weight: previous ? String(previous.weight_kg) : "",
             reps: previous ? String(previous.reps) : "",
             completed: false,
-            setType: "straight" as SetType,
+            setType,
             rpe: "",
             rir: "",
             showMore: false,

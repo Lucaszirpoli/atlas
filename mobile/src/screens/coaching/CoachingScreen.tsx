@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Modal, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import {
   applyCoachAction,
@@ -9,8 +9,6 @@ import {
   applyTechnique,
   applyTransitionStep,
   buildCoachWorkout,
-  setGoalPace,
-  setTargetWeight,
   setTrainingPrefs,
   getCoachingAnalysis,
   getCoachingCheckin,
@@ -28,8 +26,15 @@ import {
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { InfoDialog } from "../../components/InfoDialog";
+import { PaceSelector } from "../../components/PaceSelector";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
+import {
+  DEFAULT_CARD_ORDER,
+  loadCardOrder,
+  saveCardOrder,
+  type CoachingCardId,
+} from "../../utils/coachingCardOrder";
 import { mensagemDeErro } from "../../utils/errorMessage";
 import { OnboardingScreen } from "../onboarding/OnboardingScreen";
 import { CoachingProgress } from "./CoachingProgress";
@@ -53,22 +58,6 @@ const KEY_LABEL: Record<string, string> = {
   treino: "Treino",
 };
 
-// Ritmo do objetivo: rótulo + risco/benefício (o "?" de cada opção).
-const PACE_META: Record<string, { label: string; info: string }> = {
-  slow: {
-    label: "Devagar",
-    info: "Mais devagar: preserva mais músculo e é mais fácil de manter no dia a dia. O custo é levar mais tempo pra chegar no alvo.",
-  },
-  normal: {
-    label: "Normal",
-    info: "Recomendado: o equilíbrio. Resultado consistente com baixo risco de perder músculo (no corte) ou acumular gordura (no ganho).",
-  },
-  fast: {
-    label: "Rápido",
-    info: "Mais rápido: chega antes no alvo, mas sobe o risco — perder músculo no corte ou ganhar mais gordura no bulk — e é mais difícil de sustentar.",
-  },
-};
-
 // "há quanto tempo no objetivo" a partir do marco (baseline). Null = sem marco.
 function faseTexto(iso: string | null): string | null {
   if (!iso) return null;
@@ -89,7 +78,7 @@ function faseTexto(iso: string | null): string | null {
  * forma honesta, em vez de mostrar um resumo falso.
  */
 export function CoachingScreen() {
-  const { colors, type, spacing, radius, shadow } = useTheme();
+  const { colors, type, spacing } = useTheme();
   const navigation = useNavigation<any>();
   const { user } = useAuth();
   const isPro = user?.plan === "pro";
@@ -182,69 +171,15 @@ export function CoachingScreen() {
         <AnalysisView
           analysis={analysis}
           checkin={checkin}
+          changes={changes}
           onApplied={onApplied}
           onOpenChart={onOpenChart}
           onOpenObjective={() => navigation.navigate("NutritionModule", { screen: "GoalSettings" })}
           onOpenTraining={() => navigation.navigate("TrainingModule")}
+          onAskCoach={() => navigation.navigate("CoachChat")}
+          onOpenMeasurements={() => navigation.navigate("NutritionModule", { screen: "Measurements" })}
         />
       ) : null}
-
-      {/* Pergunte ao coach — a IA que EXPLICA a análise (não muda plano). */}
-      <TouchableOpacity
-        activeOpacity={0.85}
-        onPress={() => navigation.navigate("CoachChat")}
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: spacing.md,
-          backgroundColor: colors.primary + "14",
-          borderWidth: 1,
-          borderColor: colors.primary + "33",
-          borderRadius: radius.card,
-          padding: spacing.md,
-          marginBottom: spacing.md,
-        }}
-      >
-        <View
-          style={{
-            width: 42,
-            height: 42,
-            borderRadius: 14,
-            backgroundColor: colors.primary + "22",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Ionicons name="chatbubbles" size={22} color={colors.primary} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>Pergunte ao coach</Text>
-          <Text style={[type.caption, { color: colors.textSecondary, marginTop: 1 }]}>
-            Tire dúvidas sobre sua análise, treino, dieta e sono
-          </Text>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color={colors.primary} />
-      </TouchableOpacity>
-
-      {/* O que o coach mudou — dieta + técnica + ações num painel só, enxuto:
-          ativos em cima com Desfazer, o resto no histórico recolhido. */}
-      {changes.length > 0 ? (
-        <ChangesPanel changes={changes} onChanged={(msg) => onApplied("Pronto", msg)} />
-      ) : null}
-
-      {/* Módulos pessoais que passaram a viver dentro do Coaching. "Objetivo e
-          metas" saiu daqui: agora abre tocando no card de objetivo lá em cima. */}
-      <Text style={[type.caption, { color: colors.textSecondary, letterSpacing: 1, textTransform: "uppercase", marginBottom: spacing.sm }]}>
-        Seus dados e análises
-      </Text>
-
-      <CoachRow
-        icon="body"
-        tint={colors.info}
-        title="Medidas e fotos"
-        subtitle="Circunferências e fotos de progresso"
-        onPress={() => navigation.navigate("NutritionModule", { screen: "Measurements" })}
-      />
 
       <InfoDialog
         visible={aviso != null}
@@ -338,290 +273,316 @@ function ChartModal({
 function AnalysisView({
   analysis,
   checkin,
+  changes,
   onApplied,
   onOpenChart,
   onOpenObjective,
   onOpenTraining,
+  onAskCoach,
+  onOpenMeasurements,
 }: {
   analysis: CoachingAnalysis;
   checkin: CoachingCheckin | null;
+  changes: CoachingChange[];
   onApplied: (title: string, message: string) => void;
   onOpenChart: (chart: CoachingChart) => void;
   onOpenObjective: () => void;
   onOpenTraining: () => void;
+  onAskCoach: () => void;
+  onOpenMeasurements: () => void;
 }) {
   const { colors, type, spacing, radius } = useTheme();
   const meta = GOAL_META[analysis.goal ?? ""] ?? { label: "Seu objetivo", icon: "compass" as const };
   const fase = faseTexto(analysis.metrics.baseline_at);
   const transition = analysis.metrics.transition;
+  // Card do objetivo recolhido por padrão: mostra objetivo + a leitura curta;
+  // a setinha expande o ritmo e os detalhes.
+  const [expObj, setExpObj] = useState(false);
+
+  // Barras de sugestão (ação/atenção) ficam FIXAS entre os dois grupos — são
+  // geradas pela análise, não um "card"; as que estão "tudo certo" viram o
+  // card móvel "tudo_certo" (pílulas), no grupo de baixo.
+  const rank = (i: CoachingInsight) => (i.adjustment ? 0 : 10) + (i.severity === "action" ? 0 : 1);
+  const acionaveis = analysis.insights.filter((i) => i.severity !== "info").sort((a, b) => rank(a) - rank(b));
+  const ok = analysis.insights.filter((i) => i.severity === "info");
+
+  // Ordem dos cards — salva no aparelho. "Reordenar" mostra setinhas ↑↓ em
+  // cada um; sem lib de arrastar instalada, é o jeito simples e confiável de
+  // mover. GRUPO ÚNICO, sem barreira: qualquer card vai pra qualquer posição.
+  // As barras de sugestão (geradas pela análise, não cards) ficam fixas no topo.
+  const [order, setOrder] = useState<CoachingCardId[]>(DEFAULT_CARD_ORDER);
+  const [reordering, setReordering] = useState(false);
+  useEffect(() => {
+    loadCardOrder().then(setOrder);
+  }, []);
+
+  const isAvailable = useCallback(
+    (id: CoachingCardId): boolean => {
+      if (id === "como_monto") return !!analysis.metrics.training_prefs;
+      if (id === "checkin") return !!(checkin && checkin.has_data);
+      if (id === "tudo_certo") return ok.length > 0;
+      if (id === "o_que_mudou") return changes.length > 0;
+      return true; // seu_treino, pergunte_coach, objetivo, seus_dados
+    },
+    [analysis.metrics.training_prefs, checkin, ok.length, changes.length]
+  );
+
+  function moveCard(id: CoachingCardId, dir: 1 | -1) {
+    setOrder((prev) => {
+      // Move dentro da lista de cards VISÍVEIS (um grupo só, sem barreira) —
+      // troca com o vizinho visível pra cima/baixo, pulando os que estão ocultos.
+      const visiveis = prev.filter((x) => isAvailable(x));
+      const idx = visiveis.indexOf(id);
+      const destino = idx + dir;
+      if (destino < 0 || destino >= visiveis.length) return prev;
+      const outroId = visiveis[destino];
+      const next = [...prev];
+      const i1 = next.indexOf(id);
+      const i2 = next.indexOf(outroId);
+      [next[i1], next[i2]] = [next[i2], next[i1]];
+      saveCardOrder(next);
+      return next;
+    });
+  }
+
+  // Conteúdo de cada card, pelo id — a MESMA JSX de antes, só endereçável pra
+  // poder renderizar na ordem escolhida pela pessoa.
+  function renderCard(id: CoachingCardId): React.ReactNode {
+    switch (id) {
+      case "objetivo":
+        return <ObjetivoCard analysis={analysis} meta={meta} fase={fase} transition={transition}
+          expanded={expObj} onToggle={() => setExpObj((v) => !v)} onOpenObjective={onOpenObjective} />;
+      case "como_monto":
+        return analysis.metrics.training_prefs ? (
+          <TrainingPrefsCard prefs={analysis.metrics.training_prefs} onChanged={onApplied} />
+        ) : null;
+      case "seu_treino":
+        return <WorkoutCard workout={analysis.metrics.workout} onApplied={onApplied} onOpenTraining={onOpenTraining} />;
+      case "pergunte_coach":
+        return (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={onAskCoach}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: spacing.md,
+              backgroundColor: colors.primary + "14",
+              borderWidth: 1,
+              borderColor: colors.primary + "33",
+              borderRadius: radius.card,
+              padding: spacing.md,
+            }}
+          >
+            <View
+              style={{
+                width: 42, height: 42, borderRadius: 14,
+                backgroundColor: colors.primary + "22",
+                alignItems: "center", justifyContent: "center",
+              }}
+            >
+              <Ionicons name="chatbubbles" size={22} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>Pergunte ao coach</Text>
+              <Text style={[type.caption, { color: colors.textSecondary, marginTop: 1 }]}>
+                Tire dúvidas sobre sua análise, treino, dieta e sono
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+          </TouchableOpacity>
+        );
+      case "checkin":
+        return checkin && checkin.has_data ? <WeeklyCheckin checkin={checkin} /> : null;
+      case "tudo_certo":
+        return ok.length > 0 ? <StatusPills bars={ok} onOpenChart={onOpenChart} /> : null;
+      case "o_que_mudou":
+        return changes.length > 0 ? (
+          <ChangesPanel changes={changes} onChanged={(msg) => onApplied("Pronto", msg)} />
+        ) : null;
+      case "seus_dados":
+        return (
+          <View>
+            <Text style={[type.caption, { color: colors.textSecondary, letterSpacing: 1, textTransform: "uppercase", marginBottom: spacing.sm }]}>
+              Seus dados e análises
+            </Text>
+            <CoachRow
+              icon="body"
+              tint={colors.info}
+              title="Medidas e fotos"
+              subtitle="Circunferências e fotos de progresso"
+              onPress={onOpenMeasurements}
+            />
+          </View>
+        );
+      default:
+        return null;
+    }
+  }
+
+  // Todos os cards visíveis, na ordem escolhida, com a setinha ↑↓ (só em modo
+  // "Reordenar"). Grupo único: qualquer card sobe/desce em relação a qualquer
+  // outro, sem barreira.
+  function renderCards() {
+    const visible = order.filter((id) => isAvailable(id));
+    return visible.map((id, idx) => {
+      const content = renderCard(id);
+      if (content == null) return null;
+      return (
+        <View key={id} style={{ marginBottom: spacing.md }}>
+          {reordering ? (
+            <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 6, marginBottom: 6 }}>
+              <TouchableOpacity
+                disabled={idx === 0}
+                onPress={() => moveCard(id, -1)}
+                style={{
+                  width: 30, height: 30, borderRadius: 8, backgroundColor: colors.surfaceAlt,
+                  alignItems: "center", justifyContent: "center", opacity: idx === 0 ? 0.3 : 1,
+                }}
+              >
+                <Ionicons name="chevron-up" size={16} color={colors.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                disabled={idx === visible.length - 1}
+                onPress={() => moveCard(id, 1)}
+                style={{
+                  width: 30, height: 30, borderRadius: 8, backgroundColor: colors.surfaceAlt,
+                  alignItems: "center", justifyContent: "center", opacity: idx === visible.length - 1 ? 0.3 : 1,
+                }}
+              >
+                <Ionicons name="chevron-down" size={16} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+          ) : null}
+          {content}
+        </View>
+      );
+    });
+  }
 
   return (
     <>
-      {/* OBJETIVO & FASE — o quadro geral: o que você está buscando, há quanto
-          tempo, e o balanço do período. Tocar o topo abre "Objetivo e metas". */}
-      <Card accent={colors.primary} style={{ marginBottom: spacing.md }}>
+      {/* Reordenar — some quieto quando não está em uso; a setinha ↑↓ aparece
+          em cada card só nesse modo. */}
+      <View style={{ flexDirection: "row", justifyContent: "flex-end", marginBottom: spacing.sm }}>
         <TouchableOpacity
-          onPress={onOpenObjective}
+          onPress={() => setReordering((v) => !v)}
           activeOpacity={0.7}
-          style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: spacing.sm }}
+          style={{
+            flexDirection: "row", alignItems: "center", gap: 6,
+            paddingVertical: 6, paddingHorizontal: 12, borderRadius: radius.pill,
+            backgroundColor: reordering ? colors.primary + "1A" : colors.surfaceAlt,
+            borderWidth: 1, borderColor: reordering ? colors.primary : colors.border,
+          }}
         >
-          <View
-            style={{
-              width: 40, height: 40, borderRadius: 12,
-              backgroundColor: colors.primary + "1F",
-              alignItems: "center", justifyContent: "center",
-            }}
+          <Ionicons name={reordering ? "checkmark" : "swap-vertical"} size={14} color={reordering ? colors.primary : colors.textSecondary} />
+          <Text style={[type.caption, { color: reordering ? colors.primary : colors.textSecondary, fontWeight: "700" }]}>
+            {reordering ? "Pronto" : "Reordenar"}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Barras de sugestão — fixas no topo, em card cheio, as que pedem uma
+          decisão (com ajuste primeiro). São geradas pela análise, não cards:
+          por isso não entram na reordenação. Os cards, abaixo, movem livremente. */}
+      {acionaveis.map((ins) => (
+        <InsightBar key={ins.key} ins={ins} onApplied={onApplied} onOpenChart={onOpenChart} />
+      ))}
+
+      {renderCards()}
+    </>
+  );
+}
+
+// OBJETIVO & FASE — o quadro geral: o que você está buscando, há quanto tempo,
+// e o balanço do período. Tocar o topo (ou o botão) abre "Objetivo e metas".
+function ObjetivoCard({
+  analysis,
+  meta,
+  fase,
+  transition,
+  expanded,
+  onToggle,
+  onOpenObjective,
+}: {
+  analysis: CoachingAnalysis;
+  meta: { label: string; icon: keyof typeof Ionicons.glyphMap };
+  fase: string | null;
+  transition: CoachingAnalysis["metrics"]["transition"];
+  expanded: boolean;
+  onToggle: () => void;
+  onOpenObjective: () => void;
+}) {
+  const { colors, type, spacing, radius } = useTheme();
+  return (
+    <Card accent={colors.primary}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: spacing.sm }}>
+          <TouchableOpacity
+            onPress={onOpenObjective}
+            activeOpacity={0.7}
+            style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}
           >
-            <Ionicons name={meta.icon} size={20} color={colors.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[type.caption, { color: colors.textSecondary, letterSpacing: 0.5, textTransform: "uppercase" }]}>
-              Seu objetivo
-            </Text>
-            <Text style={[type.h2, { color: colors.textPrimary }]}>{meta.label}</Text>
-          </View>
+            <View
+              style={{
+                width: 40, height: 40, borderRadius: 12,
+                backgroundColor: colors.primary + "1F",
+                alignItems: "center", justifyContent: "center",
+              }}
+            >
+              <Ionicons name={meta.icon} size={20} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[type.caption, { color: colors.textSecondary, letterSpacing: 0.5, textTransform: "uppercase" }]}>
+                Seu objetivo
+              </Text>
+              <Text style={[type.h2, { color: colors.textPrimary }]}>{meta.label}</Text>
+            </View>
+          </TouchableOpacity>
           {fase ? (
             <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: radius.pill, paddingVertical: 4, paddingHorizontal: 10 }}>
               <Text style={[type.caption, { color: colors.textSecondary, fontWeight: "700" }]}>{fase}</Text>
             </View>
           ) : null}
-          <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-        </TouchableOpacity>
-        <Text style={[type.body, { color: colors.textPrimary, lineHeight: 22 }]}>{analysis.headline}</Text>
-        <Text style={[type.caption, { color: colors.textSecondary, marginTop: 6 }]}>
-          Leitura do seu período no objetivo — confiança {analysis.confidence}.
-        </Text>
-        {analysis.metrics.pace && analysis.metrics.pace.options.length > 0 ? (
-          <PaceSelector pace={analysis.metrics.pace} onChanged={onApplied} />
-        ) : null}
-        {transition?.active ? (
-          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: 10, backgroundColor: colors.surfaceAlt, borderRadius: radius.card, padding: spacing.sm }}>
-            <Ionicons name="swap-vertical" size={14} color={colors.primary} style={{ marginTop: 1 }} />
-            <Text style={[type.caption, { color: colors.textSecondary, flex: 1, lineHeight: 18 }]}>
-              Transição de objetivo em andamento: levando sua meta de {Math.round(transition.current_kcal)} pra{" "}
-              ~{Math.round(transition.target_kcal)} kcal aos poucos ({transition.remaining_kcal > 0 ? "+" : ""}
-              {Math.round(transition.remaining_kcal)} restantes). Mudar devagar protege o resultado.
-            </Text>
-          </View>
-        ) : null}
-      </Card>
-
-      {/* COMO EU MONTO SEU TREINO — ponto fraco, tempo, cardio, periodização.
-          É o que o coach usa pra montar/ajustar treino e escolher técnica/deload. */}
-      {analysis.metrics.training_prefs ? (
-        <TrainingPrefsCard prefs={analysis.metrics.training_prefs} onChanged={onApplied} />
-      ) : null}
-
-      {/* SEU TREINO — o treino completo que o coach monta com as prefs acima.
-          Trocar UM exercício específico continua nas barras de aviso. */}
-      <WorkoutCard workout={analysis.metrics.workout} onApplied={onApplied} onOpenTraining={onOpenTraining} />
-
-      {/* CHECK-IN DA SEMANA — o pulso da semana atual (domingo → hoje). */}
-      {checkin && checkin.has_data ? <WeeklyCheckin checkin={checkin} /> : null}
-
-      {/* Barras em DUAS CAMADAS: em cima, em card cheio, as que pedem uma decisão
-          (com ajuste primeiro); embaixo, as que estão "tudo certo" viram pílulas
-          compactas — clicáveis pro gráfico, mas sem ocupar a tela. */}
-      {(() => {
-        const rank = (i: CoachingInsight) => (i.adjustment ? 0 : 10) + (i.severity === "action" ? 0 : 1);
-        const acionaveis = analysis.insights
-          .filter((i) => i.severity !== "info")
-          .sort((a, b) => rank(a) - rank(b));
-        const ok = analysis.insights.filter((i) => i.severity === "info");
-        return (
-          <>
-            {acionaveis.map((ins) => (
-              <InsightBar key={ins.key} ins={ins} onApplied={onApplied} onOpenChart={onOpenChart} />
-            ))}
-            {ok.length > 0 ? <StatusPills bars={ok} onOpenChart={onOpenChart} /> : null}
-          </>
-        );
-      })()}
-
-      {/* Lacunas de dado — o que registrar pra afinar a análise */}
-      {analysis.data_gaps.length > 0 ? (
-        <Card style={{ marginBottom: spacing.md }}>
-          <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700", marginBottom: spacing.xs }]}>
-            {analysis.has_enough_data ? "Pra afinar a análise" : "Me dê um pouco mais pra trabalhar"}
-          </Text>
-          {analysis.data_gaps.map((g, i) => (
-            <View key={i} style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
-              <Ionicons name="ellipse" size={7} color={colors.primary} style={{ marginTop: 7 }} />
-              <Text style={[type.bodySmall, { color: colors.textSecondary, flex: 1, lineHeight: 19 }]}>{g}</Text>
-            </View>
-          ))}
-        </Card>
-      ) : null}
-    </>
-  );
-}
-
-// Seletor de ritmo do objetivo (devagar/normal/rápido). Cada opção mostra o
-// tempo estimado até o peso-alvo (ou a velocidade, sem alvo) + um "?" com o
-// risco/benefício. Trocar recalcula a meta (com transição gradual se for grande).
-function PaceSelector({
-  pace,
-  onChanged,
-}: {
-  pace: NonNullable<CoachingAnalysis["metrics"]["pace"]>;
-  onChanged: (title: string, message: string) => void;
-}) {
-  const { colors, type, spacing, radius } = useTheme();
-  const [saving, setSaving] = useState<string | null>(null);
-  const [info, setInfo] = useState<{ title: string; message: string } | null>(null);
-  const [targetOpen, setTargetOpen] = useState(false);
-  const [targetInput, setTargetInput] = useState(pace.target_weight_kg ? String(pace.target_weight_kg) : "");
-
-  async function escolher(p: "slow" | "normal" | "fast") {
-    if (p === pace.current || saving) return;
-    setSaving(p);
-    try {
-      const r = await setGoalPace(p);
-      onChanged("Ritmo atualizado", r.message);
-    } catch {
-      setSaving(null);
-    }
-  }
-
-  async function salvarAlvo() {
-    const kg = parseFloat(targetInput.replace(",", "."));
-    setTargetOpen(false);
-    try {
-      const r = await setTargetWeight(Number.isFinite(kg) ? kg : null);
-      onChanged("Peso-alvo", r.message);
-    } catch {
-      // recarrega no próximo foco
-    }
-  }
-  async function limparAlvo() {
-    setTargetOpen(false);
-    setTargetInput("");
-    try {
-      const r = await setTargetWeight(null);
-      onChanged("Peso-alvo", r.message);
-    } catch {}
-  }
-
-  function tempoTexto(o: (typeof pace.options)[number]): string {
-    if (o.weeks != null) {
-      if (o.weeks >= 8) return `~${Math.round(o.weeks / 4)} meses`;
-      return `~${o.weeks} sem`;
-    }
-    const r = o.rate_kg_per_week;
-    return `${r > 0 ? "+" : ""}${r.toFixed(2)} kg/sem`;
-  }
-
-  return (
-    <View style={{ marginTop: spacing.md }}>
-      <Text style={[type.caption, { color: colors.textSecondary, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: spacing.xs }]}>
-        Ritmo
-      </Text>
-      {pace.options.map((o) => {
-        const on = o.pace === pace.current;
-        const m = PACE_META[o.pace];
-        return (
-          <View
-            key={o.pace}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 10,
-              borderWidth: 1,
-              borderColor: on ? colors.primary : colors.border,
-              backgroundColor: on ? colors.primary + "12" : "transparent",
-              borderRadius: radius.card,
-              paddingVertical: 9,
-              paddingHorizontal: spacing.sm,
-              marginBottom: spacing.xs,
-            }}
-          >
-            <TouchableOpacity
-              onPress={() => escolher(o.pace)}
-              activeOpacity={0.7}
-              style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}
-            >
-              <Ionicons
-                name={on ? "radio-button-on" : "radio-button-off"}
-                size={18}
-                color={on ? colors.primary : colors.textSecondary}
-              />
-              <View style={{ flex: 1 }}>
-                <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: on ? "700" : "600" }]}>
-                  {m.label}
-                  {o.pace === "normal" ? "  ·  recomendado" : ""}
-                </Text>
-                <Text style={[type.caption, { color: colors.textSecondary, marginTop: 1 }]}>
-                  {tempoTexto(o)} · {o.kcal} kcal
-                </Text>
-              </View>
-              {saving === o.pace ? <ActivityIndicator size="small" color={colors.primary} /> : null}
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setInfo({ title: m.label, message: m.info })} hitSlop={8}>
-              <Ionicons name="help-circle-outline" size={19} color={colors.textSecondary} />
-            </TouchableOpacity>
-          </View>
-        );
-      })}
-
-      {/* Peso-alvo — a referência que dá o tempo estimado. */}
-      <TouchableOpacity
-        onPress={() => {
-          setTargetInput(pace.target_weight_kg ? String(pace.target_weight_kg) : "");
-          setTargetOpen(true);
-        }}
-        style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}
-      >
-        <Ionicons name="flag-outline" size={14} color={colors.primary} />
-        <Text style={[type.caption, { color: colors.primary, fontWeight: "600" }]}>
-          {pace.target_weight_kg ? `Peso-alvo: ${pace.target_weight_kg} kg (tocar pra mudar)` : "Definir peso-alvo pra estimar o tempo"}
-        </Text>
-      </TouchableOpacity>
-
-      <InfoDialog
-        visible={info != null}
-        onClose={() => setInfo(null)}
-        title={info?.title ?? ""}
-        message={info?.message}
-      />
-
-      {/* Modal simples pra digitar o peso-alvo. */}
-      <Modal visible={targetOpen} transparent animationType="fade" onRequestClose={() => setTargetOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", padding: spacing.lg }}>
-          <View style={{ backgroundColor: colors.surface, borderRadius: radius.card, padding: spacing.lg }}>
-            <Text style={[type.h2, { color: colors.textPrimary, marginBottom: spacing.sm }]}>Peso-alvo</Text>
-            <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.md }]}>
-              Onde você quer chegar. É a partir daqui que eu estimo o tempo de cada ritmo.
-            </Text>
-            <TextInput
-              value={targetInput}
-              onChangeText={setTargetInput}
-              keyboardType="numeric"
-              placeholder="ex: 75"
-              placeholderTextColor={colors.textSecondary}
-              style={{
-                borderWidth: 1, borderColor: colors.border, borderRadius: radius.card,
-                paddingVertical: 10, paddingHorizontal: spacing.md, color: colors.textPrimary,
-                fontSize: 16, marginBottom: spacing.md,
-              }}
-            />
-            <View style={{ flexDirection: "row", gap: spacing.sm }}>
-              <View style={{ flex: 1 }}>
-                <Button title="Salvar" onPress={salvarAlvo} />
-              </View>
-              {pace.target_weight_kg ? (
-                <TouchableOpacity onPress={limparAlvo} style={{ justifyContent: "center", paddingHorizontal: spacing.md }}>
-                  <Text style={[type.bodySmall, { color: colors.textSecondary }]}>Limpar</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity onPress={() => setTargetOpen(false)} style={{ justifyContent: "center", paddingHorizontal: spacing.md }}>
-                  <Text style={[type.bodySmall, { color: colors.textSecondary }]}>Cancelar</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
+          <ExpandToggle expanded={expanded} onPress={onToggle} />
         </View>
-      </Modal>
-    </View>
+        <Text style={[type.body, { color: colors.textPrimary, lineHeight: 22 }]}>{analysis.headline}</Text>
+        {expanded ? (
+          <>
+            <Text style={[type.caption, { color: colors.textSecondary, marginTop: 6 }]}>
+              Leitura do seu período no objetivo — confiança {analysis.confidence}.
+            </Text>
+            {transition?.active ? (
+              <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: 10, backgroundColor: colors.surfaceAlt, borderRadius: radius.card, padding: spacing.sm }}>
+                <Ionicons name="swap-vertical" size={14} color={colors.primary} style={{ marginTop: 1 }} />
+                <Text style={[type.caption, { color: colors.textSecondary, flex: 1, lineHeight: 18 }]}>
+                  Transição de objetivo em andamento: levando sua meta de {Math.round(transition.current_kcal)} pra{" "}
+                  ~{Math.round(transition.target_kcal)} kcal aos poucos ({transition.remaining_kcal > 0 ? "+" : ""}
+                  {Math.round(transition.remaining_kcal)} restantes). Mudar devagar protege o resultado.
+                </Text>
+              </View>
+            ) : null}
+            {/* Principais informações — o que registrar pra afinar a leitura (antes
+                era um card separado; é a mesma informação do headline, detalhada). */}
+            {analysis.data_gaps.length > 0 ? (
+              <View style={{ marginTop: spacing.sm }}>
+                <Text style={[type.caption, { color: colors.textSecondary, fontWeight: "700", marginBottom: 2 }]}>
+                  {analysis.has_enough_data ? "Pra afinar a leitura" : "Me dê um pouco mais pra trabalhar"}
+                </Text>
+                {analysis.data_gaps.map((g, i) => (
+                  <View key={i} style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
+                    <Ionicons name="ellipse" size={7} color={colors.primary} style={{ marginTop: 7 }} />
+                    <Text style={[type.bodySmall, { color: colors.textSecondary, flex: 1, lineHeight: 19 }]}>{g}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+            {/* Alterar objetivo — abre a tela de objetivo (o ritmo mora lá agora). */}
+            <View style={{ marginTop: spacing.md }}>
+              <Button title="Alterar objetivo e ritmo" variant="secondary" compact onPress={onOpenObjective} />
+            </View>
+          </>
+        ) : null}
+    </Card>
   );
 }
 
@@ -629,7 +590,7 @@ function PaceSelector({
 // periodização. Quatro linhas simples; cada uma abre uma folha de opções com
 // explicação. O coach usa tudo isto pra montar/ajustar o treino, escolher a
 // técnica avançada certa e decidir quando desloadar — sem poluir a tela.
-type PrefSheetField = "weak_point" | "session_length" | "cardio" | "periodization";
+type PrefSheetField = "weak_point" | "session_length" | "training_days" | "cardio" | "periodization";
 
 function TrainingPrefsCard({
   prefs,
@@ -640,6 +601,7 @@ function TrainingPrefsCard({
 }) {
   const { colors, type, spacing, radius } = useTheme();
   const [sheet, setSheet] = useState<PrefSheetField | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   async function salvar(update: Parameters<typeof setTrainingPrefs>[0], titulo: string) {
     setSheet(null);
@@ -651,9 +613,10 @@ function TrainingPrefsCard({
     }
   }
 
-  const pontoFracoTxt = prefs.weak_point_label ?? "Nenhum";
+  const pontoFracoTxt = prefs.weak_points_labels.length ? prefs.weak_points_labels.join(" + ") : "Nenhum";
   const tempoOpt = prefs.session_length_options.find((x) => x.value === prefs.session_length);
   const tempoTxt = tempoOpt ? `${tempoOpt.label} · ${tempoOpt.range}` : "Não definido";
+  const diasTxt = prefs.training_days_per_week ? `${prefs.training_days_per_week}× por semana` : "Automático";
   const cardioTxt = prefs.wants_cardio == null ? "Não definido" : prefs.wants_cardio ? "Com cardio" : "Sem cardio";
   const periodTxt = prefs.periodization_options.find((x) => x.value === prefs.periodization)?.label ?? "Automática";
 
@@ -662,13 +625,12 @@ function TrainingPrefsCard({
     sheet === "weak_point"
       ? {
           title: "Ponto fraco",
-          subtitle: "Um grupo pra priorizar nos acessórios. Opcional — o coach dá um empurrão extra nele quando montar o treino.",
-          current: prefs.weak_point ?? "__none__",
-          options: [
-            { value: "__none__", label: "Nenhum" },
-            ...prefs.weak_point_options.map((o) => ({ value: o.value, label: o.label })),
-          ],
-          pick: (v: string) => salvar({ weak_point: v === "__none__" ? null : v }, "Ponto fraco"),
+          subtitle: `Grupos pra priorizar nos acessórios — pode escolher até ${prefs.weak_points_max}. Opcional: o coach dá um empurrão extra neles ao montar o treino.`,
+          multi: true,
+          maxSelected: prefs.weak_points_max,
+          selected: prefs.weak_points,
+          options: prefs.weak_point_options.map((o) => ({ value: o.value, label: o.label })),
+          onSaveMulti: (values: string[]) => salvar({ weak_points: values }, "Ponto fraco"),
         }
       : sheet === "session_length"
       ? {
@@ -677,6 +639,27 @@ function TrainingPrefsCard({
           current: prefs.session_length ?? "",
           options: prefs.session_length_options.map((o) => ({ value: o.value, label: o.label, desc: o.range })),
           pick: (v: string) => salvar({ session_length: v as any }, "Tempo por sessão"),
+        }
+      : sheet === "training_days"
+      ? {
+          title: "Dias por semana",
+          subtitle: "Quantos dias você pode treinar. É por aqui que o coach decide quantos treinos montar (2 a 7). No automático, ele infere pelos dias do seu perfil.",
+          current: prefs.training_days_per_week ? String(prefs.training_days_per_week) : "__auto__",
+          options: [
+            { value: "__auto__", label: "Automático", desc: "O coach usa os dias que você marcou no perfil." },
+            ...prefs.training_days_options.map((n) => ({
+              value: String(n),
+              label: `${n} dias`,
+              desc:
+                n <= 2
+                  ? "Full body — cada grupo ~2× na semana."
+                  : n <= 4
+                  ? "Superior/inferior — 2× por grupo, bem equilibrado."
+                  : "Push/pull/pernas repetido — volume alto, 2×+ por grupo.",
+            })),
+          ],
+          pick: (v: string) =>
+            salvar({ training_days_per_week: v === "__auto__" ? null : parseInt(v, 10) }, "Dias por semana"),
         }
       : sheet === "cardio"
       ? {
@@ -699,27 +682,42 @@ function TrainingPrefsCard({
         }
       : null;
 
+  // Resumo curto pro estado recolhido: os valores atuais numa linha só.
+  const resumo = `${diasTxt} · ${pontoFracoTxt === "Nenhum" ? "sem ponto fraco" : pontoFracoTxt}`;
+
   return (
     <Card style={{ marginBottom: spacing.md }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: spacing.xs }}>
+      <TouchableOpacity
+        onPress={() => setExpanded((v) => !v)}
+        activeOpacity={0.7}
+        style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+      >
         <Ionicons name="construct" size={16} color={colors.primary} />
-        <Text style={[type.caption, { color: colors.primary, fontWeight: "800", letterSpacing: 0.5, textTransform: "uppercase" }]}>
+        <Text style={[type.caption, { color: colors.primary, fontWeight: "800", letterSpacing: 0.5, textTransform: "uppercase", flex: 1 }]}>
           Como eu monto seu treino
         </Text>
-      </View>
-      <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.sm, lineHeight: 17 }]}>
-        O coach usa isto pra montar e ajustar seu treino: priorizar um músculo, caber no seu tempo e escolher técnica e deload na hora certa.
+        <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={18} color={colors.textSecondary} />
+      </TouchableOpacity>
+      <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.xs, lineHeight: 17 }]}>
+        {expanded
+          ? "O coach usa isto pra montar e ajustar seu treino: priorizar um músculo, caber nos seus dias e no seu tempo, e escolher técnica e deload na hora certa."
+          : resumo}
       </Text>
 
-      <PrefRow icon="fitness" label="Ponto fraco" value={pontoFracoTxt} onPress={() => setSheet("weak_point")} />
-      <PrefRow icon="time" label="Tempo por sessão" value={tempoTxt} onPress={() => setSheet("session_length")} />
-      <PrefRow icon="heart" label="Cardio" value={cardioTxt} onPress={() => setSheet("cardio")} />
-      <PrefRow icon="repeat" label="Periodização" value={periodTxt} onPress={() => setSheet("periodization")} last />
+      {expanded ? (
+        <View style={{ marginTop: spacing.xs }}>
+          <PrefRow icon="fitness" label="Ponto fraco" value={pontoFracoTxt} onPress={() => setSheet("weak_point")} />
+          <PrefRow icon="calendar" label="Dias por semana" value={diasTxt} onPress={() => setSheet("training_days")} />
+          <PrefRow icon="time" label="Tempo por sessão" value={tempoTxt} onPress={() => setSheet("session_length")} />
+          <PrefRow icon="heart" label="Cardio" value={cardioTxt} onPress={() => setSheet("cardio")} />
+          <PrefRow icon="repeat" label="Periodização" value={periodTxt} onPress={() => setSheet("periodization")} last />
 
-      {prefs.cardio_warning ? (
-        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: spacing.sm, backgroundColor: colors.warning + "14", borderRadius: radius.card, padding: spacing.sm }}>
-          <Ionicons name="alert-circle" size={15} color={colors.warning} style={{ marginTop: 1 }} />
-          <Text style={[type.caption, { color: colors.textSecondary, flex: 1, lineHeight: 18 }]}>{prefs.cardio_warning}</Text>
+          {prefs.cardio_warning ? (
+            <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: spacing.sm, backgroundColor: colors.warning + "14", borderRadius: radius.card, padding: spacing.sm }}>
+              <Ionicons name="alert-circle" size={15} color={colors.warning} style={{ marginTop: 1 }} />
+              <Text style={[type.caption, { color: colors.textSecondary, flex: 1, lineHeight: 18 }]}>{prefs.cardio_warning}</Text>
+            </View>
+          ) : null}
         </View>
       ) : null}
 
@@ -743,6 +741,7 @@ function WorkoutCard({
   const { colors, type, spacing, radius } = useTheme();
   const [building, setBuilding] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const built = !!workout?.built;
 
   async function montar() {
@@ -751,8 +750,9 @@ function WorkoutCard({
     try {
       const r = await buildCoachWorkout();
       const extra = r.cardio_note ? `\n\n${r.cardio_note}` : "";
+      const tecnica = r.technique_note ? `\n\n${r.technique_note}` : "";
       const foco = r.weak_point_label ? ` Priorizei ${r.weak_point_label}.` : "";
-      onApplied("Treino montado", `${r.message}${foco}${extra}`);
+      onApplied("Treino montado", `${r.message}${foco}${extra}${tecnica}`);
     } catch (e: any) {
       setErro(mensagemDeErro(e, "Não consegui montar agora."));
     } finally {
@@ -760,9 +760,18 @@ function WorkoutCard({
     }
   }
 
+  const resumo =
+    built && workout
+      ? `${workout.count} treino${workout.count === 1 ? "" : "s"} · ${workout.total_exercises} exercícios no total.`
+      : "Ainda não montei seu treino — abra pra montar com suas preferências.";
+
   return (
     <Card style={{ marginBottom: spacing.md }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: spacing.xs }}>
+      <TouchableOpacity
+        onPress={() => setExpanded((v) => !v)}
+        activeOpacity={0.7}
+        style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+      >
         <Ionicons name="barbell" size={16} color={colors.primary} />
         <Text style={[type.caption, { color: colors.primary, fontWeight: "800", letterSpacing: 0.5, textTransform: "uppercase", flex: 1 }]}>
           Seu treino
@@ -773,56 +782,80 @@ function WorkoutCard({
             <Text style={[type.caption, { color: colors.success, fontWeight: "700" }]}>Aplicado</Text>
           </View>
         ) : null}
-      </View>
+        <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={18} color={colors.textSecondary} />
+      </TouchableOpacity>
+      <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.xs, lineHeight: 17 }]}>{resumo}</Text>
 
-      {built && workout ? (
-        <>
-          <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.sm, lineHeight: 17 }]}>
-            {workout.count} treino{workout.count === 1 ? "" : "s"} · {workout.total_exercises} exercícios no total. Toque pra abrir.
-          </Text>
-          {workout.routines.map((r) => (
-            <TouchableOpacity
-              key={r.id}
-              onPress={onOpenTraining}
-              activeOpacity={0.7}
-              style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 9, borderTopWidth: 1, borderTopColor: colors.border }}
-            >
-              <View style={{ width: 26, height: 26, borderRadius: 8, backgroundColor: colors.surfaceAlt, alignItems: "center", justifyContent: "center" }}>
-                <Ionicons name="fitness" size={14} color={colors.primary} />
-              </View>
-              <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "600", flex: 1 }]} numberOfLines={1}>
-                {r.name}
+      {expanded ? (
+        built && workout ? (
+          <View style={{ marginTop: spacing.xs }}>
+            {workout.routines.map((r) => (
+              <TouchableOpacity
+                key={r.id}
+                onPress={onOpenTraining}
+                activeOpacity={0.7}
+                style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 9, borderTopWidth: 1, borderTopColor: colors.border }}
+              >
+                <View style={{ width: 26, height: 26, borderRadius: 8, backgroundColor: colors.surfaceAlt, alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="fitness" size={14} color={colors.primary} />
+                </View>
+                <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "600", flex: 1 }]} numberOfLines={1}>
+                  {r.name}
+                </Text>
+                <Text style={[type.caption, { color: colors.textSecondary }]}>{r.exercises} ex.</Text>
+                <Ionicons name="chevron-forward" size={15} color={colors.textSecondary} />
+              </TouchableOpacity>
+            ))}
+            <View style={{ marginTop: spacing.md }}>
+              <Button
+                title={building ? "Montando..." : "Refazer com base nas minhas preferências"}
+                variant="secondary"
+                compact
+                loading={building}
+                onPress={montar}
+              />
+              <Text style={[type.caption, { color: colors.textSecondary, marginTop: 4, textAlign: "center" }]}>
+                Arquiva o treino atual e monta um novo. Seu histórico continua intacto.
               </Text>
-              <Text style={[type.caption, { color: colors.textSecondary }]}>{r.exercises} ex.</Text>
-              <Ionicons name="chevron-forward" size={15} color={colors.textSecondary} />
-            </TouchableOpacity>
-          ))}
-          <View style={{ marginTop: spacing.md }}>
-            <Button
-              title={building ? "Montando..." : "Refazer com base nas minhas preferências"}
-              variant="secondary"
-              compact
-              loading={building}
-              onPress={montar}
-            />
-            <Text style={[type.caption, { color: colors.textSecondary, marginTop: 4, textAlign: "center" }]}>
-              Arquiva o treino atual e monta um novo. Seu histórico continua intacto.
-            </Text>
+            </View>
           </View>
-        </>
-      ) : (
-        <>
-          <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.md, lineHeight: 17 }]}>
-            Deixa que eu monto seu treino completo com base no que você definiu acima — método, ponto fraco, tempo por
-            sessão e periodização. Fica salvo nas suas rotinas, pronto pra treinar.
-          </Text>
-          <Button title={building ? "Montando..." : "Montar meu treino"} loading={building} onPress={montar} />
-        </>
-      )}
+        ) : (
+          <View style={{ marginTop: spacing.sm }}>
+            <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.md, lineHeight: 17 }]}>
+              Deixa que eu monto seu treino completo com base no que você definiu acima — dias por semana, ponto fraco,
+              tempo por sessão e periodização. Fica salvo nas suas rotinas, pronto pra treinar.
+            </Text>
+            <Button title={building ? "Montando..." : "Montar meu treino"} loading={building} onPress={montar} />
+          </View>
+        )
+      ) : null}
       {erro ? (
         <Text style={[type.caption, { color: colors.warning, marginTop: 6, textAlign: "center" }]}>{erro}</Text>
       ) : null}
     </Card>
+  );
+}
+
+// Setinha de expandir/recolher (a "aba horizontal" abre e fecha). Botão próprio,
+// pra usar ao lado de um título que já tem outra ação (ex.: o card de objetivo,
+// cujo título navega).
+function ExpandToggle({ expanded, onPress }: { expanded: boolean; onPress: () => void }) {
+  const { colors } = useTheme();
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      hitSlop={8}
+      style={{
+        width: 28,
+        height: 28,
+        borderRadius: 8,
+        backgroundColor: colors.surfaceAlt,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={16} color={colors.textSecondary} />
+    </TouchableOpacity>
   );
 }
 
@@ -858,24 +891,47 @@ function PrefRow({
 }
 
 // Folha de opções (sobe de baixo): radio + descrição por opção. Toca e aplica.
+// `multi`: vira multi-seleção (checkbox) com teto `maxSelected` e botão Salvar —
+// usado no ponto fraco (até 2). Sem `multi`, é seleção única (toca e aplica).
+type SheetConfig = {
+  title: string;
+  subtitle: string;
+  options: { value: string; label: string; desc?: string }[];
+  // seleção única
+  current?: string;
+  pick?: (v: string) => void;
+  // multi-seleção
+  multi?: boolean;
+  maxSelected?: number;
+  selected?: string[];
+  onSaveMulti?: (values: string[]) => void;
+};
+
 function OptionSheet({
   visible,
   config,
   onClose,
 }: {
   visible: boolean;
-  config:
-    | {
-        title: string;
-        subtitle: string;
-        current: string;
-        options: { value: string; label: string; desc?: string }[];
-        pick: (v: string) => void;
-      }
-    | null;
+  config: SheetConfig | null;
   onClose: () => void;
 }) {
   const { colors, type, spacing, radius } = useTheme();
+  const [sel, setSel] = useState<string[]>([]);
+  const maxSel = config?.maxSelected ?? 2;
+  // Ao abrir uma folha multi, começa da seleção atual salva.
+  useEffect(() => {
+    if (visible && config?.multi) setSel(config.selected ?? []);
+  }, [visible, config?.multi, config?.selected]);
+
+  function toggle(v: string) {
+    setSel((cur) => {
+      if (cur.includes(v)) return cur.filter((x) => x !== v);
+      if (cur.length >= maxSel) return cur; // trava no teto
+      return [...cur, v];
+    });
+  }
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <TouchableOpacity activeOpacity={1} onPress={onClose} style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }}>
@@ -890,12 +946,14 @@ function OptionSheet({
               </View>
               <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.md, lineHeight: 18 }]}>{config.subtitle}</Text>
               {config.options.map((o) => {
-                const on = o.value === config.current;
+                const on = config.multi ? sel.includes(o.value) : o.value === config.current;
+                const atCap = !!config.multi && !on && sel.length >= maxSel;
                 return (
                   <TouchableOpacity
                     key={o.value}
                     activeOpacity={0.7}
-                    onPress={() => config.pick(o.value)}
+                    disabled={atCap}
+                    onPress={() => (config.multi ? toggle(o.value) : config.pick?.(o.value))}
                     style={{
                       flexDirection: "row",
                       alignItems: "flex-start",
@@ -906,9 +964,23 @@ function OptionSheet({
                       borderRadius: radius.card,
                       padding: spacing.sm,
                       marginBottom: spacing.xs,
+                      opacity: atCap ? 0.45 : 1,
                     }}
                   >
-                    <Ionicons name={on ? "radio-button-on" : "radio-button-off"} size={18} color={on ? colors.primary : colors.textSecondary} style={{ marginTop: 1 }} />
+                    <Ionicons
+                      name={
+                        config.multi
+                          ? on
+                            ? "checkbox"
+                            : "square-outline"
+                          : on
+                          ? "radio-button-on"
+                          : "radio-button-off"
+                      }
+                      size={18}
+                      color={on ? colors.primary : colors.textSecondary}
+                      style={{ marginTop: 1 }}
+                    />
                     <View style={{ flex: 1 }}>
                       <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: on ? "700" : "600" }]}>{o.label}</Text>
                       {o.desc ? <Text style={[type.caption, { color: colors.textSecondary, marginTop: 2, lineHeight: 17 }]}>{o.desc}</Text> : null}
@@ -916,6 +988,14 @@ function OptionSheet({
                   </TouchableOpacity>
                 );
               })}
+              {config.multi ? (
+                <View style={{ marginTop: spacing.sm }}>
+                  <Button
+                    title={sel.length ? `Salvar (${sel.length} de ${maxSel})` : "Salvar — nenhum"}
+                    onPress={() => config.onSaveMulti?.(sel)}
+                  />
+                </View>
+              ) : null}
             </>
           ) : null}
         </TouchableOpacity>

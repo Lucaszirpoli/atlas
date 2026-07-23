@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from datetime import datetime, timezone
 
+from app.coaching import overlays as coach_overlays
 from app.core.db import get_db
 from app.core.security import get_current_user
 from app.models.calorie_goal import CalorieGoal
@@ -61,6 +62,11 @@ def apply_auto_goal(
         # Recomeça a leitura do coach a partir de agora — esquece a fase anterior.
         # Não apaga histórico (regra 4): só move o ponto de partida da análise.
         db.add(CoachingBaseline(user_id=current_user.id, effective_from=datetime.now(timezone.utc), reason="first_objective"))
+        # E limpa os overlays de treino da fase anterior (subir carga, trocar
+        # exercício, deload, técnica): eram do objetivo antigo. Sem isto, o treino
+        # segue mostrando avisos que a análise nova nem enxerga — e às vezes
+        # contraditórios (mandar subir a carga E trocar o mesmo exercício).
+        coach_overlays.clear_training_overlays(db, current_user.id)
         db.commit()
     return goal
 

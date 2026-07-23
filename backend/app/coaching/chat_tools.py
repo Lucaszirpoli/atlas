@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.diet_engine import MacroTarget, build_diet_plan
+from app.coaching import overlays as coach_overlays
 from app.coaching import workout_builder
 from app.core.text import normalize_search_text
 from app.models.coaching_action import CoachingAction
@@ -155,6 +156,9 @@ def run_tool(db: Session, user: User, name: str, tool_input: dict) -> dict:
             CoachingAction.exercise_id == orig.id, CoachingAction.reverted_at.is_(None),
         )).scalar_one_or_none()
         if existing is None:
+            # Coerência: trocar o exercício apaga uma progressão ativa nele —
+            # "suba a carga do supino" não convive com "troque o supino".
+            coach_overlays.revert_conflicting_action(db, user.id, orig.id, "exercise_swap")
             title = f"Trocar · {orig.name} → {alt.name}"
             detail = (f"Troque {orig.name} por {alt.name} — mesmo músculo, estímulo novo. Você pediu no chat "
                       "com o coach. Aparece no seu treino e dá pra desfazer.")

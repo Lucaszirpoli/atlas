@@ -96,6 +96,15 @@ class MethodSpec:
     equipment_pref: str | None = None
     coaching_notes: tuple[str, ...] = ()
 
+    # Quando um FOCO se repete na semana (ex.: "superior" duas vezes num split de
+    # 4 dias), True mantém a MESMA seleção de exercício nas duas ocorrências —
+    # correto pros métodos consagrados, cujo A/B é uma sessão fixa que se repete
+    # de propósito (DC Training, Mentzer 2d). O plano do coach usa False: cada
+    # ocorrência escolhe de novo (dentro do que ainda não foi usado na semana),
+    # dando variação real de exercício — é o que evita "só uma remada curvada
+    # no treino inteiro" quando dá pra variar pra remada na máquina no repeat.
+    repeat_same_session: bool = True
+
     # Trecho-fonte do relatório (camada RAG: a IA cita daqui, nunca inventa)
     guide_excerpt: str = ""
 
@@ -528,6 +537,98 @@ def get_method(key: str) -> MethodSpec | None:
 
 def list_methods() -> list[MethodSpec]:
     return list(METHODS.values())
+
+
+# ---------------------------------------------------------------------------
+# PLANO DO COACH — o treino que o coach monta por conta própria, sem estar preso
+# a uma das 10 metodologias. É a opção PADRÃO do "Como eu monto seu treino":
+# baseado em ciência, adaptado ao objetivo, e honra QUALQUER frequência 2–7 dias
+# (os métodos consagrados só cobrem faixas específicas). NÃO é registrado em
+# METHODS de propósito — não é uma metodologia pra navegar no Hub, é o motor
+# genérico do coach. Continua determinístico e usando só exercícios reais da base
+# (o montador nunca inventa exercício — regra do produto).
+# ---------------------------------------------------------------------------
+
+# Split por nº de dias, desenhado pra 2×/semana por grupo (regra 6: nada de
+# bro-split como padrão). Os rótulos batem com _FOCUS_MUSCLES do methods_engine.
+_COACH_SPLITS: dict[int, list[str]] = {
+    2: ["full body a", "full body b"],
+    3: ["superior", "inferior", "full body"],
+    # 4 dias = upper/lower A/B: os dois superiores e os dois inferiores têm ênfase
+    # diferente (A puxa peito/quadríceps; B puxa costas/posterior), então o
+    # segundo dia do mesmo tipo não repete nem raspa sobras — sai coerente.
+    4: ["superior a", "inferior a", "superior b", "inferior b"],
+    5: ["push", "pull", "pernas", "superior", "inferior"],
+    6: ["push", "pull", "pernas", "push", "pull", "pernas"],
+    7: ["push", "pull", "pernas", "push", "pull", "pernas", "full body"],
+}
+
+# Parâmetros da sessão por objetivo — proporção composto/isolado, RIR, descanso.
+# REPS: o coach trabalha com 8-12 em todo objetivo (a faixa-padrão de
+# hipertrofia, o consenso mais robusto de estímulo x recuperação x adesão) —
+# não varia por objetivo; o que muda é ratio/rir/descanso.
+_COACH_REPS = "8-12"
+_COACH_GOAL_PARAMS: dict[str, dict] = {
+    "hipertrofia": {"reps": _COACH_REPS, "ratio": 0.5, "rir": "1-2", "rest": "90-120",
+                    "family": ProgressionFamily.VOLUME_LANDMARKS,
+                    "goal_txt": "Hipertrofia geral com sobrecarga progressiva e volume 2×/semana por grupo."},
+    "emagrecimento": {"reps": _COACH_REPS, "ratio": 0.45, "rir": "1-2", "rest": "60-90",
+                      "family": ProgressionFamily.DENSITY_QUALITY,
+                      "goal_txt": "Preservar músculo no déficit com densidade e a mesma faixa de reps de sempre."},
+    "recomposicao": {"reps": _COACH_REPS, "ratio": 0.5, "rir": "1-2", "rest": "75-90",
+                     "family": ProgressionFamily.VOLUME_LANDMARKS,
+                     "goal_txt": "Recomposição: força e volume equilibrados, 2×/semana por grupo."},
+    "manutencao": {"reps": _COACH_REPS, "ratio": 0.5, "rir": "2", "rest": "90",
+                   "family": ProgressionFamily.VOLUME_LANDMARKS,
+                   "goal_txt": "Manter massa e força com um estímulo consistente e sustentável."},
+    "performance": {"reps": _COACH_REPS, "ratio": 0.6, "rir": "2-3", "rest": "150-180",
+                    "family": ProgressionFamily.LOAD_OR_REPS,
+                    "goal_txt": "Força e performance: mais compostos e descanso maior, mesma faixa de reps."},
+}
+
+
+def coach_custom_spec(goal: str | None, experience: str | None = None) -> MethodSpec:
+    """O plano PRÓPRIO do coach pra um objetivo, pronto pra qualquer frequência
+    2–7. Reusa todo o motor determinístico (build_plan/validate_plan) — só troca
+    os trilhos (split por dia, reps, proporção) pelos do coach. experience_min
+    fica em BEGINNER de propósito: o volume real vem do tempo por sessão, não de
+    travar por nível."""
+    p = _COACH_GOAL_PARAMS.get(goal or "", _COACH_GOAL_PARAMS["hipertrofia"])
+    return MethodSpec(
+        key="coach_custom",
+        name="Plano do coach",
+        author="Atlas",
+        goal=p["goal_txt"],
+        experience_min=Experience.BEGINNER,
+        progression_family=p["family"],
+        days_per_week=(2, 3, 4, 5, 6, 7),
+        split_by_days={d: list(s) for d, s in _COACH_SPLITS.items()},
+        frequency_per_muscle="~2×/semana por grupo muscular",
+        sets_per_exercise="3-4",
+        reps=p["reps"],
+        rir=p["rir"],
+        rest_seconds=p["rest"],
+        compound_ratio=p["ratio"],
+        # Cada ocorrência de um foco repetido (ex.: "superior" 2x na semana)
+        # escolhe exercício de novo — dá variação real (equipamento/ângulo
+        # diferente) em vez de repetir a sessão idêntica.
+        repeat_same_session=False,
+        mesocycle_weeks="ciclos de ~6 semanas + deload conforme a periodização escolhida",
+        deload_rule="Deload conduzido pela periodização do coach (automática/linear/ondulatória).",
+        progression_rule=(
+            "Sobrecarga progressiva: feche o topo da faixa de reps com técnica limpa, então suba a carga "
+            "e volte à base da faixa. Reps primeiro, carga depois."
+        ),
+        coaching_notes=(
+            "Compostos primeiro, isolados depois, em cada sessão.",
+            "Frequência mínima de 2×/semana por grupo — sem bro-split.",
+        ),
+        guide_excerpt=(
+            "Plano do coach: treino baseado em ciência montado pelo próprio coach (fora das 10 metodologias), "
+            "adaptado ao seu objetivo e à frequência que você escolheu (2 a 7 dias), com 2×/semana por grupo "
+            "muscular, compostos antes de isolados e sobrecarga progressiva."
+        ),
+    )
 
 
 # --- Recomendação por perfil ("monte um treino ideal pro seu perfil") -------

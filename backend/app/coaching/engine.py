@@ -290,6 +290,9 @@ def _treino_insight(
     active_deload: bool = False,
     offer_deload: bool = False,
     period: str = "intensificacao",
+    session_length: str | None = None,
+    weak_points: tuple[str, ...] = (),
+    applied_technique_ex_ids: frozenset[int] = frozenset(),
 ) -> Insight:
     t = m.training
     # Em deload, o coach NÃO manda forçar (nem progressão, nem técnica de
@@ -302,24 +305,43 @@ def _treino_insight(
         return Insight("treino", SEV_ATTENTION, "Frequência de treino baixa", f"Média de {t.sessions_per_week:.1f} "
                        "treinos/semana. Abaixo de 2× por grupo o estímulo cai — mire 2–3×.", chart="carga")
     if t.stalled_lifts:
-        lift = t.stalled_lifts[0]  # o principal (compostos primeiro na ordenação)
-        # Técnica avançada escolhida pelo PERÍODO do ciclo (acumulação -> volume/
-        # densidade; intensificação -> intensidade) e pelo tipo de exercício.
-        tech_key, tech_label, _ = training_brain.suggest_technique(lift["is_compound"], period)
+        # Só oferece técnica pros que AINDA não têm uma dica aplicada. Sem isto, a
+        # barra reoferecia pra sempre a mesma técnica mesmo depois de aplicada (a
+        # técnica não "destrava" o lift na hora — vira dica na prévia do treino),
+        # e a pessoa via o botão voltar toda vez. Aqui ele some quando já aplicou.
+        pendentes = [s for s in t.stalled_lifts if s["exercise_id"] not in applied_technique_ex_ids]
+        if pendentes:
+            lift = pendentes[0]  # o principal ainda sem técnica (compostos primeiro)
+            # Técnica avançada escolhida por ponto fraco > tempo por sessão > fase
+            # do ciclo (ver docstring de suggest_technique).
+            is_weak_point = lift.get("muscle") in weak_points
+            tech_key, tech_label, _ = training_brain.suggest_technique(
+                lift["is_compound"], period, session_length=session_length, is_weak_point=is_weak_point
+            )
+            nomes = ", ".join(s["name"] for s in pendentes)
+            return Insight(
+                "treino", SEV_ATTENTION, "Progressão travada",
+                f"{nomes} não subiu de carga/reps nas últimas semanas. Dá pra atacar com "
+                f"{tech_label.lower()} — aplico como dica no exercício, aparece quando você for treinar.",
+                chart="carga",
+                finding_key=f"stalled_lift:{lift['exercise_id']}",
+                adjustment={
+                    "kind": "technique",
+                    "technique": tech_key,
+                    "technique_label": tech_label,
+                    "exercise_id": lift["exercise_id"],
+                    "exercise_name": lift["name"],
+                },
+            )
+        # Todas as travas já têm técnica aplicada — vira informativo (sem botão),
+        # dizendo ONDE a dica está, em vez de reoferecer o que já foi feito.
         nomes = ", ".join(s["name"] for s in t.stalled_lifts)
         return Insight(
-            "treino", SEV_ATTENTION, "Progressão travada",
-            f"{nomes} não subiu de carga/reps nas últimas semanas. Dá pra atacar com "
-            f"{tech_label.lower()} — aplico no seu treino.",
+            "treino", SEV_INFO, "Técnica aplicada na progressão travada",
+            f"Já apliquei uma técnica de intensidade em {nomes}. Ela aparece na prévia do treino, "
+            "no próprio exercício (é lá que você remove, se quiser). Se depois de 2–3 semanas não "
+            "destravar, eu reviso a estratégia.",
             chart="carga",
-            finding_key=f"stalled_lift:{lift['exercise_id']}",
-            adjustment={
-                "kind": "technique",
-                "technique": tech_key,
-                "technique_label": tech_label,
-                "exercise_id": lift["exercise_id"],
-                "exercise_name": lift["name"],
-            },
         )
     # Só manda subir carga se o coach NÃO está oferecendo deload agora (senão
     # pediria deload e progressão ao mesmo tempo — paradoxo). Recuperar vem antes.
@@ -356,6 +378,9 @@ def _insights(
     periodization: str = "auto",
     planned_deload: bool = False,
     period: str = "intensificacao",
+    session_length: str | None = None,
+    weak_points: tuple[str, ...] = (),
+    applied_technique_ex_ids: frozenset[int] = frozenset(),
 ) -> list[Insight]:
     # Decisão ÚNICA de oferecer deload (mata o paradoxo): a periodização manda.
     offer = training_brain.offer_deload(
@@ -370,7 +395,7 @@ def _insights(
         _macros_insight(m),
         _sono_insight(m),
         _carga_insight(m, active_deload, periodization, offer, planned_deload),
-        _treino_insight(m, active_deload, offer, period),
+        _treino_insight(m, active_deload, offer, period, session_length, weak_points, applied_technique_ex_ids),
     ]
 
 
@@ -515,6 +540,9 @@ def analyze(
     periodization: str = "auto",
     planned_deload: bool = False,
     period: str = "intensificacao",
+    session_length: str | None = None,
+    weak_points: tuple[str, ...] = (),
+    applied_technique_ex_ids: frozenset[int] = frozenset(),
 ) -> WeeklyAnalysis:
     findings: list[Finding] = []
     findings += _weight_findings(m)
@@ -546,7 +574,8 @@ def analyze(
         confidence=confidence,
         headline=headline,
         findings=findings,
-        insights=_insights(m, active_deload, periodization, planned_deload, period),
+        insights=_insights(m, active_deload, periodization, planned_deload, period, session_length, weak_points,
+                           applied_technique_ex_ids),
         data_gaps=gaps,
         metrics=_metrics_public(m),
     )

@@ -140,6 +140,7 @@ def _replace_exercises(db: Session, routine: Routine, payload_exercises: list) -
                 target_reps_max=item.target_reps_max,
                 rest_seconds=item.rest_seconds,
                 notes=item.notes,
+                set_intents=item.set_intents,
             )
         )
 
@@ -407,6 +408,7 @@ def duplicate_routine(
                 target_reps_max=item.target_reps_max,
                 rest_seconds=item.rest_seconds,
                 notes=item.notes,
+                set_intents=item.set_intents,
             )
         )
     db.commit()

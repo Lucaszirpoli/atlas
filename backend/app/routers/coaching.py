@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session, selectinload
 from datetime import datetime, timedelta, timezone
 
 from app.coaching import chat as coach_chat
+from app.coaching import overlays as coach_overlays
 from app.coaching import training_brain
 from app.coaching import workout_builder
 from app.coaching.engine import analyze, progression_step, weekly_checkin
@@ -128,16 +129,19 @@ def _training_prefs_block(db: Session, user: User) -> dict | None:
     if profile is None:
         return None
     goal = profile.goal.value if profile.goal else None
-    wp = training_brain.valid_weak_point(profile.weak_point)
+    wps = training_brain.resolve_weak_points(profile)
     return {
-        "weak_point": wp,
-        "weak_point_label": training_brain.WEAK_POINT_LABEL.get(wp) if wp else None,
+        "weak_points": wps,
+        "weak_points_labels": [training_brain.WEAK_POINT_LABEL[w] for w in wps],
+        "weak_points_max": training_brain.WEAK_POINTS_MAX,
         "weak_point_options": [{"value": v, "label": l} for v, l in training_brain.WEAK_POINTS],
         "session_length": training_brain.valid_session_length(profile.session_length),
         "session_length_options": [
             {"value": v, "label": label, "range": faixa}
             for v, label, faixa, _ in training_brain.SESSION_LENGTHS
         ],
+        "training_days_per_week": training_brain.valid_training_days(profile.training_days_per_week),
+        "training_days_options": training_brain.TRAINING_DAYS_OPTIONS,
         "wants_cardio": profile.wants_cardio,
         "periodization": _periodization_of(user),
         "periodization_options": [
@@ -185,18 +189,45 @@ def coaching_analysis(
     metrics = compute_metrics(db, current_user.id, window_days=window_days, now=now)
     active_deload = _active_deload(db, current_user.id) is not None
     cyc = _cycle_context(db, current_user, now)
+    profile = getattr(current_user, "profile", None)
+    # Exercícios que JÁ têm uma dica de técnica ativa — a barra "treino" não
+    # reoferece técnica pra eles (senão o botão "aplicar" voltava pra sempre,
+    # mesmo depois de aplicado; ver _treino_insight).
+    applied_tech_ex_ids = frozenset(
+        db.execute(
+            select(CoachingTechniqueCue.exercise_id).where(
+                CoachingTechniqueCue.user_id == current_user.id,
+                CoachingTechniqueCue.reverted_at.is_(None),
+            )
+        ).scalars()
+    )
     result = analyze(
         metrics,
         active_deload=active_deload,
         periodization=cyc["periodization"],
         planned_deload=cyc["planned_deload"],
         period=cyc["period"],
+        session_length=training_brain.valid_session_length(getattr(profile, "session_length", None)),
+        weak_points=tuple(training_brain.resolve_weak_points(profile)) if profile else (),
+        applied_technique_ex_ids=applied_tech_ex_ids,
     ).to_dict()
     _inject_transition(result, db, current_user)
     result["metrics"]["pace"] = _pace_block(db, current_user)
     result["metrics"]["training_prefs"] = _training_prefs_block(db, current_user)
     result["metrics"]["workout"] = _workout_block(db, current_user)
     return result
+
+
+@router.get("/pace")
+def get_pace(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict | None:
+    """Só o bloco de RITMO do objetivo (as 3 opções + peso-alvo) — pra tela de
+    objetivo/cálculo automático mostrar o seletor de ritmo fora do Coaching.
+    Determinístico; Pro. null quando o ritmo não se aplica."""
+    _require_pro(current_user)
+    return _pace_block(db, current_user)
 
 
 def _pace_block(db: Session, user: User) -> dict | None:
@@ -400,10 +431,18 @@ def set_training_prefs(
     if profile is None:
         raise HTTPException(status_code=400, detail="Complete seu perfil primeiro.")
     enviados = payload.model_fields_set
-    if "weak_point" in enviados:
-        profile.weak_point = training_brain.valid_weak_point(payload.weak_point)
+    if "weak_points" in enviados:
+        wps = training_brain.valid_weak_points(payload.weak_points)
+        profile.weak_points = wps
+        profile.weak_point = wps[0] if wps else None  # mantém o legado em sincronia
+    elif "weak_point" in enviados:  # compat: chamador antigo mandando 1 só
+        g = training_brain.valid_weak_point(payload.weak_point)
+        profile.weak_point = g
+        profile.weak_points = [g] if g else []
     if "session_length" in enviados:
         profile.session_length = training_brain.valid_session_length(payload.session_length)
+    if "training_days_per_week" in enviados:
+        profile.training_days_per_week = training_brain.valid_training_days(payload.training_days_per_week)
     if "wants_cardio" in enviados:
         profile.wants_cardio = payload.wants_cardio
     if "periodization" in enviados:
@@ -490,10 +529,16 @@ def apply_technique(
             detail="Esse exercício não está mais travado — sua análise mudou. Veja as sugestões atuais.",
         )
 
-    # Rederiva a técnica do MESMO jeito que a barra sugeriu: por tipo de exercício
-    # + período do ciclo. Não confia num valor vindo do app.
+    # Rederiva a técnica do MESMO jeito que a barra sugeriu: ponto fraco > tempo
+    # por sessão > período do ciclo. Não confia num valor vindo do app.
     period = _cycle_context(db, current_user, datetime.now(timezone.utc))["period"]
-    tech_key, tech_label, cue_text = training_brain.suggest_technique(lift["is_compound"], period)
+    profile = getattr(current_user, "profile", None)
+    session_length = training_brain.valid_session_length(getattr(profile, "session_length", None))
+    weak_points = training_brain.resolve_weak_points(profile) if profile else []
+    is_weak_point = lift.get("muscle") in weak_points
+    tech_key, tech_label, cue_text = training_brain.suggest_technique(
+        lift["is_compound"], period, session_length=session_length, is_weak_point=is_weak_point
+    )
 
     # Idempotente: se já existe dica ativa pra esse exercício, não duplica.
     existing = db.execute(
@@ -528,7 +573,9 @@ def apply_technique(
         applied=True,
         exercise_name=lift["name"],
         technique_label=tech_label,
-        message=f"Pronto — {tech_label} entra na prévia do {lift['name']}. Dá pra remover lá quando quiser.",
+        message=f"Pronto — {tech_label} no {lift['name']}. Você vê a dica ao abrir esse treino pra treinar "
+        f"(aparece em cima do {lift['name']}, na prévia), e também em 'O que o coach mudou' aqui embaixo. "
+        "É só lá que você remove, quando quiser.",
     )
 
 
@@ -669,6 +716,9 @@ def apply_action(
         if existing:
             return ApplyActionResult(applied=True, kind="progression", title=existing.title,
                                      message=f"{existing.title} já está no seu treino.")
+        # Coerência: se havia uma TROCA ativa neste exercício, ela some — subir a
+        # carga e trocar o exercício ao mesmo tempo é o paradoxo que a gente evita.
+        coach_overlays.revert_conflicting_action(db, current_user.id, ex_id, "progression")
         _, novo, como = progression_step(p["muscle"], p["equipment"], p["top_weight"])
         title = f"Subir carga · {p['name']}"
         db.add(CoachingAction(user_id=current_user.id, kind="progression", finding_key=fk,
@@ -736,6 +786,9 @@ def apply_action(
         alt = _swap_alternative(db, ex_id)
         if alt is None:
             raise HTTPException(status_code=409, detail="Não achei uma variação boa pra trocar agora.")
+        # Coerência: uma progressão ativa neste exercício some — trocar o
+        # exercício e mandar subir a carga dele ao mesmo tempo se contradizem.
+        coach_overlays.revert_conflicting_action(db, current_user.id, ex_id, "exercise_swap")
         title = f"Trocar · {lift['name']} → {alt.name}"
         detail = (f"Troque {lift['name']} por {alt.name} por 3–4 semanas. Um estímulo novo no mesmo músculo "
                   "costuma furar o platô — depois você pode voltar mais forte no exercício original.")
@@ -888,6 +941,10 @@ def reset_baseline(
     _require_pro(current_user)
     now = datetime.now(timezone.utc)
     db.add(CoachingBaseline(user_id=current_user.id, effective_from=now, reason="goal_change"))
+    # Os overlays de treino (subir carga, trocar exercício, deload, técnica) eram
+    # da fase anterior — o novo objetivo recomeça limpo, senão o treino mostra
+    # avisos que a análise já nem enxerga mais (e às vezes contraditórios).
+    coach_overlays.clear_training_overlays(db, current_user.id)
     db.commit()
     return ResetBaselineResult(
         reset=True,

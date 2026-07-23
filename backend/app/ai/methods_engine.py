@@ -43,6 +43,15 @@ _FOCUS_MUSCLES: dict[str, list[MuscleGroup]] = {
     "pull": [MuscleGroup.BACK, MuscleGroup.BICEPS],
     "superior": [MuscleGroup.CHEST, MuscleGroup.BACK, MuscleGroup.SHOULDERS, MuscleGroup.BICEPS, MuscleGroup.TRICEPS],
     "inferior": [MuscleGroup.QUADS, MuscleGroup.HAMSTRINGS, MuscleGroup.GLUTES, MuscleGroup.CALVES],
+    # A/B do superior/inferior (split de 4 dias do coach): mesmos músculos nos
+    # dois dias (2×/semana por grupo — regra 6), mas EMPASE diferente pela ordem
+    # do rodízio. O dia A puxa/prioriza peito e quadríceps; o B, costas e
+    # posterior. Isso dá exercícios diferentes e coerentes entre os dois dias em
+    # vez de o segundo dia raspar as sobras (o "segundo inferior esquisito").
+    "superior a": [MuscleGroup.CHEST, MuscleGroup.SHOULDERS, MuscleGroup.TRICEPS, MuscleGroup.BACK, MuscleGroup.BICEPS],
+    "superior b": [MuscleGroup.BACK, MuscleGroup.BICEPS, MuscleGroup.CHEST, MuscleGroup.SHOULDERS, MuscleGroup.TRICEPS],
+    "inferior a": [MuscleGroup.QUADS, MuscleGroup.CALVES, MuscleGroup.GLUTES, MuscleGroup.HAMSTRINGS],
+    "inferior b": [MuscleGroup.HAMSTRINGS, MuscleGroup.GLUTES, MuscleGroup.QUADS, MuscleGroup.CALVES],
     "full body": [MuscleGroup.CHEST, MuscleGroup.BACK, MuscleGroup.QUADS, MuscleGroup.SHOULDERS, MuscleGroup.BICEPS],
     "full body a": [MuscleGroup.CHEST, MuscleGroup.BACK, MuscleGroup.QUADS, MuscleGroup.SHOULDERS],
     "full body b": [MuscleGroup.BACK, MuscleGroup.HAMSTRINGS, MuscleGroup.SHOULDERS, MuscleGroup.BICEPS, MuscleGroup.TRICEPS],
@@ -104,6 +113,7 @@ _DEFAULT_SPLITS: dict[int, list[str]] = {
     4: ["superior", "inferior", "superior", "inferior"],
     5: ["peito", "costas", "pernas", "ombros", "bracos"],
     6: ["push", "pull", "pernas", "push", "pull", "pernas"],
+    7: ["push", "pull", "pernas", "push", "pull", "pernas", "full body"],
 }
 
 # Lifts compostos pesados proibidos em certas fases (Y3T infernal, FST-7
@@ -204,9 +214,18 @@ def _pick(
     forbid_heavy: bool,
     equipment_pref_machines: bool,
     covered: frozenset[MuscleGroup] = frozenset(),
+    session_ids: frozenset[int] = frozenset(),
 ) -> list[Exercise]:
     """Escolhe `count` exercícios (determinístico) dos músculos dados, do tipo
-    composto/isolado pedido, evitando repetição e respeitando proibições."""
+    composto/isolado pedido, evitando repetição e respeitando proibições.
+
+    `session_ids`: ids já escolhidos NESTA sessão (das vagas anteriores). Serve
+    pro fallback de reuso: quando o pool de exercícios NUNCA usados na semana não
+    enche a sessão (grupos com poucos exercícios na base — posterior/glúteo/
+    panturrilha têm 1–2), é melhor REPETIR um bom exercício de outro dia do que
+    deixar o músculo de fora ou raspar um exercício obscuro. O reuso nunca traz
+    de volta algo já presente na própria sessão.
+    """
     if count <= 0 or not muscles:
         return []
     # Prefere exercícios COM foto de demonstração (video_url != NULL) — assim
@@ -228,38 +247,52 @@ def _pick(
     )
     candidates = list(db.execute(stmt).scalars())
     out: list[Exercise] = []
-    # Distribui entre os músculos do foco em rodízio, pra não empilhar tudo num só.
-    by_muscle: dict[MuscleGroup, list[Exercise]] = {m: [] for m in muscles}
-    for ex in candidates:
-        if ex.id in used_ids:
-            continue
-        if forbid_heavy and any(k in normalize_search_text(ex.name) for k in _HEAVY_COMPOUND_KEYWORDS):
-            continue
-        if ex.primary_muscle_group in by_muscle:
-            by_muscle[ex.primary_muscle_group].append(ex)
-    # preferência por máquinas quando o método pede (FST-7 finalizador, Kuba)
-    if equipment_pref_machines:
-        from app.models.exercise import Equipment
 
-        for m in by_muscle:
-            by_muscle[m].sort(key=lambda e: 0 if e.equipment in (Equipment.MACHINE, Equipment.CABLE) else 1)
-    idx = 0
-    # Músculo que AINDA não tem exercício nesta sessão vem primeiro. Girar a
-    # lista por contagem (o que eu fazia antes) não bastava: bíceps não tem
-    # exercício COMPOSTO nenhum, então ele era pulado na passada dos compostos
-    # e o deslocamento da passada dos isolados caía no lugar errado — o dia de
-    # "ombros/braços" do Mentzer e o A/B do DC saíam sem UMA rosca sequer.
-    # sorted é estável, então quem está descoberto mantém a ordem original.
-    muscle_cycle = sorted(muscles, key=lambda m: m in covered)
-    while len(out) < count and any(by_muscle[m] for m in muscle_cycle):
-        m = muscle_cycle[idx % len(muscle_cycle)]
-        if by_muscle[m]:
-            ex = by_muscle[m].pop(0)
-            out.append(ex)
-            used_ids.add(ex.id)
-        idx += 1
-        if idx > 500:
-            break
+    def _bucketize(exclude: set[int]) -> dict[MuscleGroup, list[Exercise]]:
+        # Distribui entre os músculos do foco em rodízio, pra não empilhar num só.
+        by_muscle: dict[MuscleGroup, list[Exercise]] = {m: [] for m in muscles}
+        for ex in candidates:
+            if ex.id in exclude:
+                continue
+            if forbid_heavy and any(k in normalize_search_text(ex.name) for k in _HEAVY_COMPOUND_KEYWORDS):
+                continue
+            if ex.primary_muscle_group in by_muscle:
+                by_muscle[ex.primary_muscle_group].append(ex)
+        # preferência por máquinas quando o método pede (FST-7 finalizador, Kuba)
+        if equipment_pref_machines:
+            from app.models.exercise import Equipment
+
+            for m in by_muscle:
+                by_muscle[m].sort(key=lambda e: 0 if e.equipment in (Equipment.MACHINE, Equipment.CABLE) else 1)
+        return by_muscle
+
+    def _rotate_fill(by_muscle: dict[MuscleGroup, list[Exercise]]) -> None:
+        # Músculo que AINDA não tem exercício nesta sessão vem primeiro. Girar a
+        # lista por contagem (o que eu fazia antes) não bastava: bíceps não tem
+        # exercício COMPOSTO nenhum, então ele era pulado na passada dos compostos
+        # e o deslocamento da passada dos isolados caía no lugar errado — o dia de
+        # "ombros/braços" do Mentzer e o A/B do DC saíam sem UMA rosca sequer.
+        # sorted é estável, então quem está descoberto mantém a ordem original.
+        muscle_cycle = sorted(muscles, key=lambda m: m in covered)
+        idx = 0
+        while len(out) < count and any(by_muscle[m] for m in muscle_cycle):
+            m = muscle_cycle[idx % len(muscle_cycle)]
+            if by_muscle[m]:
+                ex = by_muscle[m].pop(0)
+                out.append(ex)
+                used_ids.add(ex.id)
+            idx += 1
+            if idx > 500:
+                break
+
+    # 1) Fresco: nunca usados na semana (dá variação real entre os dias).
+    _rotate_fill(_bucketize(used_ids))
+    # 2) Fallback: quando o pool fresco não encheu, reusa de OUTRO dia (nunca da
+    #    própria sessão) — completa o treino com um bom exercício em vez de deixar
+    #    o músculo de fora. É o que evita o "segundo inferior" sair sem posterior.
+    if len(out) < count:
+        na_sessao = set(session_ids) | {e.id for e in out}
+        _rotate_fill(_bucketize(na_sessao))
     return out
 
 
@@ -310,18 +343,21 @@ def build_plan(
     available_days: int | None = None,
     phase_index: int = 0,
     weak_point: MuscleGroup | None = None,
+    weak_points: list[MuscleGroup] | None = None,
     session_target: int | None = None,
 ) -> WorkoutPlan:
-    """weak_point: músculo a priorizar nos acessórios. Só faz sentido nos
-    métodos desenhados pra isso (Westside: "3-5 acessórios de 10-20 reps para
-    pontos fracos"; Mountain Dog). Quando informado, o músculo entra no início
-    do rodízio de TODO dia que o treine — é o que faz a escolha mudar o treino
-    de verdade em vez de virar enfeite na tela.
+    """weak_point / weak_points: músculo(s) a priorizar nos acessórios (até 2).
+    `weak_points` (lista) tem precedência; `weak_point` (singular) é mantido pros
+    chamadores antigos (Hub de IA). Quando informado, o(s) músculo(s) entra(m) no
+    início do rodízio de TODO dia que o(s) treine — é o que faz a escolha mudar o
+    treino de verdade em vez de virar enfeite na tela.
 
     session_target: nº-alvo de exercícios por sessão (vem do tempo disponível da
     pessoa — Curto/Médio/Longo). Sobrepõe o padrão do método, mas dentro de um
     limite seguro (3–9) pra não descaracterizar métodos minimalistas nem estourar
     a proporção composto/isolado que a validação cobra."""
+    # Lista efetiva de pontos fracos (a plural manda; a singular é o fallback).
+    wp_list = list(weak_points) if weak_points else ([weak_point] if weak_point else [])
     days = resolve_days(method, available_days)
     split = _split_for(method, days)
     phase = _active_phase(method, phase_index)
@@ -372,19 +408,24 @@ def build_plan(
         )
 
     used_ids: set[int] = set()
-    # Um foco que se repete na semana (ex: A,B,A,B do DC) é o MESMO treino —
-    # então a seleção de exercícios é feita UMA vez por foco e reaproveitada.
-    # Sem isso, o used_ids daria exercícios diferentes no segundo dia "A".
+    # Um foco que se repete na semana (ex: A,B,A,B do DC) é o MESMO treino nos
+    # métodos consagrados — a seleção é feita UMA vez por foco e reaproveitada
+    # (method.repeat_same_session=True, o padrão). O plano do coach desliga
+    # isso (repeat_same_session=False): cada ocorrência escolhe de novo, dentro
+    # do que ainda não foi usado — dá variação real de exercício/equipamento
+    # entre as repetições do mesmo foco na semana.
     picked_by_focus: dict[str, list[tuple[Exercise, bool]]] = {}
 
     for i, focus in enumerate(split):
-        if focus not in picked_by_focus:
+        reuse_cached = method.repeat_same_session and focus in picked_by_focus
+        if not reuse_cached:
             muscles = _FOCUS_MUSCLES.get(focus, [MuscleGroup.FULL_BODY])
-            # Ponto fraco primeiro no rodízio, nos dias que já treinam esse
+            # Ponto(s) fraco(s) primeiro no rodízio, nos dias que já treinam esse
             # músculo. Não o enfia num dia que não é dele (perna no dia de
             # supino não vira "prioridade", vira treino incoerente).
-            if weak_point is not None and weak_point in muscles:
-                muscles = [weak_point] + [m for m in muscles if m != weak_point]
+            prioridade = [m for m in wp_list if m in muscles]
+            if prioridade:
+                muscles = prioridade + [m for m in muscles if m not in prioridade]
             n_compound = round(per_session * ratio)
             n_isolation = per_session - n_compound
 
@@ -424,6 +465,7 @@ def build_plan(
                 forbid_heavy_week,
                 False,
                 covered=frozenset(e.primary_muscle_group for e in compounds),
+                session_ids=frozenset(e.id for e in compounds),
             )
             isolations = _pick(
                 db,
@@ -434,8 +476,13 @@ def build_plan(
                 False,
                 prefer_machines,
                 covered=frozenset(e.primary_muscle_group for e in compounds),
+                session_ids=frozenset(e.id for e in compounds),
             )
-            picked_by_focus[focus] = [(ex, True) for ex in compounds] + [(ex, False) for ex in isolations]
+            selected = [(ex, True) for ex in compounds] + [(ex, False) for ex in isolations]
+            if method.repeat_same_session:
+                picked_by_focus[focus] = selected
+        else:
+            selected = picked_by_focus[focus]
 
         session = PlannedSession(
             day_index=i,
@@ -444,7 +491,7 @@ def build_plan(
             phase_name=phase.name if phase else None,
         )
         order = 1
-        for ex, is_compound in picked_by_focus[focus]:
+        for ex, is_compound in selected:
             session.slots.append(
                 PlannedSlot(
                     order, ex.primary_muscle_group.value, is_compound, ex.id, ex.name, sets, reps, tempo, rest, rir

@@ -17,11 +17,12 @@ import {
   type Goal,
   type ProfileCalc,
 } from "../../api/profile";
-import { resetCoachingBaseline } from "../../api/coaching";
+import { getGoalPace, resetCoachingBaseline, type GoalPaceBlock } from "../../api/coaching";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { HelpDot } from "../../components/HelpDot";
+import { PaceSelector } from "../../components/PaceSelector";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
 import { mensagemDeErro } from "../../utils/errorMessage";
@@ -52,6 +53,9 @@ export function GoalSettingsScreen() {
 
   const [currentGoal, setCurrentGoal] = useState<CalorieGoal | null>(null);
   const [profile, setProfile] = useState<ProfileCalc | null>(null);
+  // Ritmo do objetivo (Pro) — mora aqui, junto do cálculo automático (o ritmo
+  // escala o déficit/superávit). null = não se aplica (manutenção/performance).
+  const [pace, setPace] = useState<GoalPaceBlock | null>(null);
   // Prompt "recomeçar análise do coach" ao trocar de objetivo (só Pro tem coach).
   const [baselinePrompt, setBaselinePrompt] = useState<{ from: string; to: string } | null>(null);
 
@@ -78,11 +82,13 @@ export function GoalSettingsScreen() {
   async function load() {
     setIsLoading(true);
     try {
-      const [goalNow, prof] = await Promise.all([
+      const [goalNow, prof, paceNow] = await Promise.all([
         getCurrentGoal(),
         getProfileCalc().catch(() => null),
+        isPro ? getGoalPace().catch(() => null) : Promise.resolve(null),
       ]);
       setCurrentGoal(goalNow);
+      setPace(paceNow);
       if (prof) {
         setProfile(prof);
         setSex(prof.biological_sex);
@@ -95,6 +101,17 @@ export function GoalSettingsScreen() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  // Trocar o ritmo já recalcula a meta no backend — recarrega só a meta e o
+  // ritmo, sem tocar nos campos que a pessoa possa estar editando acima.
+  async function reloadPaceAndGoal() {
+    const [g, p] = await Promise.all([
+      getCurrentGoal().catch(() => null),
+      getGoalPace().catch(() => null),
+    ]);
+    if (g) setCurrentGoal(g);
+    setPace(p);
   }
 
   useEffect(() => {
@@ -136,6 +153,7 @@ export function GoalSettingsScreen() {
       setCurrentGoal(await applyAutoGoal(comoPrimeiro));
       setProfile((p) => (p ? { ...p, goal } : p)); // reflete o novo objetivo
       setAsFirstObjective(false); // reseta o toggle após aplicar
+      if (isPro) getGoalPace().then(setPace).catch(() => {}); // ritmo muda com o objetivo
       // Com "primeiro objetivo" o backend já recomeçou a análise (sem transição);
       // não precisa perguntar. Senão, se trocou de objetivo e é Pro, oferece
       // recomeçar a análise (ConfirmDialog — Alert.alert é no-op no web).
@@ -305,6 +323,14 @@ export function GoalSettingsScreen() {
             <Chip key={value} label={label} selected={activity === value} onPress={() => setActivity(value)} />
           ))}
         </View>
+
+        {/* Ritmo do objetivo (Pro) — devagar/normal/rápido. Escala o déficit/
+            superávit e aplica na hora. Só quando o ritmo se aplica ao objetivo. */}
+        {isPro && pace && pace.options.length > 0 ? (
+          <View style={{ borderTopWidth: 1, borderTopColor: colors.border, marginTop: spacing.xs, marginBottom: spacing.md }}>
+            <PaceSelector pace={pace} onChanged={reloadPaceAndGoal} />
+          </View>
+        ) : null}
 
         <Button title="Usar cálculo automático" onPress={handleApplyAuto} loading={isSubmitting} />
       </Card>

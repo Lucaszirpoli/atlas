@@ -38,9 +38,11 @@ def _ensure_profile_columns() -> None:
         ("target_weight_kg", "DOUBLE PRECISION", "FLOAT"),
         # Preferências de treino do Coaching (o "cérebro de treino").
         ("weak_point", "VARCHAR(20)", "VARCHAR(20)"),
+        ("weak_points", "VARCHAR(20)[]", "TEXT"),  # até 2 pontos fracos (lista)
         ("session_length", "VARCHAR(10)", "VARCHAR(10)"),
         ("wants_cardio", "BOOLEAN", "BOOLEAN"),
         ("periodization", "VARCHAR(12) NOT NULL DEFAULT 'auto'", "VARCHAR(12) NOT NULL DEFAULT 'auto'"),
+        ("training_days_per_week", "INTEGER", "INTEGER"),
     ]
     pg = engine.dialect.name == "postgresql"
     with engine.begin() as conn:
@@ -51,6 +53,23 @@ def _ensure_profile_columns() -> None:
                 conn.execute(text(f"ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS {col} {pg_type}"))
             else:
                 conn.execute(text(f"ALTER TABLE user_profiles ADD COLUMN {col} {sqlite_type}"))
+
+
+def _ensure_routine_exercise_columns() -> None:
+    """ALTER idempotente pra set_intents (JSON) em routine_exercises — a
+    intenção de cada série (até a falha / feeder) que o coach monta na rotina.
+    Roda logo após o create_all, mesma regra das outras colunas novas."""
+    from sqlalchemy import inspect, text
+
+    existentes = {c["name"] for c in inspect(engine).get_columns("routine_exercises")}
+    if "set_intents" in existentes:
+        return
+    pg = engine.dialect.name == "postgresql"
+    with engine.begin() as conn:
+        if pg:
+            conn.execute(text("ALTER TABLE routine_exercises ADD COLUMN IF NOT EXISTS set_intents JSON"))
+        else:
+            conn.execute(text("ALTER TABLE routine_exercises ADD COLUMN set_intents JSON"))
 
 
 def run() -> None:
@@ -82,6 +101,10 @@ def run() -> None:
     # select(UserProfile) o tempo todo, então num banco antigo essas colunas
     # PRECISAM existir antes de qualquer consulta, senão o boot morre (502).
     _ensure_profile_columns()
+
+    # set_intents em routine_exercises — mesma regra (select(RoutineExercise)
+    # roda o tempo todo em prod).
+    _ensure_routine_exercise_columns()
 
     db = SessionLocal()
     try:

@@ -133,9 +133,15 @@ export function WorkoutPreviewScreen() {
                 </View>
               </View>
 
-              {/* Linhas das séries com o peso/reps da última vez (read-only). */}
+              {/* Linhas das séries com o peso/reps da última vez (read-only). A
+                  intenção que o coach definiu (até a falha / feeder) aparece do
+                  lado do número — aquecimento não entra aqui, só séries de
+                  trabalho (regra 5). */}
               {Array.from({ length: ex.target_sets }).map((_, i) => {
                 const last = pf?.sets?.[i];
+                const intent = ex.set_intents?.[i];
+                const intentLabel = intent === "to_failure" ? "Até a falha" : intent === "feeder" ? "Feeder" : null;
+                const intentColor = intent === "to_failure" ? colors.danger : colors.warning;
                 return (
                   <View
                     key={i}
@@ -148,7 +154,14 @@ export function WorkoutPreviewScreen() {
                       borderTopColor: colors.border,
                     }}
                   >
-                    <Text style={[type.caption, { color: colors.textSecondary }]}>Série {i + 1}</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Text style={[type.caption, { color: colors.textSecondary }]}>Série {i + 1}</Text>
+                      {intentLabel ? (
+                        <View style={{ backgroundColor: intentColor + "22", borderRadius: radius.pill, paddingVertical: 2, paddingHorizontal: 8 }}>
+                          <Text style={[type.caption, { color: intentColor, fontWeight: "700", fontSize: 10 }]}>{intentLabel}</Text>
+                        </View>
+                      ) : null}
+                    </View>
                     <Text style={[type.body, { color: colors.textPrimary, fontWeight: "600" }]}>
                       {last ? `${last.weight_kg} kg × ${last.reps}` : "—"}
                     </Text>

@@ -65,11 +65,16 @@ export type SessionLength = "curto" | "medio" | "longo";
 export type Periodization = "auto" | "linear" | "ondulatoria";
 
 export type TrainingPrefs = {
-  weak_point: string | null;
-  weak_point_label: string | null;
+  // Até 2 pontos fracos priorizados (substitui o singular).
+  weak_points: string[];
+  weak_points_labels: string[];
+  weak_points_max: number;
   weak_point_options: { value: string; label: string }[];
   session_length: SessionLength | null;
   session_length_options: { value: SessionLength; label: string; range: string }[];
+  // Dias por semana que a pessoa pode treinar (2–7). null = automático.
+  training_days_per_week: number | null;
+  training_days_options: number[];
   wants_cardio: boolean | null;
   periodization: Periodization;
   periodization_options: { value: Periodization; label: string; desc: string }[];
@@ -289,6 +294,17 @@ export async function getCoachingCheckin(): Promise<CoachingCheckin> {
   return data;
 }
 
+// Bloco de ritmo do objetivo (3 opções + peso-alvo). Usado no card de objetivo
+// e agora também na tela de cálculo automático.
+export type GoalPaceBlock = NonNullable<CoachingMetrics["pace"]>;
+
+/** Só o bloco de ritmo do objetivo (sem rodar a análise inteira). Pro; null
+ * quando o ritmo não se aplica (manutenção/performance). */
+export async function getGoalPace(): Promise<GoalPaceBlock | null> {
+  const { data } = await api.get<GoalPaceBlock | null>("/coaching/pace");
+  return data;
+}
+
 /** Troca o ritmo do objetivo (devagar/normal/rápido) e recalcula a meta. */
 export async function setGoalPace(pace: "slow" | "normal" | "fast"): Promise<{ ok: boolean; message: string }> {
   const { data } = await api.post("/coaching/pace", { pace });
@@ -303,8 +319,9 @@ export async function setTargetWeight(kg: number | null): Promise<{ ok: boolean;
 
 // Atualização PARCIAL das preferências de treino — só os campos enviados mudam.
 export type TrainingPrefsUpdate = {
-  weak_point?: string | null;
+  weak_points?: string[] | null;
   session_length?: SessionLength | null;
+  training_days_per_week?: number | null;
   wants_cardio?: boolean | null;
   periodization?: Periodization;
 };
@@ -326,6 +343,7 @@ export type BuildWorkoutResult = {
   weak_point_label: string | null;
   session_range: string | null;
   cardio_note: string | null;
+  technique_note: string | null;
   periodization_label: string;
   message: string;
 };

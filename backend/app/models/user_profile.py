@@ -108,12 +108,20 @@ class UserProfile(Base):
     # (ALTER cedo, antes de qualquer select), senão banco antigo quebra o boot.
     # Guardadas como texto simples (valores validados no service) pra evitar as
     # complicações de tipo enum no ALTER — mesma lição do goal_pace.
-    weak_point: Mapped[str | None] = mapped_column(String(20), nullable=True)  # grupo muscular | None
+    weak_point: Mapped[str | None] = mapped_column(String(20), nullable=True)  # LEGADO: 1 grupo | None
+    # Pontos fracos a priorizar nos acessórios — até 2 grupos. Substitui o
+    # weak_point singular (mantido só como fallback de leitura pra perfis antigos).
+    weak_points: Mapped[list[str]] = mapped_column(
+        ARRAY(String(20)).with_variant(JSON(), "sqlite"), default=list
+    )
     session_length: Mapped[str | None] = mapped_column(String(10), nullable=True)  # curto|medio|longo
     wants_cardio: Mapped[bool | None] = mapped_column(Boolean, nullable=True)  # None = não escolheu
     periodization: Mapped[str] = mapped_column(
         String(12), default="auto", server_default="auto"
     )  # auto|linear|ondulatoria
+    # Dias por semana que a pessoa PODE treinar (2–7). None = automático (o coach
+    # infere dos dias do onboarding). É o que define quantos treinos o coach monta.
+    training_days_per_week: Mapped[int | None] = mapped_column(nullable=True)
 
     trains_with_partner: Mapped[bool] = mapped_column(default=False)
     partner_user_id: Mapped[int | None] = mapped_column(

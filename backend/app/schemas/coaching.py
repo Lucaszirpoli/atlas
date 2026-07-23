@@ -218,6 +218,7 @@ class BuildWorkoutResult(BaseModel):
     weak_point_label: str | None = None
     session_range: str | None = None
     cardio_note: str | None = None
+    technique_note: str | None = None
     periodization_label: str
     message: str
 
@@ -227,8 +228,10 @@ class SetTrainingPrefsRequest(BaseModel):
     enviados (model_fields_set) são alterados — um campo omitido não é mexido,
     e enviar null limpa (ex.: tirar o ponto fraco)."""
 
-    weak_point: str | None = None       # grupo muscular | null (nenhum)
+    weak_points: list[str] | None = None  # até 2 grupos | [] (nenhum)
+    weak_point: str | None = None       # LEGADO: 1 grupo | null (compat)
     session_length: str | None = None   # curto | medio | longo | null
+    training_days_per_week: int | None = None  # 2..7 | null (automático)
     wants_cardio: bool | None = None     # true | false | null (não escolheu)
     periodization: str | None = None     # auto | linear | ondulatoria
 

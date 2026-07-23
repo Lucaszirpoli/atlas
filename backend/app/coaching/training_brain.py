@@ -34,6 +34,55 @@ def valid_weak_point(value: str | None) -> str | None:
     return value if value in WEAK_POINT_LABEL else None
 
 
+# Quantos pontos fracos a pessoa pode priorizar de uma vez. Dois é o teto: mais
+# que isso deixa de ser "ponto fraco" e vira o treino inteiro.
+WEAK_POINTS_MAX = 2
+
+
+def valid_weak_points(values) -> list[str]:
+    """Normaliza uma lista de pontos fracos: só grupos válidos, sem repetição e
+    no máximo WEAK_POINTS_MAX. Aceita None/valores soltos sem quebrar."""
+    out: list[str] = []
+    for v in values or []:
+        g = valid_weak_point(v)
+        if g and g not in out:
+            out.append(g)
+        if len(out) >= WEAK_POINTS_MAX:
+            break
+    return out
+
+
+def resolve_weak_points(profile) -> list[str]:
+    """Os pontos fracos efetivos de um perfil: a lista nova (`weak_points`) e, se
+    ela estiver vazia, cai no `weak_point` singular legado — assim perfis antigos
+    não perdem a escolha ao migrar."""
+    lista = valid_weak_points(getattr(profile, "weak_points", None))
+    if lista:
+        return lista
+    legado = valid_weak_point(getattr(profile, "weak_point", None))
+    return [legado] if legado else []
+
+
+# ---------------------------------------------------------------------------
+# DIAS por semana que a pessoa pode treinar (2–7). É o que define quantos
+# treinos o coach monta. None = automático (infere dos dias do onboarding).
+# ---------------------------------------------------------------------------
+TRAINING_DAYS_MIN = 2
+TRAINING_DAYS_MAX = 7
+TRAINING_DAYS_OPTIONS: list[int] = list(range(TRAINING_DAYS_MIN, TRAINING_DAYS_MAX + 1))
+
+
+def valid_training_days(value: int | None) -> int | None:
+    """None (automático) ou um inteiro dentro de 2–7; fora disso vira None."""
+    if value is None:
+        return None
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return None
+    return n if TRAINING_DAYS_MIN <= n <= TRAINING_DAYS_MAX else None
+
+
 # ---------------------------------------------------------------------------
 # TEMPO por sessão -> alvo de exercícios por treino. Curto/Médio/Longo.
 # ---------------------------------------------------------------------------
@@ -143,12 +192,16 @@ def training_period(weeks_accumulating: float | None) -> str:
 # Catálogo das técnicas avançadas com que o coach trabalha. chave -> (rótulo,
 # como-fazer). As chaves batem com o enum SetType quando existe (rest_pause,
 # drop_set, myo_reps, cluster_set), mas aqui a dica é overlay de execução —
-# título + texto — então não depende disso.
+# título + texto — então não depende disso. Os números e o jeito de contar no
+# log book vêm de definição direta do produto (não são chute): cada técnica
+# tem uma regra explícita de "quanto conta como série", pra bater com o volume
+# real que ela entrega.
 TECHNIQUES: dict[str, tuple[str, str]] = {
     "rest_pause": (
         "Rest-pause",
-        "Na última série valendo: chegue à falha técnica, descanse 15–20s e faça mais reps com a MESMA "
-        "carga. Repita 1–2 micro-séries. Extrai mais estímulo de um composto sem adicionar séries.",
+        "Carga de ~4–5RM: faça 1 repetição por vez, com 10–15s de descanso entre elas, até somar ~10 reps "
+        "no total — dobra o volume efetivo dessa série. Como as reps ficam sempre perto da falha, gerencie "
+        "bem a fadiga: é pontual, não pra toda sessão.",
     ),
     "cluster_set": (
         "Cluster (séries fragmentadas)",
@@ -157,18 +210,21 @@ TECHNIQUES: dict[str, tuple[str, str]] = {
     ),
     "myo_reps": (
         "Myo-reps",
-        "Uma série de ativação até perto da falha (12–20 reps), descanse ~5 respirações e faça mini-séries "
-        "de 3–5 reps repetindo o descanso curto, até não fechar mais. Muito volume efetivo em pouco tempo.",
+        "Série de ativação: 6 reps a 0 RIR (conta como 1 série no log book). Descanse 30–40s e faça um "
+        "bloco de 2 reps; descanse ~20s e repita até fechar 3 blocos de 2 (ativação + 2/2/2). O conjunto "
+        "inteiro conta como 2 séries — acumula volume de verdade num treino curto, sem esticar a sessão.",
     ),
     "muscle_round": (
         "Muscle round",
-        "Carga de ~6RM: faça séries de 4 reps com 10–15s de descanso entre elas, somando ~6 rounds "
-        "(24 reps no total). Densidade alta com a mesma carga — um choque de hipertrofia no isolado.",
+        "Escolha uma carga de ~8RM e fragmente em 6 blocos de 4 reps, com 15–20s de descanso entre eles "
+        "(16–24 reps no total). Um muscle round completo já conta como 2 séries no log book; se fechar as "
+        "24 reps, conta como 3 camadas de volume. Mesma ideia do myo-reps: volume eficiente em pouco tempo.",
     ),
     "back_off": (
         "Back-off",
-        "Depois da série pesada no topo da faixa, tire 15–20% da carga e faça 1–2 séries de reps altas "
-        "(12–20). Aproveita a ativação da pesada e acumula volume sem fritar a articulação.",
+        "Depois de 2 séries retas, descanse 30s, tire ~30% da carga e faça mais 8 reps. Conta como MEIA "
+        "série extra no log book — é um teste de tolerância a mais volume antes de comprometer com uma "
+        "série reta a mais de verdade.",
     ),
     "superset_antagonista": (
         "Superset antagonista",
@@ -182,8 +238,10 @@ TECHNIQUES: dict[str, tuple[str, str]] = {
     ),
 }
 
-# Escolha por (composto?, período). Acumulação puxa densidade/volume;
-# intensificação puxa intensidade. Assim a técnica combina com a fase do ciclo.
+# Fallback por (composto?, período) pro caso "meio-termo" (tempo médio/não
+# definido, sem ser ponto fraco): acumulação puxa densidade/volume,
+# intensificação puxa intensidade — o resto do critério é session_length e
+# ponto fraco, tratados em suggest_technique.
 _TECH_BY_PERIOD: dict[tuple[bool, str], str] = {
     (True, "acumulacao"): "cluster_set",
     (True, "intensificacao"): "rest_pause",
@@ -192,13 +250,39 @@ _TECH_BY_PERIOD: dict[tuple[bool, str], str] = {
 }
 
 
-def suggest_technique(is_compound: bool, period: str) -> tuple[str, str, str]:
-    """(chave, rótulo, como-fazer) da técnica certa pra um exercício, conforme
-    ser composto/isolado e o período do ciclo. Determinístico: a barra do coach
-    e o endpoint que aplica rederivam daqui e sempre concordam."""
-    key = _TECH_BY_PERIOD.get((bool(is_compound), period)) or (
-        "rest_pause" if is_compound else "drop_set"
-    )
+def suggest_technique(
+    is_compound: bool,
+    period: str,
+    *,
+    session_length: str | None = None,
+    is_weak_point: bool = False,
+) -> tuple[str, str, str]:
+    """(chave, rótulo, como-fazer) da técnica certa pra um exercício travado.
+    Determinístico: a barra do coach e o endpoint que aplica rederivam daqui e
+    sempre concordam. Prioridade das regras:
+
+    1) PONTO FRACO — rest-pause é a técnica certa pra atacar um grupo que a
+       pessoa priorizou: dobra o volume efetivo da série (~10 reps numa carga
+       de ~4-5RM), com o cuidado de fadiga que isso pede.
+    2) POUCO TEMPO por sessão — hipertrofia é volume-dependente, então
+       fragmentar a série (myo-reps/muscle round) acumula volume de verdade
+       sem esticar um treino curto. Composto -> muscle round; isolado -> myo-reps.
+    3) BASTANTE TEMPO por sessão — back-off testa a tolerância a uma camada
+       extra de volume ANTES de comprometer com uma série reta a mais no
+       treino (não é permanente, é o teste).
+    4) Meio-termo (tempo médio/não definido, sem ser ponto fraco) — a fase do
+       ciclo decide: acumulação puxa densidade/volume, intensificação puxa
+       intensidade (fallback por período, como antes).
+    """
+    is_compound = bool(is_compound)
+    if is_weak_point:
+        key = "rest_pause"
+    elif session_length == "curto":
+        key = "muscle_round" if is_compound else "myo_reps"
+    elif session_length == "longo":
+        key = "back_off"
+    else:
+        key = _TECH_BY_PERIOD.get((is_compound, period)) or ("rest_pause" if is_compound else "drop_set")
     label, cue = TECHNIQUES[key]
     return key, label, cue
 
@@ -218,3 +302,31 @@ def cardio_warning(goal: str | None, wants_cardio: bool | None) -> str | None:
             "coach vai cobrar mais precisão na comida e no movimento fora do treino."
         )
     return None
+
+
+# ---------------------------------------------------------------------------
+# INTENÇÃO DE SÉRIE — quando o coach monta a rotina, marca quais séries de
+# TRABALHO são "até a falha" ou "feeder" (aquecimento não entra aqui — regra 5,
+# ele nem conta como target_sets). Bate com o SetType do app (FEEDER,
+# TO_FAILURE); as demais posições ficam None = série reta normal, sem opinião.
+# ---------------------------------------------------------------------------
+def set_intents_for(target_sets: int, is_compound: bool) -> list[str | None]:
+    """Lista do tamanho de target_sets com a intenção de cada série:
+
+    - 1 série só (HIT-style: DC/Mentzer) -> ela é a série, então "até a falha"
+      — é literalmente a filosofia dessas metodologias.
+    - Composto com 3+ séries -> a 1ª vira "feeder" (ramp-up antes da carga de
+      trabalho de verdade) e a última "até a falha"; as do meio ficam normais.
+    - Composto com 2 séries, ou qualquer isolado -> sem feeder (o fôlego extra
+      de ramp-up rende menos num isolado ou numa dupla de séries); só a
+      última série vira "até a falha".
+    """
+    if target_sets <= 0:
+        return []
+    if target_sets == 1:
+        return ["to_failure"]
+    intents: list[str | None] = [None] * target_sets
+    intents[-1] = "to_failure"
+    if is_compound and target_sets >= 3:
+        intents[0] = "feeder"
+    return intents

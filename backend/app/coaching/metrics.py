@@ -52,7 +52,7 @@ class TrainingMetrics:
     window_days: int
     # Exercícios principais que pararam de progredir na janela.
     # Cada item: {"exercise_id": int, "name": str, "sessions": int,
-    #             "span_days": int, "is_compound": bool}
+    #             "span_days": int, "is_compound": bool, "muscle": str}
     stalled_lifts: list[dict]
     # Exercícios em que a pessoa está PRONTA pra subir a carga (bateu o topo da
     # faixa de reps com folga). Cada item: {"exercise_id", "name", "is_compound",
@@ -193,6 +193,7 @@ def _stalled_lifts(db: Session, user_id: int, since: datetime) -> list[dict]:
             WorkoutSetLog.exercise_id,
             Exercise.name,
             Exercise.is_compound,
+            Exercise.primary_muscle_group,
             WorkoutSession.started_at,
             WorkoutSetLog.weight_kg,
             WorkoutSetLog.reps,
@@ -208,10 +209,14 @@ def _stalled_lifts(db: Session, user_id: int, since: datetime) -> list[dict]:
         )
     ).all()
 
-    # exercise_id -> {name, is_compound, per_session: {day -> best_e1rm}}
+    # exercise_id -> {name, is_compound, muscle, per_session: {day -> best_e1rm}}
     by_ex: dict[int, dict] = {}
-    for ex_id, name, is_comp, started_at, w, reps in rows:
-        d = by_ex.setdefault(ex_id, {"name": name, "is_compound": bool(is_comp), "sessions": {}})
+    for ex_id, name, is_comp, muscle, started_at, w, reps in rows:
+        d = by_ex.setdefault(ex_id, {
+            "name": name, "is_compound": bool(is_comp),
+            "muscle": muscle.value if hasattr(muscle, "value") else str(muscle),
+            "sessions": {},
+        })
         day = started_at.date().isoformat()
         e = _e1rm(w, reps)
         if e > d["sessions"].get(day, 0):
@@ -231,14 +236,14 @@ def _stalled_lifts(db: Session, user_id: int, since: datetime) -> list[dict]:
         if melhor_recente <= melhor_inicio * 1.01:  # não subiu de forma relevante
             stalled.append(
                 {"exercise_id": ex_id, "name": d["name"], "sessions": len(dias),
-                 "span_days": span, "is_compound": d["is_compound"]}
+                 "span_days": span, "is_compound": d["is_compound"], "muscle": d["muscle"]}
             )
 
     # compostos primeiro, depois os mais treinados
     stalled.sort(key=lambda s: (not s["is_compound"], -s["sessions"]))
     return [
         {"exercise_id": s["exercise_id"], "name": s["name"], "sessions": s["sessions"],
-         "span_days": s["span_days"], "is_compound": s["is_compound"]}
+         "span_days": s["span_days"], "is_compound": s["is_compound"], "muscle": s["muscle"]}
         for s in stalled[:2]
     ]
 
