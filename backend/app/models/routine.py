@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -46,6 +46,12 @@ class RoutineExercise(Base):
     target_reps_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
     rest_seconds: Mapped[int] = mapped_column(Integer, default=90)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Intenção de cada série de TRABALHO (aquecimento não entra aqui, regra 5):
+    # lista do tamanho de target_sets, cada posição "to_failure" | "feeder" |
+    # null (sem intenção especial = série reta normal). O montador do coach
+    # preenche isto; rotina feita manualmente fica com tudo null (sem opinião).
+    set_intents: Mapped[list] = mapped_column(JSON, default=list)
 
     routine: Mapped["Routine"] = relationship(back_populates="exercises")
     exercise: Mapped["Exercise"] = relationship()

@@ -17,6 +17,7 @@ from pathlib import Path
 from sqlalchemy import inspect, select, text
 
 from app.core.db import SessionLocal, engine
+from app.data.curated_50 import CURATED_50
 from app.data.exercise_translator import translate_exercise_name
 from app.data.exercisedb_map import (
     map_category,
@@ -124,6 +125,36 @@ def _curar_visiveis(db: Session) -> tuple[int, int]:
     return junk, dedup
 
 
+def _aplicar_whitelist_50(db: Session) -> tuple[int, int]:
+    """Deixa visíveis SÓ os 50 exercícios curados (CURATED_50) e esconde todo o
+    resto do ExerciseDB. É a AUTORIDADE FINAL do que aparece na busca/IA/métodos.
+
+    Roda depois do upsert (que reabre tudo como visível) a cada deploy, então o
+    estado final é sempre exatamente os 50 — durável e idempotente. Nos 50,
+    sobrescreve o nome PT e o grupo muscular pelos valores curados (o gif de cada
+    um foi conferido à mão). Não toca em is_custom (exercício próprio do usuário
+    continua liberado) nem apaga nada — só marca is_hidden.
+    """
+    exdb = list(
+        db.execute(
+            select(Exercise).where(Exercise.source_external_id.is_not(None))
+        ).scalars()
+    )
+    visiveis = escondidos = 0
+    for ex in exdb:
+        curado = CURATED_50.get(ex.source_external_id or "")
+        if curado is not None:
+            nome, grupo = curado
+            ex.name = nome
+            ex.primary_muscle_group = grupo
+            ex.is_hidden = False
+            visiveis += 1
+        else:
+            ex.is_hidden = True
+            escondidos += 1
+    return visiveis, escondidos
+
+
 def run() -> None:
     ensure_columns()
 
@@ -185,11 +216,15 @@ def run() -> None:
 
         junk, dedup = _curar_visiveis(db)
 
+        # Whitelist é a última palavra: sobra exatamente os 50 curados.
+        wl_vis, wl_hid = _aplicar_whitelist_50(db)
+
         db.commit()
         print(
             f"ExerciseDB: {inseridos} inseridos, {atualizados} atualizados, "
             f"{aposentados} antigos escondidos, {junk} lixo (POV/vN) + {dedup} "
-            f"duplicatas escondidos."
+            f"duplicatas escondidos. Whitelist: {wl_vis} visíveis / "
+            f"{wl_hid} escondidos."
         )
     finally:
         db.close()

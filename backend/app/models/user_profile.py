@@ -1,10 +1,18 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import ARRAY, JSON, DateTime, Enum, ForeignKey, String, Text, func
+from sqlalchemy import ARRAY, JSON, Boolean, DateTime, Enum, Float, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
+
+
+class GoalPace(str, enum.Enum):
+    """Ritmo do objetivo — escala o déficit/superávit. 'normal' é o recomendado."""
+
+    SLOW = "slow"      # mais devagar, preserva mais músculo, leva mais tempo
+    NORMAL = "normal"  # o equilíbrio recomendado pelo coaching
+    FAST = "fast"      # mais rápido, mais risco, mais difícil de sustentar
 
 
 class BiologicalSex(str, enum.Enum):
@@ -64,6 +72,14 @@ class UserProfile(Base):
         Enum(ActivityLevel, name="activity_level")
     )
     goal: Mapped[Goal] = mapped_column(Enum(Goal, name="goal"))
+    # Ritmo do objetivo (devagar/normal/rápido) e peso-alvo (opcional). O ritmo
+    # escala o déficit/superávit; o alvo dá a estimativa de tempo. Colunas novas
+    # -> ensure_columns no init_db (ALTER cedo), não quebra banco antigo.
+    goal_pace: Mapped[GoalPace] = mapped_column(
+        Enum(GoalPace, name="goal_pace", native_enum=False),
+        default=GoalPace.NORMAL, server_default="NORMAL",
+    )
+    target_weight_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
     experience_level: Mapped[ExperienceLevel] = mapped_column(
         Enum(ExperienceLevel, name="experience_level")
     )
@@ -85,6 +101,27 @@ class UserProfile(Base):
     preferred_advanced_technique: Mapped[str | None] = mapped_column(
         String(50), nullable=True
     )
+
+    # --- Preferências de treino do Coaching (o "cérebro de treino") ----------
+    # Como o coach monta/ajusta o treino da pessoa. Todas OPCIONAIS: sem escolha,
+    # o coach usa padrões seguros. Colunas novas -> ensure_columns no init_db
+    # (ALTER cedo, antes de qualquer select), senão banco antigo quebra o boot.
+    # Guardadas como texto simples (valores validados no service) pra evitar as
+    # complicações de tipo enum no ALTER — mesma lição do goal_pace.
+    weak_point: Mapped[str | None] = mapped_column(String(20), nullable=True)  # LEGADO: 1 grupo | None
+    # Pontos fracos a priorizar nos acessórios — até 2 grupos. Substitui o
+    # weak_point singular (mantido só como fallback de leitura pra perfis antigos).
+    weak_points: Mapped[list[str]] = mapped_column(
+        ARRAY(String(20)).with_variant(JSON(), "sqlite"), default=list
+    )
+    session_length: Mapped[str | None] = mapped_column(String(10), nullable=True)  # curto|medio|longo
+    wants_cardio: Mapped[bool | None] = mapped_column(Boolean, nullable=True)  # None = não escolheu
+    periodization: Mapped[str] = mapped_column(
+        String(12), default="auto", server_default="auto"
+    )  # auto|linear|ondulatoria
+    # Dias por semana que a pessoa PODE treinar (2–7). None = automático (o coach
+    # infere dos dias do onboarding). É o que define quantos treinos o coach monta.
+    training_days_per_week: Mapped[int | None] = mapped_column(nullable=True)
 
     trains_with_partner: Mapped[bool] = mapped_column(default=False)
     partner_user_id: Mapped[int | None] = mapped_column(

@@ -5,6 +5,8 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   Text,
   TextInput,
@@ -25,10 +27,16 @@ import { createSavedMeal, listSavedMeals, logMeal, type SavedMeal } from "../../
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { InfoDialog } from "../../components/InfoDialog";
+import { QuantityEditor, type QuantityValue } from "../../components/QuantityEditor";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
+import { formatQuantity } from "../../utils/portion";
 import { addRecentFood, listRecentFoods } from "../../utils/recentFoods";
 import { mensagemDeErro } from "../../utils/errorMessage";
+
+// Item da cesta: o alimento + como a quantidade foi escolhida (gramas ou
+// medida caseira). unit_label/unit_amount nulos = registrado em gramas.
+type CestaItem = { food: Food } & QuantityValue;
 
 export function AddFoodScreen() {
   const { colors, type, spacing, radius } = useTheme();
@@ -42,7 +50,13 @@ export function AddFoodScreen() {
   const [isSearching, setIsSearching] = useState(false);
   const [isSearchingBrands, setIsSearchingBrands] = useState(false);
   const [selectedFood, setSelectedFood] = useState<Food | null>(null);
-  const [quantityG, setQuantityG] = useState("100");
+  // Quantidade do fluxo de 1 alimento (código de barras / cadastro): gramas ou
+  // medida caseira. A cesta guarda o dela por item.
+  const [detailQty, setDetailQty] = useState<QuantityValue>({
+    quantity_g: 100,
+    unit_label: null,
+    unit_amount: null,
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Cadastro rápido de alimento que não existe na base (ataca o churn
@@ -58,8 +72,10 @@ export function AddFoodScreen() {
   // CESTA (multi-seleção). Antes era um alimento por vez: pra registrar um pão
   // com ovo e queijo a pessoa fazia buscar→escolher→adicionar TRÊS vezes,
   // voltando à busca no meio. Agora marca os três e adiciona de uma vez.
-  const [cesta, setCesta] = useState<{ food: Food; quantity_g: number }[]>([]);
+  const [cesta, setCesta] = useState<CestaItem[]>([]);
   const [verCesta, setVerCesta] = useState(false);
+  // Item da cesta cuja quantidade está sendo editada (abre o editor de medidas).
+  const [editandoId, setEditandoId] = useState<number | null>(null);
   const cestaIds = new Set(cesta.map((i) => i.food.id));
 
   // Últimos usados: atalho pra quem come quase sempre as mesmas coisas.
@@ -79,12 +95,12 @@ export function AddFoodScreen() {
     setCesta((c) =>
       c.some((i) => i.food.id === food.id)
         ? c.filter((i) => i.food.id !== food.id)
-        : [...c, { food, quantity_g: food.default_portion_g ?? 100 }]
+        : [...c, { food, quantity_g: food.default_portion_g ?? 100, unit_label: null, unit_amount: null }]
     );
   }
 
-  function mudarQuantidade(foodId: number, g: number) {
-    setCesta((c) => c.map((i) => (i.food.id === foodId ? { ...i, quantity_g: g } : i)));
+  function atualizarItem(foodId: number, v: QuantityValue) {
+    setCesta((c) => c.map((i) => (i.food.id === foodId ? { ...i, ...v } : i)));
   }
 
   const totalCesta = cesta.reduce(
@@ -109,7 +125,12 @@ export function AddFoodScreen() {
       await logMeal({
         meal_category_id: categoryId,
         logged_at: new Date().toISOString(),
-        items: cesta.map((i) => ({ food_id: i.food.id, quantity_g: i.quantity_g })),
+        items: cesta.map((i) => ({
+          food_id: i.food.id,
+          quantity_g: i.quantity_g,
+          unit_label: i.unit_label,
+          unit_amount: i.unit_amount,
+        })),
       });
     } catch (err: any) {
       Alert.alert("Não foi possível registrar", mensagemDeErro(err, "Tente novamente."));
@@ -129,7 +150,12 @@ export function AddFoodScreen() {
     try {
       await createSavedMeal({
         name: nome,
-        items: cesta.map((i) => ({ food_id: i.food.id, quantity_g: i.quantity_g })),
+        items: cesta.map((i) => ({
+          food_id: i.food.id,
+          quantity_g: i.quantity_g,
+          unit_label: i.unit_label,
+          unit_amount: i.unit_amount,
+        })),
       });
     } catch (err: any) {
       setAviso({
@@ -153,9 +179,14 @@ export function AddFoodScreen() {
   function usarReceita(r: SavedMeal) {
     setCesta((c) => {
       const jaTem = new Set(c.map((i) => i.food.id));
-      const novos = r.items
+      const novos: CestaItem[] = r.items
         .filter((i) => !jaTem.has(i.food_id))
-        .map((i) => ({ food: i.food, quantity_g: i.quantity_g }));
+        .map((i) => ({
+          food: i.food,
+          quantity_g: i.quantity_g,
+          unit_label: i.unit_label,
+          unit_amount: i.unit_amount,
+        }));
       return [...c, ...novos];
     });
     setVerCesta(true);
@@ -225,7 +256,7 @@ export function AddFoodScreen() {
       });
       setCustomMode(false);
       setSelectedFood(food);
-      setQuantityG(String(food.default_portion_g ?? 100));
+      setDetailQty({ quantity_g: food.default_portion_g ?? 100, unit_label: null, unit_amount: null });
     } catch (err: any) {
       Alert.alert("Não foi possível cadastrar", mensagemDeErro(err, "Tente novamente."));
     } finally {
@@ -236,7 +267,7 @@ export function AddFoodScreen() {
   useEffect(() => {
     if (barcodeResult) {
       setSelectedFood(barcodeResult);
-      setQuantityG(String(barcodeResult.default_portion_g ?? 100));
+      setDetailQty({ quantity_g: barcodeResult.default_portion_g ?? 100, unit_label: null, unit_amount: null });
     }
   }, [barcodeResult]);
 
@@ -285,9 +316,9 @@ export function AddFoodScreen() {
 
   async function handleConfirm() {
     if (!selectedFood) return;
-    const qty = Number(quantityG);
+    const qty = detailQty.quantity_g;
     if (!qty || qty <= 0) {
-      Alert.alert("Quantidade inválida", "Informe a quantidade em gramas.");
+      Alert.alert("Quantidade inválida", "Informe a quantidade.");
       return;
     }
     setIsSubmitting(true);
@@ -300,7 +331,14 @@ export function AddFoodScreen() {
       await logMeal({
         meal_category_id: categoryId,
         logged_at: new Date().toISOString(),
-        items: [{ food_id: selectedFood.id, quantity_g: qty }],
+        items: [
+          {
+            food_id: selectedFood.id,
+            quantity_g: qty,
+            unit_label: detailQty.unit_label,
+            unit_amount: detailQty.unit_amount,
+          },
+        ],
       });
     } catch (err: any) {
       Alert.alert("Não foi possível registrar", mensagemDeErro(err, "Tente novamente."));
@@ -338,7 +376,7 @@ export function AddFoodScreen() {
   }
 
   if (selectedFood) {
-    const factor = Number(quantityG || 0) / 100;
+    const factor = (detailQty.quantity_g || 0) / 100;
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.lg }}>
         <Card style={{ marginBottom: spacing.md }}>
@@ -349,60 +387,11 @@ export function AddFoodScreen() {
             </Text>
           ) : null}
 
-          <View style={{ flexDirection: "row", alignItems: "flex-end", marginTop: spacing.lg }}>
-            <TextInput
-              value={quantityG}
-              onChangeText={(v) => setQuantityG(v.replace(/[^0-9.]/g, ""))}
-              keyboardType="decimal-pad"
-              style={[
-                type.display,
-                {
-                  color: colors.primary,
-                  borderBottomWidth: 3,
-                  borderBottomColor: colors.primary,
-                  minWidth: 110,
-                  paddingVertical: 2,
-                },
-              ]}
-            />
-            <Text style={[type.h2, { color: colors.textSecondary, marginLeft: spacing.sm, marginBottom: 8 }]}>
-              gramas
-            </Text>
+          {/* GRAMAS **ou** MEDIDA CASEIRA (unidade, fatia, colher...), com opção
+              de criar medida própria — a dor do "ovo em gramas é foda". */}
+          <View style={{ marginTop: spacing.lg }}>
+            <QuantityEditor food={selectedFood} value={detailQty} onChange={setDetailQty} />
           </View>
-          {/* GRAMAS **ou** UNIDADE. A pessoa pode digitar as gramas acima OU
-              tocar numa medida caseira aqui ("1 unidade", "½ unidade", "2
-              unidades") — as duas opções, como pedido (o ovo em gramas é foda). */}
-          {selectedFood.default_portion_label && selectedFood.default_portion_g ? (
-            <View style={{ marginTop: spacing.md }}>
-              <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.xs }]}>
-                Ou escolha pela medida:
-              </Text>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
-                {[0.5, 1, 2, 3].map((mult) => {
-                  const g = Math.round((selectedFood.default_portion_g ?? 0) * mult);
-                  const on = Number(quantityG) === g;
-                  return (
-                    <Pressable
-                      key={mult}
-                      onPress={() => setQuantityG(String(g))}
-                      style={{
-                        backgroundColor: on ? colors.primary : colors.surfaceAlt,
-                        borderWidth: 1,
-                        borderColor: on ? colors.primary : colors.border,
-                        borderRadius: 999,
-                        paddingVertical: 7,
-                        paddingHorizontal: 13,
-                      }}
-                    >
-                      <Text style={[type.bodySmall, { color: on ? colors.textOnPrimary : colors.textPrimary }]}>
-                        {rotuloPorcao(selectedFood.default_portion_label ?? "", mult)} · {g}g
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-          ) : null}
         </Card>
 
         <Card style={{ marginBottom: spacing.lg }}>
@@ -509,6 +498,7 @@ export function AddFoodScreen() {
         data={query.trim().length < 2 ? favorites : results}
         keyExtractor={(item) => String(item.id)}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
           query.trim().length < 2 ? (
             <View>
@@ -695,63 +685,26 @@ export function AddFoodScreen() {
                 data={cesta}
                 keyExtractor={(i) => String(i.food.id)}
                 renderItem={({ item }) => (
-                  <View style={{ marginBottom: spacing.sm }}>
-                    <View style={{ flexDirection: "row", alignItems: "center" }}>
-                      <Text style={[type.bodySmall, { color: colors.textPrimary, flex: 1 }]} numberOfLines={1}>
+                  // Toque na linha abre o editor de medida (gramas OU unidade,
+                  // com criar medida própria). A quantidade aparece já no formato
+                  // escolhido — "2 fatias · 50 g" ou "150 g".
+                  <Pressable
+                    onPress={() => setEditandoId(item.food.id)}
+                    style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[type.bodySmall, { color: colors.textPrimary }]} numberOfLines={1}>
                         {item.food.name}
                       </Text>
-                      <TextInput
-                        value={String(item.quantity_g)}
-                        onChangeText={(v) => mudarQuantidade(item.food.id, Number(v.replace(/[^0-9]/g, "")) || 0)}
-                        keyboardType="number-pad"
-                        style={[
-                          type.bodySmall,
-                          {
-                            color: colors.textPrimary,
-                            backgroundColor: colors.surfaceAlt,
-                            borderRadius: 8,
-                            paddingHorizontal: 8,
-                            paddingVertical: 4,
-                            width: 58,
-                            textAlign: "right",
-                          },
-                        ]}
-                      />
-                      <Text style={[type.caption, { color: colors.textSecondary, width: 20, marginLeft: 4 }]}>g</Text>
-                      <TouchableOpacity onPress={() => alternarNaCesta(item.food)} hitSlop={8} style={{ marginLeft: 4 }}>
-                        <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
-                      </TouchableOpacity>
+                      <Text style={[type.caption, { color: colors.primary, marginTop: 1 }]}>
+                        {formatQuantity(item.quantity_g, item.unit_label, item.unit_amount)}
+                        {"   ·  ajustar"}
+                      </Text>
                     </View>
-
-                    {/* MEDIDA CASEIRA. 999 dos 1001 alimentos já trazem a porção
-                        nomeada ("1 concha" = 100g) e a tela ignorava, exigindo
-                        que a pessoa adivinhasse gramas. Ninguém pesa a comida:
-                        pensa em concha, colher, fatia, unidade. */}
-                    {item.food.default_portion_label && item.food.default_portion_g ? (
-                      <View style={{ flexDirection: "row", gap: 6, marginTop: 4 }}>
-                        {[0.5, 1, 2].map((mult) => {
-                          const g = Math.round(item.food.default_portion_g * mult);
-                          const on = item.quantity_g === g;
-                          return (
-                            <Pressable
-                              key={mult}
-                              onPress={() => mudarQuantidade(item.food.id, g)}
-                              style={{
-                                backgroundColor: on ? colors.primary : colors.surfaceAlt,
-                                borderRadius: 999,
-                                paddingVertical: 3,
-                                paddingHorizontal: 9,
-                              }}
-                            >
-                              <Text style={[type.caption, { color: on ? colors.textOnPrimary : colors.textSecondary, fontSize: 11 }]}>
-                                {rotuloPorcao(item.food.default_portion_label ?? "", mult)} · {g}g
-                              </Text>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    ) : null}
-                  </View>
+                    <TouchableOpacity onPress={() => alternarNaCesta(item.food)} hitSlop={8} style={{ marginLeft: 8 }}>
+                      <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  </Pressable>
                 )}
               />
             </View>
@@ -774,6 +727,47 @@ export function AddFoodScreen() {
         </View>
       ) : null}
 
+      {/* Editor de quantidade de um item da cesta (gramas/unidades). */}
+      {(() => {
+        const emEdicao = cesta.find((i) => i.food.id === editandoId);
+        if (!emEdicao) return null;
+        return (
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: 0,
+              bottom: 0,
+              backgroundColor: "rgba(0,0,0,0.55)",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: spacing.lg,
+            }}
+          >
+            <Card style={{ width: "100%" }}>
+              <Text style={[type.h2, { color: colors.textPrimary, marginBottom: spacing.md }]} numberOfLines={2}>
+                {emEdicao.food.name}
+              </Text>
+              <QuantityEditor
+                food={emEdicao.food}
+                value={{
+                  quantity_g: emEdicao.quantity_g,
+                  unit_label: emEdicao.unit_label,
+                  unit_amount: emEdicao.unit_amount,
+                }}
+                onChange={(v) => atualizarItem(emEdicao.food.id, v)}
+                compact
+              />
+              <View style={{ marginTop: spacing.lg }}>
+                <Button title="Concluir" onPress={() => setEditandoId(null)} />
+              </View>
+            </Card>
+          </KeyboardAvoidingView>
+        );
+      })()}
+
       <InfoDialog
         visible={aviso != null}
         onClose={() => setAviso(null)}
@@ -782,7 +776,8 @@ export function AddFoodScreen() {
       />
 
       {pedindoNome ? (
-        <View
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={{
             position: "absolute",
             left: 0,
@@ -827,46 +822,10 @@ export function AddFoodScreen() {
               </View>
             </View>
           </Card>
-        </View>
+        </KeyboardAvoidingView>
       ) : null}
     </View>
   );
-}
-
-/** "1 concha" + 2x -> "2 conchas"; + 0.5x -> "½ concha".
- *
- * Os rótulos vêm da base já com quantidade embutida ("1 concha", "3 colheres
- * de sopa"), então multiplicar exige reescrever o número, não só prefixar. O
- * plural é ingênuo de propósito (o "s" cobre concha/colher/fatia/unidade, que
- * é o que a base usa) — errar um plural é bem menos grave que fazer a pessoa
- * adivinhar gramas.
- */
-function rotuloPorcao(label: string, mult: number): string {
-  const m = label.match(/^(\d+(?:[.,]\d+)?)\s+(.*)$/);
-  if (!m) return mult === 1 ? label : `${mult}x ${label}`;
-  const base = Number(m[1].replace(",", "."));
-  const nome = m[2];
-  const qtd = base * mult;
-  if (qtd === 0.5) return `½ ${nome}`;
-  const inteiro = Number.isInteger(qtd) ? String(qtd) : qtd.toFixed(1).replace(".", ",");
-  return `${inteiro} ${qtd > 1 ? pluralizar(nome) : nome}`;
-}
-
-/** Pluraliza a PRIMEIRA palavra da medida, não o fim da frase.
- *
- * Testado com os rótulos reais da base: pluralizar o fim dava "2 colher de
- * servirs" e "6 colheres de sopas". O substantivo que varia é o primeiro
- * ("colher de servir" -> "colheres de servir"); o resto é complemento e fica
- * parado. Palavra já no plural não é mexida ("3 colheres de sopa").
- */
-function pluralizar(medida: string): string {
-  const [primeira, ...resto] = medida.split(" ");
-  let p = primeira;
-  if (primeira.endsWith("s")) p = primeira; // já plural
-  else if (primeira.endsWith("ão")) p = primeira.slice(0, -2) + "ões";
-  else if (/[rz]$/.test(primeira)) p = primeira + "es"; // colher -> colheres
-  else p = primeira + "s"; // concha -> conchas, fatia -> fatias
-  return [p, ...resto].join(" ");
 }
 
 /** Cabeçalho de seção da busca (receitas / recentes / favoritos). */

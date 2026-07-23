@@ -126,15 +126,15 @@ export function RoutineListScreen() {
         contentContainerStyle={{ paddingBottom: spacing.lg }}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
-          // Porta de entrada da montagem de treino: dentro tem os 10 métodos
-          // consagrados (grátis) e a criação por IA conversacional (Pro).
+          // 10 métodos consagrados (grátis). A geração por IA saiu daqui — o
+          // acompanhamento personalizado vive agora só no Coaching (Pro).
           <TouchableOpacity
             activeOpacity={0.85}
             onPress={() => navigation.navigate("AiHub")}
             style={{
               flexDirection: "row",
               alignItems: "center",
-              backgroundColor: colors.secondary,
+              backgroundColor: colors.moduleTraining,
               borderRadius: radius.card,
               padding: spacing.md,
               marginBottom: spacing.md,
@@ -151,12 +151,12 @@ export function RoutineListScreen() {
                 marginRight: spacing.md,
               }}
             >
-              <Ionicons name="sparkles" size={24} color="#FFFFFF" />
+              <Ionicons name="barbell" size={24} color="#FFFFFF" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[type.h2, { color: "#FFFFFF", fontSize: 16 }]}>Monte um treino pro seu perfil</Text>
+              <Text style={[type.h2, { color: "#FFFFFF", fontSize: 16 }]}>Métodos de treino</Text>
               <Text style={[type.caption, { color: "rgba(255,255,255,0.9)" }]} numberOfLines={2}>
-                Métodos consagrados ou um treino feito pela IA pra você
+                10 metodologias consagradas, prontas pra montar sua rotina
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />

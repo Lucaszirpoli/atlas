@@ -163,7 +163,11 @@ def create_saved_meal(
     for item in payload.items:
         db.add(
             SavedMealItem(
-                saved_meal_id=saved_meal.id, food_id=item.food_id, quantity_g=item.quantity_g
+                saved_meal_id=saved_meal.id,
+                food_id=item.food_id,
+                quantity_g=item.quantity_g,
+                unit_label=item.unit_label,
+                unit_amount=item.unit_amount,
             )
         )
     db.commit()

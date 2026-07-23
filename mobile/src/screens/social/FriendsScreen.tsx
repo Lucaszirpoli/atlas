@@ -65,6 +65,8 @@ export function FriendsScreen() {
       style={{ backgroundColor: colors.bg }}
       contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
       showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
     >
       {/* Adicionar */}
       <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.lg }}>

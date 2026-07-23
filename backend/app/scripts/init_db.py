@@ -18,10 +18,58 @@ from app.scripts import (
     seed_exercisedb,
     seed_exercises,
     seed_exercises_open,
+    seed_food_portions,
     seed_plant_based,
     seed_taco,
     seed_taco_official,
 )
+
+
+def _ensure_profile_columns() -> None:
+    """ALTER idempotente (SQLite dev + Postgres prod) pras colunas novas de
+    user_profiles: goal_pace, target_weight_kg e as preferências de treino do
+    Coaching (weak_point, session_length, wants_cardio, periodization).
+    Roda logo após o create_all, ANTES de qualquer select(UserProfile)."""
+    from sqlalchemy import inspect, text
+
+    existentes = {c["name"] for c in inspect(engine).get_columns("user_profiles")}
+    add_cols = [
+        ("goal_pace", "VARCHAR(10) NOT NULL DEFAULT 'NORMAL'", "VARCHAR(10) NOT NULL DEFAULT 'NORMAL'"),
+        ("target_weight_kg", "DOUBLE PRECISION", "FLOAT"),
+        # Preferências de treino do Coaching (o "cérebro de treino").
+        ("weak_point", "VARCHAR(20)", "VARCHAR(20)"),
+        ("weak_points", "VARCHAR(20)[]", "TEXT"),  # até 2 pontos fracos (lista)
+        ("session_length", "VARCHAR(10)", "VARCHAR(10)"),
+        ("wants_cardio", "BOOLEAN", "BOOLEAN"),
+        ("periodization", "VARCHAR(12) NOT NULL DEFAULT 'auto'", "VARCHAR(12) NOT NULL DEFAULT 'auto'"),
+        ("training_days_per_week", "INTEGER", "INTEGER"),
+    ]
+    pg = engine.dialect.name == "postgresql"
+    with engine.begin() as conn:
+        for col, pg_type, sqlite_type in add_cols:
+            if col in existentes:
+                continue
+            if pg:
+                conn.execute(text(f"ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS {col} {pg_type}"))
+            else:
+                conn.execute(text(f"ALTER TABLE user_profiles ADD COLUMN {col} {sqlite_type}"))
+
+
+def _ensure_routine_exercise_columns() -> None:
+    """ALTER idempotente pra set_intents (JSON) em routine_exercises — a
+    intenção de cada série (até a falha / feeder) que o coach monta na rotina.
+    Roda logo após o create_all, mesma regra das outras colunas novas."""
+    from sqlalchemy import inspect, text
+
+    existentes = {c["name"] for c in inspect(engine).get_columns("routine_exercises")}
+    if "set_intents" in existentes:
+        return
+    pg = engine.dialect.name == "postgresql"
+    with engine.begin() as conn:
+        if pg:
+            conn.execute(text("ALTER TABLE routine_exercises ADD COLUMN IF NOT EXISTS set_intents JSON"))
+        else:
+            conn.execute(text("ALTER TABLE routine_exercises ADD COLUMN set_intents JSON"))
 
 
 def run() -> None:
@@ -42,6 +90,21 @@ def run() -> None:
     # e derruba o boot antes do seed chegar a criar as colunas.
     seed_exercisedb.ensure_columns()
     backfill_exercise_category.run()
+
+    # Colunas de medida caseira (unit_label/unit_amount) em meal_log_items e
+    # saved_meal_items: mesmo motivo do ExerciseDB — precisam existir ANTES de a
+    # API registrar qualquer refeição num banco antigo. A tabela food_portions é
+    # nova, então o create_all acima já a cria; o backfill roda depois dos seeds.
+    seed_food_portions.ensure_columns()
+
+    # Ritmo do objetivo + peso-alvo em user_profiles: mesma regra — a API faz
+    # select(UserProfile) o tempo todo, então num banco antigo essas colunas
+    # PRECISAM existir antes de qualquer consulta, senão o boot morre (502).
+    _ensure_profile_columns()
+
+    # set_intents em routine_exercises — mesma regra (select(RoutineExercise)
+    # roda o tempo todo em prod).
+    _ensure_routine_exercise_columns()
 
     db = SessionLocal()
     try:
@@ -81,6 +144,10 @@ def run() -> None:
     # antiga (free-exercise-db) — sem apagar, pra não orfanar rotinas/histórico.
     # Idempotente e sem chamada de API (lê o snapshot versionado).
     seed_exercisedb.run()
+
+    # Medidas caseiras embutidas (gramas/unidades): deriva uma FoodPortion do
+    # default_portion de cada alimento. Depois dos seeds de comida, idempotente.
+    seed_food_portions.run()
 
     # Pro de cortesia (testadores) via env PRO_COMP_EMAILS. Só concede.
     grant_comp_pro.run()

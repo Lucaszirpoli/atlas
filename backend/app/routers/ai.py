@@ -211,15 +211,30 @@ def training_personalized(
     method_key = recommend_method_for_profile(exp, goal, days)
     method = get_method(method_key)
 
+    # Preferências de treino do Coaching entram na montagem: ponto fraco (prioriza
+    # o músculo nos acessórios) e tempo por sessão (tamanho do treino).
+    from app.coaching import training_brain
+
+    weak_point = training_brain.valid_weak_point(getattr(profile, "weak_point", None)) if profile else None
+    session_target = (
+        training_brain.session_exercise_target(getattr(profile, "session_length", None)) if profile else None
+    )
+
     is_pro = current_user.plan == Plan.PRO
     can_use_ai = is_pro or current_user.ai_free_credits > 0
-    result = generate_method_plan(db, method_key, days, 0, use_ai=can_use_ai)
+    result = generate_method_plan(
+        db, method_key, days, 0, use_ai=can_use_ai,
+        weak_point=weak_point, session_target=session_target,
+    )
 
+    tempo_txt = training_brain.session_range_text(getattr(profile, "session_length", None)) if profile else None
     result["recommended"] = True
     result["recommended_reason"] = (
         f"Escolhemos {method.name} pelo seu perfil"
         + (f" ({goal})" if goal else "")
         + (f", {days}x/semana" if days else "")
+        + (f", sessões {tempo_txt}" if tempo_txt else "")
+        + (f", priorizando {training_brain.WEAK_POINT_LABEL.get(weak_point, '')}" if weak_point else "")
         + "."
     )
     if result.get("ai_used") and not is_pro:

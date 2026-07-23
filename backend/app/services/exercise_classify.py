@@ -15,7 +15,8 @@ _ISOLATION_KEYWORDS = {
     "elevacao frontal", "crucifixo", "voador", "fly", "peck deck", "pec deck",
     "panturrilha", "gemeos", "encolhimento", "shrug", "abdominal", "prancha",
     "aducao", "abducao", "kickback", "coice", "triceps testa", "triceps corda",
-    "triceps frances", "pullover", "face pull", "reverse fly", "crossover",
+    "triceps na polia", "triceps polia", "triceps frances", "pullover",
+    "face pull", "reverse fly", "crossover",
     "extensao de perna", "flexao de perna", "elevacao de panturrilha",
 }
 

@@ -1,8 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
+import {
+  listWorkoutOverlays,
+  removeTechniqueCue,
+  revertCoachAction,
+  type WorkoutOverlay,
+} from "../../api/coaching";
+import { CoachOverlayBlock, DeloadBanner } from "../../components/CoachOverlay";
 import { getRoutine, type Routine } from "../../api/routines";
 import {
   getWorkoutPreview,
@@ -28,6 +35,7 @@ export function WorkoutPreviewScreen() {
 
   const [routine, setRoutine] = useState<Routine | null>(null);
   const [prefill, setPrefill] = useState<ExercisePrefill[]>([]);
+  const [overlays, setOverlays] = useState<WorkoutOverlay[]>([]);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
 
@@ -39,7 +47,26 @@ export function WorkoutPreviewScreen() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+    // Overlays do coach (técnica / subir carga / troca / deload) — silencioso se falhar.
+    listWorkoutOverlays()
+      .then(setOverlays)
+      .catch(() => {});
   }, [routineId]);
+
+  const deload = overlays.find((o) => o.kind === "deload");
+  function overlaysFor(exerciseId: number): WorkoutOverlay[] {
+    return overlays.filter((o) => o.exercise_id === exerciseId);
+  }
+
+  async function removerOverlay(o: WorkoutOverlay) {
+    setOverlays((os) => os.filter((x) => !(x.source === o.source && x.id === o.id))); // otimista
+    try {
+      if (o.source === "technique") await removeTechniqueCue(o.id);
+      else await revertCoachAction(o.id);
+    } catch {
+      listWorkoutOverlays().then(setOverlays).catch(() => {});
+    }
+  }
 
   async function handleStart() {
     if (!routine) return;
@@ -88,6 +115,8 @@ export function WorkoutPreviewScreen() {
           Prévia · os pesos são os da sua última vez. O treino ainda não começou.
         </Text>
 
+        {deload ? <DeloadBanner overlay={deload} onRemove={removerOverlay} /> : null}
+
         {routine.exercises.map((ex) => {
           const pf = prefillFor(ex.exercise_id);
           const reps =
@@ -104,9 +133,15 @@ export function WorkoutPreviewScreen() {
                 </View>
               </View>
 
-              {/* Linhas das séries com o peso/reps da última vez (read-only). */}
+              {/* Linhas das séries com o peso/reps da última vez (read-only). A
+                  intenção que o coach definiu (até a falha / feeder) aparece do
+                  lado do número — aquecimento não entra aqui, só séries de
+                  trabalho (regra 5). */}
               {Array.from({ length: ex.target_sets }).map((_, i) => {
                 const last = pf?.sets?.[i];
+                const intent = ex.set_intents?.[i];
+                const intentLabel = intent === "to_failure" ? "Até a falha" : intent === "feeder" ? "Feeder" : null;
+                const intentColor = intent === "to_failure" ? colors.danger : colors.warning;
                 return (
                   <View
                     key={i}
@@ -119,7 +154,14 @@ export function WorkoutPreviewScreen() {
                       borderTopColor: colors.border,
                     }}
                   >
-                    <Text style={[type.caption, { color: colors.textSecondary }]}>Série {i + 1}</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Text style={[type.caption, { color: colors.textSecondary }]}>Série {i + 1}</Text>
+                      {intentLabel ? (
+                        <View style={{ backgroundColor: intentColor + "22", borderRadius: radius.pill, paddingVertical: 2, paddingHorizontal: 8 }}>
+                          <Text style={[type.caption, { color: intentColor, fontWeight: "700", fontSize: 10 }]}>{intentLabel}</Text>
+                        </View>
+                      ) : null}
+                    </View>
                     <Text style={[type.body, { color: colors.textPrimary, fontWeight: "600" }]}>
                       {last ? `${last.weight_kg} kg × ${last.reps}` : "—"}
                     </Text>
@@ -131,6 +173,12 @@ export function WorkoutPreviewScreen() {
                   Primeira vez neste exercício — os pesos ficam prontos quando você treinar.
                 </Text>
               ) : null}
+
+              {/* Overlays do coach neste exercício (técnica / subir carga /
+                  troca). O "remover" é o desfazer, aqui onde eles vivem. */}
+              {overlaysFor(ex.exercise_id).map((o) => (
+                <CoachOverlayBlock key={`${o.source}:${o.id}`} overlay={o} onRemove={removerOverlay} />
+              ))}
             </Card>
           );
         })}

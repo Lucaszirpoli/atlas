@@ -7,7 +7,7 @@ from app.core.db import get_db
 from app.core.security import get_current_user
 from app.models.exercise import Exercise
 from app.models.routine import Routine, RoutineExercise
-from app.models.user import User
+from app.models.user import Plan, User
 from app.schemas.routine import RoutineCreate, RoutineRead, RoutineUpdate
 from app.services import routine_service
 from app.services.routine_import import parse_csv
@@ -140,6 +140,7 @@ def _replace_exercises(db: Session, routine: Routine, payload_exercises: list) -
                 target_reps_max=item.target_reps_max,
                 rest_seconds=item.rest_seconds,
                 notes=item.notes,
+                set_intents=item.set_intents,
             )
         )
 
@@ -237,6 +238,32 @@ def create_routines_bulk(
     pra ser mostrado com transparência."""
     if not payload.rotinas:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nenhuma rotina recebida.")
+
+    # Limite de rotinas ativas do plano (Parte 4). O método monta VÁRIAS fichas
+    # de uma vez, então a checagem tem que ser aqui — o create_routine avulso já
+    # protege, mas este endpoint escapava e deixava o Free estourar o teto de 3.
+    # Se for substituir, as ativas de hoje serão arquivadas e não contam; senão,
+    # as novas somam com as que já existem.
+    limit = routine_service.ACTIVE_ROUTINE_LIMITS[current_user.plan]
+    if limit is not None:
+        base = 0 if payload.substituir_existentes else routine_service.count_active_routines(db, current_user.id)
+        novas = len(payload.rotinas)
+        if base + novas > limit:
+            free = current_user.plan == Plan.FREE
+            if base > 0:
+                detalhe = (
+                    f"Você já tem {base} {'rotina ativa' if base == 1 else 'rotinas ativas'} e este método "
+                    f"adiciona mais {novas} — o plano {current_user.plan.value} permite até {limit}. "
+                    "Arquive as que não usa"
+                    + (" ou escolha um método com menos dias." if free else " antes de gerar este.")
+                )
+            else:
+                detalhe = (
+                    f"Este método monta {novas} treinos, mas o plano {current_user.plan.value} permite "
+                    f"até {limit} rotinas ativas. Escolha menos dias"
+                    + (" — ou assine o Pro para splits de 4 a 6 dias." if free else ".")
+                )
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detalhe)
 
     archived = 0
     if payload.substituir_existentes:
@@ -381,6 +408,7 @@ def duplicate_routine(
                 target_reps_max=item.target_reps_max,
                 rest_seconds=item.rest_seconds,
                 notes=item.notes,
+                set_intents=item.set_intents,
             )
         )
     db.commit()

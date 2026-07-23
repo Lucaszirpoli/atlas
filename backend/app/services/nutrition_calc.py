@@ -3,7 +3,7 @@ atividade + ajuste por objetivo. Referência citada na especificação (seção
 3.2) como a fórmula mais precisa disponível hoje, mais confiável que
 Harris-Benedict."""
 
-from app.models.user_profile import ActivityLevel, BiologicalSex, Goal
+from app.models.user_profile import ActivityLevel, BiologicalSex, Goal, GoalPace
 
 ACTIVITY_FACTORS: dict[ActivityLevel, float] = {
     ActivityLevel.SEDENTARY: 1.2,
@@ -22,6 +22,19 @@ GOAL_KCAL_ADJUSTMENT: dict[Goal, float] = {
     Goal.PERFORMANCE: 0.05,
     Goal.RECOMPOSICAO: -0.10,
 }
+
+# Ritmo escala o déficit/superávit: devagar = mais suave (mais tempo, menos
+# risco), rápido = mais agressivo. 'normal' = o recomendado (multiplicador 1).
+PACE_MULTIPLIER: dict[GoalPace, float] = {
+    GoalPace.SLOW: 0.6,
+    GoalPace.NORMAL: 1.0,
+    GoalPace.FAST: 1.4,
+}
+
+# Objetivos em que o ritmo faz sentido (têm ganho/perda de peso deliberado).
+PACE_APPLIES: set[Goal] = {Goal.EMAGRECIMENTO, Goal.HIPERTROFIA, Goal.RECOMPOSICAO}
+
+KCAL_PER_KG_BODY = 7700.0  # ~kcal por kg de peso corporal (aprox. clássica)
 
 # g de proteína por kg de peso corporal, por objetivo.
 GOAL_PROTEIN_G_PER_KG: dict[Goal, float] = {
@@ -49,6 +62,21 @@ def calculate_tdee(bmr: float, activity_level: ActivityLevel) -> float:
     return bmr * ACTIVITY_FACTORS[activity_level]
 
 
+def goal_adjustment_for(goal: Goal, pace: GoalPace) -> float:
+    """Ajuste % sobre o TDEE, já escalado pelo ritmo (só onde o ritmo se aplica)."""
+    base = GOAL_KCAL_ADJUSTMENT[goal]
+    if goal in PACE_APPLIES:
+        return base * PACE_MULTIPLIER[pace]
+    return base
+
+
+def weekly_rate_kg(tdee: float, goal: Goal, pace: GoalPace) -> float:
+    """Ritmo de mudança de peso estimado (kg/semana, com sinal) pra esse objetivo
+    e ritmo. Vem do déficit/superávit diário: (Δkcal/dia × 7) / 7700."""
+    daily_delta = tdee * goal_adjustment_for(goal, pace)
+    return round(daily_delta * 7 / KCAL_PER_KG_BODY, 3)
+
+
 def compute_auto_goal(
     biological_sex: BiologicalSex,
     weight_kg: float,
@@ -56,10 +84,11 @@ def compute_auto_goal(
     age: int,
     activity_level: ActivityLevel,
     goal: Goal,
+    pace: GoalPace = GoalPace.NORMAL,
 ) -> dict:
     bmr = calculate_bmr(biological_sex, weight_kg, height_cm, age)
     tdee = calculate_tdee(bmr, activity_level)
-    target_kcal = tdee * (1 + GOAL_KCAL_ADJUSTMENT[goal])
+    target_kcal = tdee * (1 + goal_adjustment_for(goal, pace))
 
     protein_g = GOAL_PROTEIN_G_PER_KG[goal] * weight_kg
     fat_g = (target_kcal * FAT_KCAL_FRACTION) / KCAL_PER_G_FAT

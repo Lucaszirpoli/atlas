@@ -126,6 +126,8 @@ export function SocialFeedScreen() {
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={{ padding: spacing.lg, paddingTop: 0, paddingBottom: spacing.xxl }}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         ListHeaderComponent={<ChallengesBanner onPress={() => navigation.navigate("Challenges")} />}
         ListEmptyComponent={
           <Card>

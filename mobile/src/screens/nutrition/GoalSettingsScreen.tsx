@@ -17,9 +17,13 @@ import {
   type Goal,
   type ProfileCalc,
 } from "../../api/profile";
+import { getGoalPace, resetCoachingBaseline, type GoalPaceBlock } from "../../api/coaching";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { HelpDot } from "../../components/HelpDot";
+import { PaceSelector } from "../../components/PaceSelector";
+import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
 import { mensagemDeErro } from "../../utils/errorMessage";
 
@@ -30,6 +34,8 @@ const GOAL_OPTIONS: [Goal, string][] = [
   ["performance", "Performance"],
   ["recomposicao", "Recomposição"],
 ];
+
+const GOAL_LABEL: Record<string, string> = Object.fromEntries(GOAL_OPTIONS);
 
 const ACTIVITY_OPTIONS: [ActivityLevel, string][] = [
   ["sedentary", "Sedentário"],
@@ -42,9 +48,16 @@ const ACTIVITY_OPTIONS: [ActivityLevel, string][] = [
 export function GoalSettingsScreen() {
   const { colors, type, spacing, radius } = useTheme();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  const isPro = user?.plan === "pro";
 
   const [currentGoal, setCurrentGoal] = useState<CalorieGoal | null>(null);
   const [profile, setProfile] = useState<ProfileCalc | null>(null);
+  // Ritmo do objetivo (Pro) — mora aqui, junto do cálculo automático (o ritmo
+  // escala o déficit/superávit). null = não se aplica (manutenção/performance).
+  const [pace, setPace] = useState<GoalPaceBlock | null>(null);
+  // Prompt "recomeçar análise do coach" ao trocar de objetivo (só Pro tem coach).
+  const [baselinePrompt, setBaselinePrompt] = useState<{ from: string; to: string } | null>(null);
 
   // Campos editáveis do cálculo automático (string pra permitir edição livre).
   const [sex, setSex] = useState<BiologicalSex>("female");
@@ -60,15 +73,22 @@ export function GoalSettingsScreen() {
   const [manualFat, setManualFat] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // "Considerar como primeiro objetivo": vai direto pra meta nova (sem transição
+  // gradual) e faz o coach esquecer a fase anterior. Pra trocar de fase de vez
+  // (ex: encerrar o cutting e começar o bulking do zero).
+  const [asFirstObjective, setAsFirstObjective] = useState(false);
+  const mudouObjetivo = !!profile && profile.goal !== goal;
 
   async function load() {
     setIsLoading(true);
     try {
-      const [goalNow, prof] = await Promise.all([
+      const [goalNow, prof, paceNow] = await Promise.all([
         getCurrentGoal(),
         getProfileCalc().catch(() => null),
+        isPro ? getGoalPace().catch(() => null) : Promise.resolve(null),
       ]);
       setCurrentGoal(goalNow);
+      setPace(paceNow);
       if (prof) {
         setProfile(prof);
         setSex(prof.biological_sex);
@@ -81,6 +101,17 @@ export function GoalSettingsScreen() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  // Trocar o ritmo já recalcula a meta no backend — recarrega só a meta e o
+  // ritmo, sem tocar nos campos que a pessoa possa estar editando acima.
+  async function reloadPaceAndGoal() {
+    const [g, p] = await Promise.all([
+      getCurrentGoal().catch(() => null),
+      getGoalPace().catch(() => null),
+    ]);
+    if (g) setCurrentGoal(g);
+    setPace(p);
   }
 
   useEffect(() => {
@@ -103,6 +134,10 @@ export function GoalSettingsScreen() {
       Alert.alert("Peso inválido", "Informe um peso entre 30 e 300 kg.");
       return;
     }
+    const objetivoAnterior = profile?.goal;
+    const trocou = !!objetivoAnterior && objetivoAnterior !== goal;
+    // "Primeiro objetivo" só faz sentido quando muda de objetivo.
+    const comoPrimeiro = asFirstObjective && trocou;
     setIsSubmitting(true);
     try {
       // 1) salva os dados no perfil (peso vira um novo registro no histórico)
@@ -115,12 +150,32 @@ export function GoalSettingsScreen() {
         current_weight_kg: weightN,
       });
       // 2) recalcula e aplica a meta a partir dos dados atualizados
-      setCurrentGoal(await applyAutoGoal());
-      Alert.alert("Meta atualizada", "Sua meta calórica foi recalculada com seus dados.");
+      setCurrentGoal(await applyAutoGoal(comoPrimeiro));
+      setProfile((p) => (p ? { ...p, goal } : p)); // reflete o novo objetivo
+      setAsFirstObjective(false); // reseta o toggle após aplicar
+      if (isPro) getGoalPace().then(setPace).catch(() => {}); // ritmo muda com o objetivo
+      // Com "primeiro objetivo" o backend já recomeçou a análise (sem transição);
+      // não precisa perguntar. Senão, se trocou de objetivo e é Pro, oferece
+      // recomeçar a análise (ConfirmDialog — Alert.alert é no-op no web).
+      if (comoPrimeiro) {
+        Alert.alert("Novo objetivo", "Meta ajustada direto pro novo objetivo e análise recomeçada.");
+      } else if (trocou && isPro) {
+        setBaselinePrompt({ from: GOAL_LABEL[objetivoAnterior!] ?? objetivoAnterior!, to: GOAL_LABEL[goal] ?? goal });
+      } else {
+        Alert.alert("Meta atualizada", "Sua meta calórica foi recalculada com seus dados.");
+      }
     } catch (err: any) {
       Alert.alert("Não foi possível calcular", mensagemDeErro(err, "Tente novamente."));
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function confirmarResetCoach() {
+    try {
+      await resetCoachingBaseline();
+    } catch {
+      // silencioso — não é destrutivo; a análise só não recomeça
     }
   }
 
@@ -151,6 +206,8 @@ export function GoalSettingsScreen() {
       style={{ backgroundColor: colors.bg }}
       contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl + insets.bottom }}
       showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
     >
       {/* Meta atual — compacta (uma linha), pra sobrar espaço pros campos do
           cálculo automático abaixo. */}
@@ -215,11 +272,40 @@ export function GoalSettingsScreen() {
 
         {/* Objetivo */}
         <FieldLabel text="Objetivo" />
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginBottom: spacing.md }}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginBottom: mudouObjetivo ? spacing.sm : spacing.md }}>
           {GOAL_OPTIONS.map(([value, label]) => (
             <Chip key={value} label={label} selected={goal === value} onPress={() => setGoal(value)} />
           ))}
         </View>
+
+        {/* "Considerar como primeiro objetivo" — só quando muda de objetivo.
+            Pula a transição gradual e faz o coach esquecer a fase anterior. */}
+        {mudouObjetivo ? (
+          <TouchableOpacity
+            onPress={() => setAsFirstObjective((v) => !v)}
+            activeOpacity={0.7}
+            style={{
+              flexDirection: "row", alignItems: "center", gap: 8, marginBottom: spacing.md,
+              backgroundColor: colors.surfaceAlt, borderRadius: radius.button, padding: spacing.sm,
+              borderWidth: 1, borderColor: asFirstObjective ? colors.primary : colors.border,
+            }}
+          >
+            <Ionicons
+              name={asFirstObjective ? "checkbox" : "square-outline"}
+              size={20}
+              color={asFirstObjective ? colors.primary : colors.textSecondary}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "600" }]}>
+                Considerar como primeiro objetivo
+              </Text>
+              <Text style={[type.caption, { color: colors.textSecondary, marginTop: 1, lineHeight: 16 }]}>
+                Vai direto pra nova meta, sem subir/descer as calorias aos poucos. O coach esquece a fase anterior
+                (ideal pra encerrar um cutting e começar o bulking do zero).
+              </Text>
+            </View>
+          </TouchableOpacity>
+        ) : null}
 
         {/* Nível de atividade */}
         <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
@@ -238,6 +324,14 @@ export function GoalSettingsScreen() {
           ))}
         </View>
 
+        {/* Ritmo do objetivo (Pro) — devagar/normal/rápido. Escala o déficit/
+            superávit e aplica na hora. Só quando o ritmo se aplica ao objetivo. */}
+        {isPro && pace && pace.options.length > 0 ? (
+          <View style={{ borderTopWidth: 1, borderTopColor: colors.border, marginTop: spacing.xs, marginBottom: spacing.md }}>
+            <PaceSelector pace={pace} onChanged={reloadPaceAndGoal} />
+          </View>
+        ) : null}
+
         <Button title="Usar cálculo automático" onPress={handleApplyAuto} loading={isSubmitting} />
       </Card>
 
@@ -255,6 +349,19 @@ export function GoalSettingsScreen() {
           <Button title="Salvar meta manual" variant="ghost" onPress={handleApplyManual} loading={isSubmitting} />
         </View>
       </Card>
+
+      <ConfirmDialog
+        visible={!!baselinePrompt}
+        onClose={() => setBaselinePrompt(null)}
+        title="Recomeçar a análise do coach?"
+        message={
+          baselinePrompt
+            ? `Você trocou de ${baselinePrompt.from} pra ${baselinePrompt.to}. Recomeço a análise a partir de agora pra ela não misturar a fase anterior? Seu histórico e gráficos continuam intactos.`
+            : undefined
+        }
+        confirmLabel="Recomeçar análise"
+        onConfirm={confirmarResetCoach}
+      />
     </ScrollView>
   );
 }
@@ -372,7 +479,7 @@ function ManualInput({
       <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.xs }]}>{label}</Text>
       <TextInput
         value={value}
-        onChangeText={(v) => onChangeText(v.replace(/[^0-9.]/g, ""))}
+        onChangeText={(v) => onChangeText(v.replace(/,/g, ".").replace(/[^0-9.]/g, ""))}
         keyboardType="decimal-pad"
         style={[
           type.body,

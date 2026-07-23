@@ -30,6 +30,9 @@ class SavedMealItem(Base):
     saved_meal_id: Mapped[int] = mapped_column(ForeignKey("saved_meals.id", ondelete="CASCADE"))
     food_id: Mapped[int] = mapped_column(ForeignKey("foods.id"))
     quantity_g: Mapped[float] = mapped_column(Float)
+    # Medida caseira escolhida (ver MealLogItem) — pra receita lembrar "2 fatias".
+    unit_label: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    unit_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     saved_meal: Mapped["SavedMeal"] = relationship(back_populates="items")
     food: Mapped["Food"] = relationship()

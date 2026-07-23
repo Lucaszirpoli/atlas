@@ -19,6 +19,10 @@ import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
 import { mensagemDeErro } from "../../utils/errorMessage";
 
+// Free monta rotinas de até 3 dias (teto de 3 rotinas ativas do plano). Splits
+// maiores (4 a 6 dias) são do Pro. Regra da Parte 4 da especificação.
+const FREE_MAX_DIAS = 3;
+
 const EXP_LABEL: Record<string, string> = {
   beginner: "Iniciante+",
   intermediate: "Intermediário+",
@@ -95,7 +99,6 @@ export function AiHubScreen() {
   const navigation = useNavigation<any>();
   const { user } = useAuth();
   const isPro = user?.plan === "pro";
-
   const [methods, setMethods] = useState<TrainingMethod[]>([]);
   const [selected, setSelected] = useState<TrainingMethod | null>(null);
   // Ficha completa do método aberto. Buscada só ao abrir (a lista continua
@@ -154,21 +157,6 @@ export function AiHubScreen() {
     } finally {
       setLoading(false);
     }
-  }
-
-  // "Criar treino com IA": conversa — a IA pergunta rotina/objetivo/dias/local
-  // e monta o treino pra pessoa. Pro-only; Free vê o card mas cai no paywall.
-  function handleCreateWithAi() {
-    if (!isPro) {
-      navigation.navigate("Paywall");
-      return;
-    }
-    navigation.navigate("Assistant", {
-      autoSend:
-        "Quero que você monte um treino personalizado pra mim. Me pergunte o que precisar — " +
-        "meu objetivo, quantos dias por semana posso treinar, onde treino (academia completa/básica ou casa), " +
-        "quanto tempo tenho por sessão, e preferências ou limitações. Depois monte o treino completo.",
-    });
   }
 
   async function autoSavePlan(r: GenerateTrainingResult) {
@@ -560,26 +548,48 @@ export function AiHubScreen() {
         <Text style={[type.h2, { color: colors.textPrimary, marginTop: spacing.lg, marginBottom: spacing.sm }]}>
           Quantos dias por semana você treina?
         </Text>
+        {!isPro ? (
+          <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
+            No Free você monta rotinas de até {FREE_MAX_DIAS} dias. O Pro libera splits de 4 a 6 dias.
+          </Text>
+        ) : null}
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
-          {selected.days_per_week.map((d) => (
-            <TouchableOpacity
-              key={d}
-              onPress={() => {
-                setDays(d);
-                handleGenerate(selected, d);
-              }}
-              style={{
-                backgroundColor: colors.surface,
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 14,
-                paddingVertical: spacing.md,
-                paddingHorizontal: spacing.lg,
-              }}
-            >
-              <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>{d} dias</Text>
-            </TouchableOpacity>
-          ))}
+          {selected.days_per_week.map((d) => {
+            const bloqueado = !isPro && d > FREE_MAX_DIAS;
+            return (
+              <TouchableOpacity
+                key={d}
+                onPress={() => {
+                  if (bloqueado) {
+                    setInfo({
+                      title: "Splits maiores são do Pro",
+                      message:
+                        `No plano Free você monta rotinas de até ${FREE_MAX_DIAS} dias por semana. ` +
+                        "Assine o Pro para treinos de 4 a 6 dias.",
+                    });
+                    return;
+                  }
+                  setDays(d);
+                  handleGenerate(selected, d);
+                }}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 6,
+                  backgroundColor: colors.surface,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 14,
+                  paddingVertical: spacing.md,
+                  paddingHorizontal: spacing.lg,
+                  opacity: bloqueado ? 0.55 : 1,
+                }}
+              >
+                <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>{d} dias</Text>
+                {bloqueado ? <Ionicons name="lock-closed" size={13} color={colors.textSecondary} /> : null}
+              </TouchableOpacity>
+            );
+          })}
         </View>
         {loading ? <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.xl }} size="large" /> : null}
         <InfoDialog
@@ -598,50 +608,14 @@ export function AiHubScreen() {
       style={{ backgroundColor: colors.bg }}
       contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
     >
-      <Text style={[type.h1, { color: colors.textPrimary }]}>Monte seu treino</Text>
+      <Text style={[type.h1, { color: colors.textPrimary }]}>Métodos de treino</Text>
       <Text style={[type.body, { color: colors.textSecondary, marginTop: 4 }]}>
-        A IA monta um treino do zero pra você (Pro), ou escolha um dos 10 métodos consagrados — fiel ao
-        método (frequência, volume, proporção e ordem).
+        Escolha um dos 10 métodos consagrados — o treino é montado fiel ao método (frequência, volume,
+        proporção e ordem dos exercícios).
       </Text>
 
-      {/* Criar treino com IA (conversa): a IA pergunta rotina/objetivo e monta.
-          Pro-only — quem é Free vê o card mas cai no paywall ao tocar. */}
-      <TouchableOpacity activeOpacity={0.85} onPress={handleCreateWithAi}>
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            backgroundColor: colors.primary,
-            borderRadius: radius.card,
-            padding: spacing.md,
-            marginTop: spacing.md,
-          }}
-        >
-          <View
-            style={{
-              width: 46,
-              height: 46,
-              borderRadius: 15,
-              backgroundColor: "rgba(255,255,255,0.22)",
-              alignItems: "center",
-              justifyContent: "center",
-              marginRight: spacing.md,
-            }}
-          >
-            <Ionicons name="sparkles" size={24} color="#FFFFFF" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[type.h2, { color: "#FFFFFF", fontSize: 16 }]}>Criar treino com IA</Text>
-            <Text style={[type.caption, { color: "rgba(255,255,255,0.9)" }]} numberOfLines={2}>
-              A IA pergunta seu objetivo, dias e preferências e monta pra você{isPro ? "" : " · Pro"}
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
-        </View>
-      </TouchableOpacity>
-
       <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.lg, fontWeight: "700" }]}>
-        OU ESCOLHA UM MÉTODO PRONTO
+        ESCOLHA UM MÉTODO
       </Text>
 
       {methods.map((m) => (

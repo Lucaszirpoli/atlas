@@ -12,6 +12,7 @@ from app.routers import (
     billing,
     blocks,
     challenges,
+    coaching,
     diet_templates,
     evolution,
     exercises,
@@ -73,6 +74,7 @@ app.include_router(gyms.router)
 app.include_router(sleep.router)
 app.include_router(workout_insights.router)
 app.include_router(evolution.router)
+app.include_router(coaching.router)
 
 # GIFs de exercício baixados da ExerciseDB (ver scripts/backfill_exercise_images.py)
 # ficam aqui até migrarmos pra um bucket S3-compatible (Cloudflare R2) em produção.

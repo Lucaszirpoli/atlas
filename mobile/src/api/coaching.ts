@@ -1,0 +1,383 @@
+import { api } from "./client";
+import type { DietPlan } from "./ai";
+
+export type CoachingSeverity = "info" | "attention" | "action";
+
+export type CoachingFinding = {
+  key: string;
+  severity: CoachingSeverity;
+  title: string;
+  detail: string;
+  proposal: string | null;
+  // Presente só quando o ajuste é aplicável em 1 toque (ex.: { kcal_delta: -200 }).
+  adjustment: { kcal_delta?: number } | null;
+};
+
+export type CoachingMetrics = {
+  window_days: number;
+  goal: string | null;
+  weight_kg: number | null;
+  weight_trend_kg_per_week: number | null;
+  weight_pct_per_week: number | null;
+  weight_points: number;
+  avg_kcal: number | null;
+  goal_kcal: number | null;
+  avg_protein_g: number | null;
+  protein_target_g: number | null;
+  avg_carbs_g: number | null;
+  goal_carbs_g: number | null;
+  avg_fat_g: number | null;
+  goal_fat_g: number | null;
+  days_logged: number;
+  sessions_per_week: number | null;
+  volume_trend_pct: number | null;
+  avg_sleep_hours: number | null;
+  // Presente quando um marco de recomeço (troca de objetivo) recortou a janela.
+  baseline_at: string | null;
+  // Presente quando há uma transição de objetivo em andamento (subindo/descendo
+  // calorias aos poucos). null quando não há.
+  transition: {
+    active: boolean;
+    target_kcal: number;
+    current_kcal: number;
+    remaining_kcal: number;
+    days_until_next: number;
+  } | null;
+  // Ritmo do objetivo + as 3 opções. options=[] quando não se aplica.
+  pace: {
+    current: "slow" | "normal" | "fast";
+    target_weight_kg: number | null;
+    current_weight_kg: number | null;
+    options: { pace: "slow" | "normal" | "fast"; kcal: number; rate_kg_per_week: number; weeks: number | null }[];
+  } | null;
+  // Preferências de treino do Coaching ("Como eu monto seu treino") + opções.
+  training_prefs: TrainingPrefs | null;
+  // Resumo do treino ativo (todas as rotinas) — o card "Seu treino".
+  workout: {
+    built: boolean;
+    count: number;
+    total_exercises: number;
+    routines: { id: number; name: string; exercises: number }[];
+  } | null;
+};
+
+export type SessionLength = "curto" | "medio" | "longo";
+export type Periodization = "auto" | "linear" | "ondulatoria";
+
+export type TrainingPrefs = {
+  // Até 2 pontos fracos priorizados (substitui o singular).
+  weak_points: string[];
+  weak_points_labels: string[];
+  weak_points_max: number;
+  weak_point_options: { value: string; label: string }[];
+  session_length: SessionLength | null;
+  session_length_options: { value: SessionLength; label: string; range: string }[];
+  // Dias por semana que a pessoa pode treinar (2–7). null = automático.
+  training_days_per_week: number | null;
+  training_days_options: number[];
+  wants_cardio: boolean | null;
+  periodization: Periodization;
+  periodization_options: { value: Periodization; label: string; desc: string }[];
+  cardio_warning: string | null;
+};
+
+export type CoachingChart = "peso" | "calorias" | "macros" | "sono" | "carga";
+
+// Ajuste aplicável de uma barra. `kind` diz qual fluxo de aplicar chamar:
+// dieta (kcal_delta, sem kind) | technique | progression | deload.
+export type CoachingAdjustmentInfo = {
+  kind?: "technique" | "progression" | "deload" | "transition";
+  kcal_delta?: number;
+  technique?: string;
+  technique_label?: string;
+  exercise_id?: number;
+  exercise_name?: string;
+  new_weight?: number | null;
+};
+
+export type CoachingInsight = {
+  key: string; // peso | calorias | macros | sono | carga | treino
+  severity: CoachingSeverity;
+  title: string;
+  detail: string;
+  chart: CoachingChart | null;
+  finding_key: string | null;
+  adjustment: CoachingAdjustmentInfo | null;
+};
+
+export type CoachingAnalysis = {
+  window_days: number;
+  goal: string | null;
+  has_enough_data: boolean;
+  confidence: "alta" | "parcial" | "baixa";
+  headline: string;
+  findings: CoachingFinding[];
+  insights: CoachingInsight[];
+  data_gaps: string[];
+  metrics: CoachingMetrics;
+};
+
+/** Análise do Coaching (Pro). Determinística no backend — sem token. Sem
+ * windowDays, o backend usa a janela do OBJETIVO atual (desde o marco). Passe um
+ * número só pra forçar uma janela específica. */
+export async function getCoachingAnalysis(windowDays?: number): Promise<CoachingAnalysis> {
+  const { data } = await api.get<CoachingAnalysis>("/coaching/analysis", {
+    params: windowDays != null ? { window_days: windowDays } : undefined,
+  });
+  return data;
+}
+
+export type ApplyDietResult = {
+  applied: boolean;
+  previous_kcal: number;
+  new_kcal: number;
+  kcal_delta: number;
+  message: string;
+};
+
+/** Aplica o ajuste calórico de um achado — cria uma nova versão da meta. */
+export async function applyDietAdjustment(findingKey: string): Promise<ApplyDietResult> {
+  const { data } = await api.post<ApplyDietResult>("/coaching/apply/diet", { finding_key: findingKey });
+  return data;
+}
+
+/** Dá o próximo passo da transição de objetivo (sobe/desce a meta um degrau
+ * rumo ao alvo). Reversível como qualquer ajuste de dieta. */
+export async function applyTransitionStep(): Promise<ApplyDietResult> {
+  const { data } = await api.post<ApplyDietResult>("/coaching/apply/transition", {});
+  return data;
+}
+
+export type CoachingAdjustment = {
+  id: number;
+  finding_key: string;
+  kind: string;
+  kcal_delta: number;
+  prev_kcal: number;
+  new_kcal: number;
+  created_at: string;
+  reverted_at: string | null;
+};
+
+/** Histórico recente de ajustes aplicados (pra mostrar + oferecer Desfazer). */
+export async function listCoachingAdjustments(): Promise<CoachingAdjustment[]> {
+  const { data } = await api.get<CoachingAdjustment[]>("/coaching/adjustments");
+  return data;
+}
+
+export type RevertResult = { reverted: boolean; restored_kcal: number; message: string };
+
+/** Desfaz um ajuste: restaura a meta pro que era antes dele. */
+export async function revertAdjustment(id: number): Promise<RevertResult> {
+  const { data } = await api.post<RevertResult>(`/coaching/adjustments/${id}/revert`, {});
+  return data;
+}
+
+export type ApplyTechniqueResult = {
+  applied: boolean;
+  exercise_name: string;
+  technique_label: string;
+  message: string;
+};
+
+/** Aplica uma técnica de intensidade ao exercício travado — vira uma dica do
+ * coach na prévia do treino. O servidor rederiva a técnica (não confia no app). */
+export async function applyTechnique(findingKey: string): Promise<ApplyTechniqueResult> {
+  const { data } = await api.post<ApplyTechniqueResult>("/coaching/apply/technique", {
+    finding_key: findingKey,
+  });
+  return data;
+}
+
+export type TechniqueCue = {
+  id: number;
+  exercise_id: number;
+  exercise_name: string;
+  technique: string;
+  technique_label: string;
+  cue_text: string;
+  created_at: string;
+};
+
+/** Dicas de técnica ativas — a prévia do treino mostra em cima do exercício. */
+export async function listTechniqueCues(): Promise<TechniqueCue[]> {
+  const { data } = await api.get<TechniqueCue[]>("/coaching/technique-cues");
+  return data;
+}
+
+export type RemoveCueResult = { removed: boolean; message: string };
+
+/** Remove uma dica de técnica (o "desfazer" do lado do treino). */
+export async function removeTechniqueCue(id: number): Promise<RemoveCueResult> {
+  const { data } = await api.post<RemoveCueResult>(`/coaching/technique-cues/${id}/remove`, {});
+  return data;
+}
+
+export type ResetBaselineResult = { reset: boolean; effective_from: string; message: string };
+
+/** Recomeça a análise do coach a partir de agora (ao trocar de objetivo). Não
+ * apaga histórico — só move o ponto de partida da leitura do coach. */
+export async function resetCoachingBaseline(): Promise<ResetBaselineResult> {
+  const { data } = await api.post<ResetBaselineResult>("/coaching/baseline/reset", {});
+  return data;
+}
+
+export type ApplyActionResult = {
+  applied: boolean;
+  kind: string;
+  title: string;
+  message: string;
+};
+
+/** Aplica uma ação de treino do coach (progressão/deload/troca). O servidor
+ * rederiva do estado atual — não confia no app. Reversível. */
+export async function applyCoachAction(findingKey: string): Promise<ApplyActionResult> {
+  const { data } = await api.post<ApplyActionResult>("/coaching/apply/action", { finding_key: findingKey });
+  return data;
+}
+
+// Overlay ativo do coach no treino. exercise_id null = banner global (deload).
+export type WorkoutOverlay = {
+  source: "technique" | "action";
+  id: number;
+  kind: "technique" | "progression" | "exercise_swap" | "deload";
+  exercise_id: number | null;
+  exercise_name: string | null;
+  title: string;
+  detail: string;
+  payload: { new_weight?: number | null; to_exercise_id?: number; to_name?: string };
+};
+
+/** Overlays ativos pro lado do treino (técnica + progressão/troca por exercício
+ * + deload global). A prévia e a execução leem e mostram no exercício certo. */
+export async function listWorkoutOverlays(): Promise<WorkoutOverlay[]> {
+  const { data } = await api.get<WorkoutOverlay[]>("/coaching/overlays");
+  return data;
+}
+
+/** Desfaz uma ação de treino (progressão/troca/deload). */
+export async function revertCoachAction(id: number): Promise<{ removed: boolean; message: string }> {
+  const { data } = await api.post(`/coaching/actions/${id}/revert`, {});
+  return data;
+}
+
+// Item do painel unificado "O que o coach mudou".
+export type CoachingChange = {
+  source: "diet" | "technique" | "action";
+  ref_id: number;
+  icon: string;
+  title: string;
+  subtitle: string;
+  created_at: string;
+  active: boolean;
+};
+
+/** Feed unificado de tudo que o coach mudou (dieta + técnica + ações). */
+export async function listCoachingChanges(): Promise<CoachingChange[]> {
+  const { data } = await api.get<CoachingChange[]>("/coaching/changes");
+  return data;
+}
+
+export type CheckinLine = { key: string; status: "good" | "warn" | "info"; text: string };
+export type CoachingCheckin = {
+  window_days: number;
+  goal: string | null;
+  has_data: boolean;
+  headline: string;
+  wins_count: number;
+  lines: CheckinLine[];
+};
+
+/** Check-in semanal proativo — o resumo de segunda-feira do coach (7 dias). */
+export async function getCoachingCheckin(): Promise<CoachingCheckin> {
+  const { data } = await api.get<CoachingCheckin>("/coaching/checkin");
+  return data;
+}
+
+// Bloco de ritmo do objetivo (3 opções + peso-alvo). Usado no card de objetivo
+// e agora também na tela de cálculo automático.
+export type GoalPaceBlock = NonNullable<CoachingMetrics["pace"]>;
+
+/** Só o bloco de ritmo do objetivo (sem rodar a análise inteira). Pro; null
+ * quando o ritmo não se aplica (manutenção/performance). */
+export async function getGoalPace(): Promise<GoalPaceBlock | null> {
+  const { data } = await api.get<GoalPaceBlock | null>("/coaching/pace");
+  return data;
+}
+
+/** Troca o ritmo do objetivo (devagar/normal/rápido) e recalcula a meta. */
+export async function setGoalPace(pace: "slow" | "normal" | "fast"): Promise<{ ok: boolean; message: string }> {
+  const { data } = await api.post("/coaching/pace", { pace });
+  return data;
+}
+
+/** Define/limpa o peso-alvo (referência pra estimativa de tempo). */
+export async function setTargetWeight(kg: number | null): Promise<{ ok: boolean; message: string }> {
+  const { data } = await api.post("/coaching/target-weight", { target_weight_kg: kg });
+  return data;
+}
+
+// Atualização PARCIAL das preferências de treino — só os campos enviados mudam.
+export type TrainingPrefsUpdate = {
+  weak_points?: string[] | null;
+  session_length?: SessionLength | null;
+  training_days_per_week?: number | null;
+  wants_cardio?: boolean | null;
+  periodization?: Periodization;
+};
+
+/** Define preferências de treino do Coaching (ponto fraco, tempo, cardio,
+ * periodização). É o que o coach usa pra montar/ajustar treino e escolher
+ * técnica/deload. */
+export async function setTrainingPrefs(prefs: TrainingPrefsUpdate): Promise<{ ok: boolean; message: string }> {
+  const { data } = await api.post("/coaching/training-prefs", prefs);
+  return data;
+}
+
+export type BuildWorkoutResult = {
+  method_name: string;
+  author: string;
+  days: number;
+  routines: string[];
+  total_exercises: number;
+  weak_point_label: string | null;
+  session_range: string | null;
+  cardio_note: string | null;
+  technique_note: string | null;
+  periodization_label: string;
+  message: string;
+};
+
+/** Monta o treino completo da pessoa pelas prefs ("Como eu monto seu treino") e
+ * salva como as rotinas ativas (arquiva as antigas). O coach montando o treino. */
+export async function buildCoachWorkout(): Promise<BuildWorkoutResult> {
+  const { data } = await api.post<BuildWorkoutResult>("/coaching/build-workout", {});
+  return data;
+}
+
+export type CoachChatMessage = { role: "user" | "assistant"; content: string };
+
+// Algo que o coach FEZ no turno (montou treino, trocou exercício, gerou dieta).
+export type CoachChatAction = {
+  type: "workout_built" | "exercise_swapped" | "diet_generated" | string;
+  summary: string;
+};
+
+export type CoachChatResult = {
+  answer: string;
+  used_ai: boolean;
+  // Ações executadas neste turno (o coach agindo sobre treino/dieta).
+  actions: CoachChatAction[];
+  // Cardápio gerado (quando a pessoa pediu dieta) — pra ver, salvar PDF, aplicar.
+  diet_plan: DietPlan | null;
+};
+
+/** Pergunte ao coach. Ele responde ancorado na análise E pode AGIR quando você
+ * pede (montar/trocar treino, trocar exercício, gerar dieta). */
+export async function coachChat(
+  question: string,
+  history: CoachChatMessage[]
+): Promise<CoachChatResult> {
+  const { data } = await api.post<CoachChatResult>("/coaching/chat", { question, history });
+  return data;
+}

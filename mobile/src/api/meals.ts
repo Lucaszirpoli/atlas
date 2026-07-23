@@ -12,6 +12,8 @@ export type MealLogItem = {
   food_id: number;
   food: Food;
   quantity_g: number;
+  unit_label: string | null;
+  unit_amount: number | null;
   kcal: number;
   protein_g: number;
   carbs_g: number;
@@ -19,6 +21,16 @@ export type MealLogItem = {
   fiber_g: number | null;
   sodium_mg: number | null;
   sugar_g: number | null;
+};
+
+/** Item na hora de registrar. As gramas são obrigatórias (base do cálculo);
+ * unit_label/unit_amount são opcionais e só vão quando a pessoa escolheu por
+ * medida caseira ("2 fatias"), pra guardar/mostrar assim. */
+export type MealItemInput = {
+  food_id: number;
+  quantity_g: number;
+  unit_label?: string | null;
+  unit_amount?: number | null;
 };
 
 export type MealLog = {
@@ -31,7 +43,13 @@ export type MealLog = {
 export type SavedMeal = {
   id: number;
   name: string;
-  items: { food_id: number; food: Food; quantity_g: number }[];
+  items: {
+    food_id: number;
+    food: Food;
+    quantity_g: number;
+    unit_label: string | null;
+    unit_amount: number | null;
+  }[];
 };
 
 export async function listMealCategories(): Promise<MealCategory[]> {
@@ -56,7 +74,7 @@ export async function deleteMealCategory(id: number): Promise<void> {
 export async function logMeal(payload: {
   meal_category_id: number;
   logged_at: string;
-  items: { food_id: number; quantity_g: number }[];
+  items: MealItemInput[];
 }): Promise<MealLog> {
   const { data } = await api.post<MealLog>("/meals", payload);
   return data;
@@ -93,7 +111,7 @@ export async function listSavedMeals(): Promise<SavedMeal[]> {
 
 export async function createSavedMeal(payload: {
   name: string;
-  items: { food_id: number; quantity_g: number }[];
+  items: MealItemInput[];
 }): Promise<SavedMeal> {
   const { data } = await api.post<SavedMeal>("/meals/saved", payload);
   return data;

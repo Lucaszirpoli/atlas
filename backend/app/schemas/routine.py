@@ -12,6 +12,9 @@ class RoutineExerciseCreate(BaseModel):
     target_reps_max: int | None = Field(default=None, ge=1, le=100)
     rest_seconds: int = Field(default=90, ge=0, le=900)
     notes: str | None = None
+    # Intenção de cada série de trabalho ("to_failure" | "feeder" | null).
+    # Rotina montada à mão não define nada (fica tudo null) — só o coach opina.
+    set_intents: list[str | None] = Field(default_factory=list)
 
 
 class RoutineExerciseRead(BaseModel):
@@ -26,6 +29,7 @@ class RoutineExerciseRead(BaseModel):
     target_reps_max: int | None
     rest_seconds: int
     notes: str | None
+    set_intents: list[str | None] = []
 
 
 class RoutineCreate(BaseModel):

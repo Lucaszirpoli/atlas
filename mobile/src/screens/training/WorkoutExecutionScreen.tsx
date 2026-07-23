@@ -4,6 +4,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { listWorkoutOverlays, type WorkoutOverlay } from "../../api/coaching";
+import { CoachOverlayBlock, DeloadBanner } from "../../components/CoachOverlay";
 import { getRoutine, type Routine } from "../../api/routines";
 import {
   completeWorkoutSession,
@@ -93,6 +95,7 @@ export function WorkoutExecutionScreen() {
   };
 
   const [routine, setRoutine] = useState<Routine | null>(null);
+  const [overlays, setOverlays] = useState<WorkoutOverlay[]>([]);
   // Todos os exercícios ficam na tela ao mesmo tempo (rolagem única) — sem
   // "próximo exercício". setsByExercise[i] são as séries do exercício i.
   const [setsByExercise, setSetsByExercise] = useState<SetRow[][]>([]);
@@ -110,11 +113,16 @@ export function WorkoutExecutionScreen() {
         const pre = prefill.find((p) => p.exercise_id === re.exercise_id);
         return Array.from({ length: re.target_sets }, (_, i) => {
           const previous = pre?.sets[i];
+          // Intenção que o coach definiu ao montar a rotina (até a falha /
+          // feeder) já vem pré-marcada no badge — a pessoa não precisa lembrar
+          // de marcar na hora. Rotina sem intenção (manual) cai no normal.
+          const intent = re.set_intents?.[i];
+          const setType: SetType = intent === "to_failure" || intent === "feeder" ? intent : "straight";
           return {
             weight: previous ? String(previous.weight_kg) : "",
             reps: previous ? String(previous.reps) : "",
             completed: false,
-            setType: "straight" as SetType,
+            setType,
             rpe: "",
             rir: "",
             showMore: false,
@@ -126,9 +134,18 @@ export function WorkoutExecutionScreen() {
     });
   }, [routineId]);
 
+  // Overlays do coach (técnica / subir carga / troca / deload) — some silencioso.
+  // Só leitura aqui; remover/desfazer é no Coaching ou na prévia.
+  useEffect(() => {
+    listWorkoutOverlays().then(setOverlays).catch(() => {});
+  }, []);
+
   if (!routine || setsByExercise.length === 0) {
     return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
   }
+
+  const deload = overlays.find((o) => o.kind === "deload");
+  const overlaysFor = (exerciseId: number) => overlays.filter((o) => o.exercise_id === exerciseId);
 
   const totalSets = setsByExercise.reduce((sum, rows) => sum + rows.length, 0);
   const totalCompleted = setsByExercise.reduce((sum, rows) => sum + rows.filter((s) => s.completed).length, 0);
@@ -248,6 +265,8 @@ export function WorkoutExecutionScreen() {
           </Text>
         </View>
 
+        {deload ? <DeloadBanner overlay={deload} /> : null}
+
         {routine.exercises.map((routineExercise, exerciseIndex) => {
           const sets = setsByExercise[exerciseIndex];
           const completedCount = sets.filter((s) => s.completed).length;
@@ -271,6 +290,12 @@ export function WorkoutExecutionScreen() {
                 <Meta icon="timer-outline" text={`${routineExercise.rest_seconds}s descanso`} />
                 <Meta icon="checkmark-done" text={`${completedCount}/${sets.length} feitas`} />
               </View>
+
+              {/* Overlays do coach neste exercício (técnica / subir carga /
+                  troca). Só leitura aqui — desfazer é no Coaching ou na prévia. */}
+              {overlaysFor(routineExercise.exercise_id).map((o) => (
+                <CoachOverlayBlock key={`${o.source}:${o.id}`} overlay={o} />
+              ))}
 
               {/* Cabeçalho da tabela — Série / Anterior / kg / Reps / ✓ */}
               <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.sm, marginBottom: spacing.xs }}>
@@ -509,7 +534,7 @@ function SetInput({
       ) : null}
       <TextInput
         value={value}
-        onChangeText={(v) => onChangeText(v.replace(/[^0-9.]/g, ""))}
+        onChangeText={(v) => onChangeText(v.replace(/,/g, ".").replace(/[^0-9.]/g, ""))}
         keyboardType="decimal-pad"
         style={[
           compact ? type.body : type.h2,

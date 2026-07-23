@@ -400,6 +400,8 @@ export function EvolutionScreen() {
       style={{ backgroundColor: colors.bg }}
       contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl + insets.bottom }}
       showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
     >
       {/* Seletor múltiplo — liga quantas métricas quiser, todas aparecem
           sobrepostas no mesmo gráfico embaixo. "Todos" liga/desliga tudo

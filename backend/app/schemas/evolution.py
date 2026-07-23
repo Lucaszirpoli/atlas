@@ -34,11 +34,17 @@ class ExerciseProgressionResponse(BaseModel):
 class NutritionDay(BaseModel):
     date: str
     kcal: int
+    protein_g: float = 0
+    carbs_g: float = 0
+    fat_g: float = 0
 
 
 class NutritionHistoryResponse(BaseModel):
     days: list[NutritionDay]
     goal_kcal: float | None
+    goal_protein_g: float | None = None
+    goal_carbs_g: float | None = None
+    goal_fat_g: float | None = None
     days_logged: int
     days_within_goal: int
 

@@ -43,7 +43,7 @@ const initialForm: FormState = {
 
 const TOTAL_STEPS = 7;
 
-export function OnboardingScreen() {
+export function OnboardingScreen({ onDone }: { onDone?: () => void } = {}) {
   const { colors, type, spacing } = useTheme();
   const { refreshUser } = useAuth();
   const insets = useSafeAreaInsets();
@@ -99,10 +99,12 @@ export function OnboardingScreen() {
       setIsSubmitting(false);
       return;
     }
-    // Já cadastrado. O refresh é o que troca a tela pro app; se a rede cair
-    // aqui, a próxima abertura resolve — nunca mandar refazer.
+    // Já cadastrado. O refresh atualiza o usuário; quando usado como gate, é o
+    // que troca pro app. Como fluxo sob demanda (definir objetivo no Coaching),
+    // o onDone recarrega a tela que chamou.
     await refreshUser().catch(() => {});
     setIsSubmitting(false);
+    onDone?.();
   }
 
   function goNext() {
@@ -238,7 +240,13 @@ export function OnboardingScreen() {
           />
         </View>
       </View>
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, flexGrow: 1 }}>{renderStep()}</ScrollView>
+      <ScrollView
+        contentContainerStyle={{ padding: spacing.lg, flexGrow: 1 }}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
+        {renderStep()}
+      </ScrollView>
       <View style={{ flexDirection: "row", gap: spacing.sm, padding: spacing.lg, paddingBottom: spacing.lg + insets.bottom }}>
         {step > 0 ? (
           <View style={{ flex: 1 }}>
@@ -300,7 +308,7 @@ function NumberInput({
     <View style={{ flexDirection: "row", alignItems: "center" }}>
       <TextInput
         value={value}
-        onChangeText={(v) => onChangeText(v.replace(/[^0-9.]/g, ""))}
+        onChangeText={(v) => onChangeText(v.replace(/,/g, ".").replace(/[^0-9.]/g, ""))}
         keyboardType="decimal-pad"
         autoFocus
         style={[

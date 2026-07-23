@@ -170,7 +170,7 @@ export function QuickLogScreen() {
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
                         <TextInput
                           value={it.grams}
-                          onChangeText={(v) => updateItem(idx, { grams: v.replace(/[^0-9.]/g, "") })}
+                          onChangeText={(v) => updateItem(idx, { grams: v.replace(/,/g, ".").replace(/[^0-9.]/g, "") })}
                           keyboardType="decimal-pad"
                           style={[
                             type.body,
