@@ -26,10 +26,23 @@ export type WorkoutSession = {
   completed_at: string | null;
 };
 
+export type WarmupFeederSet = {
+  kind: "warmup" | "feeder";
+  label: string;
+  /** null na primeira vez no exercício (sem carga pra basear o peso). */
+  weight_kg: number | null;
+  reps_min: number;
+  reps_max: number;
+};
+
 export type ExercisePrefill = {
   exercise_id: number;
   last_performed_at: string | null;
   sets: { set_number: number; weight_kg: number; reps: number }[];
+  /** RIR sugerido pra série de trabalho reta (a até-a-falha já é sempre RIR 0). */
+  suggested_rir: number;
+  /** Aquecimento + feeder — sempre as duas séries; sem histórico, weight_kg vem null. */
+  warmup_feeder: WarmupFeederSet[];
 };
 
 export type WorkoutSetLog = {

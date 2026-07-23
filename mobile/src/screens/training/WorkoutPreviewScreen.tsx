@@ -19,9 +19,17 @@ import {
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { ExerciseThumb } from "../../components/ExerciseThumb";
+import { HelpDot } from "../../components/HelpDot";
 import { useActiveWorkout } from "../../context/ActiveWorkoutContext";
 import { useTheme } from "../../theme/ThemeProvider";
+import { fmtKg } from "../../utils/format";
 import { mensagemDeErro } from "../../utils/errorMessage";
+
+const SET_TYPES_HELP_TEXT =
+  "Aquecimento: a primeira série, bem leve (25% da carga de trabalho), só pra preparar a articulação e o músculo — não é série de esforço.\n\n" +
+  "Feeder: a segunda série, um pouco mais pesada (50% da carga de trabalho), pra chegar afiado na primeira série de trabalho — também não conta como esforço.\n\n" +
+  "Série de trabalho: as séries que valem, com o peso e reps que você realmente treina.\n\n" +
+  "Até a falha: a última série de trabalho, levada até não dar mais pra fazer outra rep com boa forma (RIR 0).";
 
 /** Prévia do treino: mostra os exercícios, séries e os pesos/reps da última vez
  * — igual à tela de execução, mas SEM iniciar a sessão. A pessoa vê o que vai
@@ -126,22 +134,55 @@ export function WorkoutPreviewScreen() {
               <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
                 <ExerciseThumb url={ex.exercise.video_url} size={44} />
                 <View style={{ flex: 1, marginLeft: spacing.sm }}>
-                  <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>{ex.exercise.name}</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>{ex.exercise.name}</Text>
+                    <HelpDot title="Tipos de série" text={SET_TYPES_HELP_TEXT} />
+                  </View>
                   <Text style={[type.caption, { color: colors.textSecondary }]}>
                     {ex.target_sets} séries × {reps} reps · descanso {ex.rest_seconds}s
                   </Text>
                 </View>
               </View>
 
-              {/* Linhas das séries com o peso/reps da última vez (read-only). A
-                  intenção que o coach definiu (até a falha / feeder) aparece do
-                  lado do número — aquecimento não entra aqui, só séries de
-                  trabalho (regra 5). */}
+              {/* Rampa de preparação (aquecimento + feeder), calculada da carga
+                  real de trabalho — não conta como série de trabalho, só
+                  aparece quando já existe histórico pra basear o peso. */}
+              {(pf?.warmup_feeder ?? []).map((w, wi) => (
+                <View
+                  key={`prep-${wi}`}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    paddingVertical: 6,
+                    borderTopWidth: wi === 0 ? 0 : 1,
+                    borderTopColor: colors.border,
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Text style={[type.caption, { color: colors.textSecondary }]}>
+                      {w.reps_min}-{w.reps_max} reps
+                    </Text>
+                    <View style={{ backgroundColor: colors.textSecondary + "22", borderRadius: radius.pill, paddingVertical: 2, paddingHorizontal: 8 }}>
+                      <Text style={[type.caption, { color: colors.textSecondary, fontWeight: "700", fontSize: 10 }]}>{w.label}</Text>
+                    </View>
+                  </View>
+                  <Text style={[type.body, { color: colors.textSecondary, fontWeight: "600" }]}>
+                    {fmtKg(w.weight_kg)} kg
+                  </Text>
+                </View>
+              ))}
+
+              {/* Linhas das séries de trabalho com o peso/reps da última vez
+                  (read-only) — toda série diz o que é: até a falha (RIR 0) ou
+                  série de trabalho normal, com o RIR sugerido pro momento do
+                  ciclo. */}
               {Array.from({ length: ex.target_sets }).map((_, i) => {
                 const last = pf?.sets?.[i];
                 const intent = ex.set_intents?.[i];
-                const intentLabel = intent === "to_failure" ? "Até a falha" : intent === "feeder" ? "Feeder" : null;
-                const intentColor = intent === "to_failure" ? colors.danger : colors.warning;
+                const isFailure = intent === "to_failure";
+                const intentLabel = isFailure ? "Até a falha · RIR 0" : `Série de trabalho · RIR ${pf?.suggested_rir ?? 2}`;
+                const intentColor = isFailure ? colors.danger : colors.textSecondary;
                 return (
                   <View
                     key={i}
@@ -150,20 +191,18 @@ export function WorkoutPreviewScreen() {
                       alignItems: "center",
                       justifyContent: "space-between",
                       paddingVertical: 6,
-                      borderTopWidth: i === 0 ? 0 : 1,
+                      borderTopWidth: i === 0 && !(pf?.warmup_feeder ?? []).length ? 0 : 1,
                       borderTopColor: colors.border,
                     }}
                   >
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                       <Text style={[type.caption, { color: colors.textSecondary }]}>Série {i + 1}</Text>
-                      {intentLabel ? (
-                        <View style={{ backgroundColor: intentColor + "22", borderRadius: radius.pill, paddingVertical: 2, paddingHorizontal: 8 }}>
-                          <Text style={[type.caption, { color: intentColor, fontWeight: "700", fontSize: 10 }]}>{intentLabel}</Text>
-                        </View>
-                      ) : null}
+                      <View style={{ backgroundColor: intentColor + "22", borderRadius: radius.pill, paddingVertical: 2, paddingHorizontal: 8 }}>
+                        <Text style={[type.caption, { color: intentColor, fontWeight: "700", fontSize: 10 }]}>{intentLabel}</Text>
+                      </View>
                     </View>
                     <Text style={[type.body, { color: colors.textPrimary, fontWeight: "600" }]}>
-                      {last ? `${last.weight_kg} kg × ${last.reps}` : "—"}
+                      {last ? `${fmtKg(last.weight_kg)} kg × ${last.reps}` : "—"}
                     </Text>
                   </View>
                 );

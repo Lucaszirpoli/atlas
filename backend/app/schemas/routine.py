@@ -12,7 +12,8 @@ class RoutineExerciseCreate(BaseModel):
     target_reps_max: int | None = Field(default=None, ge=1, le=100)
     rest_seconds: int = Field(default=90, ge=0, le=900)
     notes: str | None = None
-    # Intenção de cada série de trabalho ("to_failure" | "feeder" | null).
+    # Intenção de cada série de trabalho ("to_failure" | null). Aquecimento/
+    # feeder não entram aqui (rampa calculada, não intenção de posição).
     # Rotina montada à mão não define nada (fica tudo null) — só o coach opina.
     set_intents: list[str | None] = Field(default_factory=list)
 

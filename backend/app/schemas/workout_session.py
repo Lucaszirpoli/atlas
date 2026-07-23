@@ -16,10 +16,25 @@ class LastSetPerformance(BaseModel):
     reps: int
 
 
+class WarmupFeederSet(BaseModel):
+    kind: str  # "warmup" | "feeder"
+    label: str
+    weight_kg: float | None  # None na primeira vez no exercício (sem carga pra basear)
+    reps_min: int
+    reps_max: int
+
+
 class ExercisePrefill(BaseModel):
     exercise_id: int
     last_performed_at: datetime | None
     sets: list[LastSetPerformance]
+    # RIR sugerido pra série de trabalho reta (a até-a-falha é sempre RIR 0,
+    # já sabida por set_intents — isso aqui só vale pras séries sem intenção).
+    suggested_rir: int = 2
+    # Aquecimento + feeder — sempre as duas séries. Peso calculado a partir da
+    # carga de trabalho real (a última pegada); na primeira vez no exercício
+    # ainda não há carga pra basear, então weight_kg vem None em cada uma.
+    warmup_feeder: list[WarmupFeederSet] = Field(default_factory=list)
 
 
 class WorkoutSessionRead(BaseModel):

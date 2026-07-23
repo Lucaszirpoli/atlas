@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session, selectinload
 from datetime import datetime, timedelta, timezone
 
 from app.coaching import chat as coach_chat
+from app.coaching import cycle_state
 from app.coaching import overlays as coach_overlays
 from app.coaching import training_brain
 from app.coaching import workout_builder
@@ -74,37 +75,11 @@ def _janela_do_objetivo(db: Session, user_id: int, now: datetime) -> int:
 
 
 def _periodization_of(user: User) -> str:
-    profile = getattr(user, "profile", None)
-    return training_brain.valid_periodization(getattr(profile, "periodization", None))
+    return cycle_state.periodization_of(user)
 
 
 def _weeks_accumulating(db: Session, user_id: int, now: datetime) -> float | None:
-    """Semanas acumulando desde o começo do ciclo atual — o marco é o ÚLTIMO
-    deload aplicado (mesmo já terminado); sem deload, o início do objetivo
-    (baseline). É o que diz à ondulatória quando fechar o mesociclo e ao seletor
-    de técnica se estamos em acumulação ou intensificação. None = sem referência."""
-    # Só deloads que valeram (não revertidos) marcam o começo de um ciclo — um
-    # deload desfeito pelo usuário NÃO reseta o mesociclo.
-    ref = _aware(db.execute(
-        select(CoachingAction.created_at)
-        .where(
-            CoachingAction.user_id == user_id,
-            CoachingAction.kind == "deload",
-            CoachingAction.reverted_at.is_(None),
-        )
-        .order_by(CoachingAction.created_at.desc(), CoachingAction.id.desc())
-        .limit(1)
-    ).scalar_one_or_none())
-    if ref is None:
-        ref = _aware(db.execute(
-            select(CoachingBaseline.effective_from)
-            .where(CoachingBaseline.user_id == user_id)
-            .order_by(CoachingBaseline.created_at.desc(), CoachingBaseline.id.desc())
-            .limit(1)
-        ).scalar_one_or_none())
-    if ref is None:
-        return None
-    return max(0.0, (now - ref).days / 7.0)
+    return cycle_state.weeks_accumulating(db, user_id, now)
 
 
 def _cycle_context(db: Session, user: User, now: datetime) -> dict:

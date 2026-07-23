@@ -1,10 +1,12 @@
 """Ferramentas do chat do Coaching — é o que dá ao coach PODER sobre treino e
-dieta (montar/trocar treino, trocar um exercício, gerar dieta personalizada).
+dieta (montar/trocar treino, trocar um exercício, registrar refeição, gerar
+dieta personalizada).
 
 Cada ferramenta chama código DETERMINÍSTICO já existente (o mesmo motor do resto
 do app), então a IA decide QUANDO agir, mas o efeito é seguro e limitado: montar
-treino arquiva o anterior (não deleta, regra 4), trocar exercício é um overlay
-reversível, e gerar dieta não grava nada até a pessoa salvar/aplicar.
+treino arquiva o anterior (não deleta, regra 4), trocar exercício edita a rotina
+de verdade (definitivo, não é sugestão), registrar refeição grava direto no
+diário, e gerar dieta não grava nada até a pessoa salvar/aplicar.
 """
 
 from __future__ import annotations
@@ -15,14 +17,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.diet_engine import MacroTarget, build_diet_plan
-from app.coaching import overlays as coach_overlays
 from app.coaching import workout_builder
 from app.core.text import normalize_search_text
 from app.models.coaching_action import CoachingAction
 from app.models.exercise import Exercise, quality_order
+from app.models.food import Food
+from app.models.meal import MealCategory
 from app.models.routine import Routine, RoutineExercise
 from app.models.user import User
-from app.services import goal_service
+from app.schemas.meal import MealLogCreate, MealLogItemCreate
+from app.services import food_service, goal_service, meal_service
 from app.services.nutrition_calc import compute_auto_goal
 
 # Esquemas das ferramentas (formato tool-use da Anthropic).
@@ -51,6 +55,35 @@ TOOLS = [
                 "motivo": {"type": "string", "description": "Por que trocar (opcional)."},
             },
             "required": ["exercicio"],
+        },
+    },
+    {
+        "name": "registrar_refeicao",
+        "description": (
+            "Registra no diário de dieta os alimentos que a pessoa contou que comeu (ex.: 'comi 2 ovos e "
+            "uma banana no café da manhã'). Grava DIRETO, sem precisar de confirmação extra — use sempre "
+            "que ela contar o que comeu, mesmo sem pedir explicitamente pra registrar."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "categoria": {
+                    "type": "string",
+                    "description": "Refeição: café da manhã, lanche da manhã, almoço, lanche da tarde, janta/jantar ou ceia.",
+                },
+                "itens": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "nome": {"type": "string", "description": "Nome do alimento."},
+                            "quantidade_g": {"type": "number", "description": "Quantidade em gramas (estime se a pessoa não disser)."},
+                        },
+                        "required": ["nome", "quantidade_g"],
+                    },
+                },
+            },
+            "required": ["categoria", "itens"],
         },
     },
     {
@@ -126,6 +159,29 @@ def _alternative(db: Session, orig: Exercise) -> Exercise | None:
     return next((e for e in pool if e.equipment != orig.equipment), pool[0])
 
 
+def _resolve_meal_category(db: Session, user_id: int, categoria: str) -> MealCategory:
+    cats = meal_service.ensure_default_categories(db, user_id)
+    alvo = normalize_search_text(categoria)
+    exato = next((c for c in cats if normalize_search_text(c.name) == alvo), None)
+    if exato:
+        return exato
+    contendo = next(
+        (c for c in cats if alvo and (alvo in normalize_search_text(c.name) or normalize_search_text(c.name) in alvo)),
+        None,
+    )
+    return contendo or cats[0]
+
+
+def _resolve_food(db: Session, nome: str) -> Food | None:
+    foods = food_service.search_local(db, nome, limit=5)
+    if not foods:
+        try:
+            foods = food_service.search_brands_live(db, nome, limit=5)
+        except Exception:
+            foods = []
+    return foods[0] if foods else None
+
+
 def run_tool(db: Session, user: User, name: str, tool_input: dict) -> dict:
     """Executa uma ferramenta. Devolve {for_model, action?, diet_plan?}:
     for_model = resultado conciso pro modelo continuar; action = confirmação pro
@@ -150,25 +206,69 @@ def run_tool(db: Session, user: User, name: str, tool_input: dict) -> dict:
         alt = _alternative(db, orig)
         if alt is None:
             return {"for_model": {"erro": f"Não achei uma variação boa pra trocar {orig.name}."}}
-        # Idempotente: não duplica um swap ativo pro mesmo exercício.
-        existing = db.execute(select(CoachingAction).where(
-            CoachingAction.user_id == user.id, CoachingAction.kind == "exercise_swap",
-            CoachingAction.exercise_id == orig.id, CoachingAction.reverted_at.is_(None),
-        )).scalar_one_or_none()
-        if existing is None:
-            # Coerência: trocar o exercício apaga uma progressão ativa nele —
-            # "suba a carga do supino" não convive com "troque o supino".
-            coach_overlays.revert_conflicting_action(db, user.id, orig.id, "exercise_swap")
-            title = f"Trocar · {orig.name} → {alt.name}"
-            detail = (f"Troque {orig.name} por {alt.name} — mesmo músculo, estímulo novo. Você pediu no chat "
-                      "com o coach. Aparece no seu treino e dá pra desfazer.")
-            db.add(CoachingAction(user_id=user.id, kind="exercise_swap", finding_key=f"chat_swap:{orig.id}",
-                                  exercise_id=orig.id, exercise_name=orig.name, title=title, detail=detail,
-                                  payload={"to_exercise_id": alt.id, "to_name": alt.name}))
-            db.commit()
+        # Edição DEFINITIVA na rotina — não é overlay/sugestão: muda o
+        # exercise_id de verdade em toda ocorrência ativa (a rotina pode ter o
+        # mesmo exercício em mais de um dia).
+        rows = list(db.execute(
+            select(RoutineExercise)
+            .join(Routine, Routine.id == RoutineExercise.routine_id)
+            .where(
+                Routine.user_id == user.id, Routine.is_archived.is_(False),
+                RoutineExercise.exercise_id == orig.id,
+            )
+        ).scalars())
+        if not rows:
+            return {"for_model": {"erro": f"'{orig.name}' não está em nenhuma rotina ativa."}}
+        for row in rows:
+            row.exercise_id = alt.id
+        # O exercício antigo saiu da rotina — qualquer overlay dele (progressão
+        # de carga, sugestão de troca anterior) não faz mais sentido.
+        now = datetime.now(timezone.utc)
+        for act in db.execute(select(CoachingAction).where(
+            CoachingAction.user_id == user.id, CoachingAction.exercise_id == orig.id,
+            CoachingAction.kind.in_(("progression", "exercise_swap")), CoachingAction.reverted_at.is_(None),
+        )).scalars():
+            act.reverted_at = now
+        db.commit()
         return {
             "for_model": {"ok": True, "de": orig.name, "para": alt.name},
             "action": {"type": "exercise_swapped", "summary": f"Troquei {orig.name} por {alt.name} no seu treino."},
+        }
+
+    if name == "registrar_refeicao":
+        categoria = (tool_input.get("categoria") or "").strip()
+        itens = tool_input.get("itens")
+        if not isinstance(itens, list) or not itens:
+            return {"for_model": {"erro": "Nenhum alimento informado."}}
+        category = _resolve_meal_category(db, user.id, categoria or "Almoço")
+        resolved: list[tuple[Food, float]] = []
+        nao_achados: list[str] = []
+        for item in itens:
+            nome_item = str((item or {}).get("nome") or "").strip()
+            try:
+                qtd = float((item or {}).get("quantidade_g"))
+            except (TypeError, ValueError):
+                qtd = None
+            if not nome_item or not qtd or qtd <= 0:
+                continue
+            food = _resolve_food(db, nome_item)
+            if food is None:
+                nao_achados.append(nome_item)
+                continue
+            resolved.append((food, qtd))
+        if not resolved:
+            return {"for_model": {"erro": f"Não achei nenhum dos alimentos citados na base: {', '.join(nao_achados) or 'lista vazia'}."}}
+        payload = MealLogCreate(
+            meal_category_id=category.id,
+            logged_at=datetime.now(timezone.utc),
+            items=[MealLogItemCreate(food_id=f.id, quantity_g=q) for f, q in resolved],
+        )
+        meal_service.log_meal(db, user.id, payload)
+        nomes = ", ".join(f"{f.name} ({q:g}g)" for f, q in resolved)
+        aviso = f" Não achei: {', '.join(nao_achados)}." if nao_achados else ""
+        return {
+            "for_model": {"ok": True, "categoria": category.name, "itens": nomes, "nao_encontrados": nao_achados},
+            "action": {"type": "meal_logged", "summary": f"Registrei em {category.name}: {nomes}.{aviso}"},
         }
 
     if name == "gerar_dieta":
