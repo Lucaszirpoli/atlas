@@ -11,9 +11,10 @@ export type RoutineExercise = {
   target_reps_max: number | null;
   rest_seconds: number;
   notes: string | null;
-  // Intenção de cada série de trabalho: "to_failure" | "feeder" | null (série
-  // reta normal, sem opinião). Tamanho = target_sets. O coach preenche isto ao
-  // montar a rotina; rotina manual vem com tudo null.
+  // Intenção de cada série de trabalho: "to_failure" | null (série reta
+  // normal, sem opinião). Tamanho = target_sets. Aquecimento/feeder não
+  // entram aqui — vêm calculados em ExercisePrefill.warmup_feeder. O coach
+  // preenche isto ao montar a rotina; rotina manual vem com tudo null.
   set_intents: (string | null)[];
 };
 

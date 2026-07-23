@@ -47,10 +47,11 @@ class RoutineExercise(Base):
     rest_seconds: Mapped[int] = mapped_column(Integer, default=90)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # Intenção de cada série de TRABALHO (aquecimento não entra aqui, regra 5):
-    # lista do tamanho de target_sets, cada posição "to_failure" | "feeder" |
-    # null (sem intenção especial = série reta normal). O montador do coach
-    # preenche isto; rotina feita manualmente fica com tudo null (sem opinião).
+    # Intenção de cada série de TRABALHO (aquecimento/feeder não entram aqui —
+    # são rampa calculada da carga real, ver training_brain.warmup_feeder_ramp_for):
+    # lista do tamanho de target_sets, cada posição "to_failure" | null (sem
+    # intenção especial = série reta normal). O montador do coach preenche
+    # isto; rotina feita manualmente fica com tudo null (sem opinião).
     set_intents: Mapped[list] = mapped_column(JSON, default=list)
 
     routine: Mapped["Routine"] = relationship(back_populates="exercises")

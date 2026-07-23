@@ -1,8 +1,10 @@
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.coaching import cycle_state, training_brain
 from app.models.exercise import Exercise
 from app.models.routine import Routine
+from app.models.user import User
 from app.models.workout_session import WorkoutSession, WorkoutSetLog
 
 
@@ -40,14 +42,24 @@ def get_last_performance(db: Session, user_id: int, exercise_id: int) -> dict | 
     }
 
 
-def build_prefill(db: Session, user_id: int, routine: Routine) -> list[dict]:
+def build_prefill(db: Session, user: User, routine: Routine) -> list[dict]:
+    period = cycle_state.current_period(db, user.id)
+    suggested_rir = training_brain.suggested_work_rir(period)
     prefill = []
     for routine_exercise in routine.exercises:
-        performance = get_last_performance(db, user_id, routine_exercise.exercise_id)
-        prefill.append(
-            performance
-            or {"exercise_id": routine_exercise.exercise_id, "last_performed_at": None, "sets": []}
-        )
+        performance = get_last_performance(db, user.id, routine_exercise.exercise_id)
+        item = performance or {
+            "exercise_id": routine_exercise.exercise_id, "last_performed_at": None, "sets": [],
+        }
+        item = dict(item)
+        item["suggested_rir"] = suggested_rir
+        # Aquecimento/feeder se baseiam na carga MAIS PESADA das séries de
+        # trabalho/falha da última vez (o "mais pesado entre os dois"). Sem
+        # histórico o peso vem None (warmup_feeder_ramp_for já trata isso) —
+        # as duas séries continuam aparecendo, só sem peso sugerido.
+        base_weight = max((s["weight_kg"] for s in item["sets"]), default=None)
+        item["warmup_feeder"] = training_brain.warmup_feeder_ramp_for(base_weight)
+        prefill.append(item)
     return prefill
 
 

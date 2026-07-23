@@ -1309,9 +1309,15 @@ function ChangesPanel({
   const { colors, type, spacing, radius } = useTheme();
   const [revertingKey, setRevertingKey] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [showAllActive, setShowAllActive] = useState(false);
 
   const ativos = changes.filter((c) => c.active);
   const historico = changes.filter((c) => !c.active);
+  // Teto nos ATIVOS também — quando o coach mexe em vários exercícios a lista
+  // enchia a tela. Mostra os 3 mais recentes; o resto colapsa atrás de "ver mais".
+  const ACTIVE_CAP = 3;
+  const ativosVisiveis = showAllActive ? ativos : ativos.slice(0, ACTIVE_CAP);
+  const ativosOcultos = ativos.length - ativosVisiveis.length;
 
   async function desfazer(c: CoachingChange) {
     const k = `${c.source}:${c.ref_id}`;
@@ -1402,12 +1408,24 @@ function ChangesPanel({
       </Text>
       <Card style={{ marginBottom: spacing.md, paddingTop: 0 }}>
         {ativos.length > 0 ? (
-          ativos.map((c) => <Linha key={`${c.source}:${c.ref_id}`} c={c} />)
+          ativosVisiveis.map((c) => <Linha key={`${c.source}:${c.ref_id}`} c={c} />)
         ) : (
           <Text style={[type.bodySmall, { color: colors.textSecondary, paddingVertical: spacing.sm }]}>
             Nenhuma mudança ativa agora.
           </Text>
         )}
+
+        {ativosOcultos > 0 || (showAllActive && ativos.length > ACTIVE_CAP) ? (
+          <TouchableOpacity
+            onPress={() => setShowAllActive((v) => !v)}
+            style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border }}
+          >
+            <Ionicons name={showAllActive ? "chevron-up" : "chevron-down"} size={15} color={colors.textSecondary} />
+            <Text style={[type.caption, { color: colors.textSecondary, fontWeight: "600" }]}>
+              {showAllActive ? "Mostrar menos" : `Ver mais (${ativosOcultos})`}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
 
         {historico.length > 0 ? (
           <>

@@ -15,6 +15,7 @@ class ExerciseRead(BaseModel):
     execution_text: str | None
     video_url: str | None
     is_custom: bool
+    is_compound: bool
 
 
 class ExerciseCreate(BaseModel):

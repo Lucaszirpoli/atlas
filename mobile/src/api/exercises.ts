@@ -39,6 +39,7 @@ export type Exercise = {
   execution_text: string | null;
   video_url: string | null;
   is_custom: boolean;
+  is_compound: boolean;
 };
 
 export async function listExercises(filters?: {

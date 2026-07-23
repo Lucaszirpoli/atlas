@@ -216,9 +216,10 @@ TECHNIQUES: dict[str, tuple[str, str]] = {
     ),
     "muscle_round": (
         "Muscle round",
-        "Escolha uma carga de ~8RM e fragmente em 6 blocos de 4 reps, com 15–20s de descanso entre eles "
-        "(16–24 reps no total). Um muscle round completo já conta como 2 séries no log book; se fechar as "
-        "24 reps, conta como 3 camadas de volume. Mesma ideia do myo-reps: volume eficiente em pouco tempo.",
+        "Escolha uma carga de ~8RM e fragmente em blocos de 4 reps, com 15–20s de descanso entre eles — "
+        "no mínimo 4 blocos, no máximo 6 (16–24 reps no total). Um muscle round completo conta como 2 "
+        "séries no log book, sempre (não triplica mesmo fechando os 6 blocos). Mesma ideia do myo-reps: "
+        "volume eficiente em pouco tempo.",
     ),
     "back_off": (
         "Back-off",
@@ -305,21 +306,20 @@ def cardio_warning(goal: str | None, wants_cardio: bool | None) -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# INTENÇÃO DE SÉRIE — quando o coach monta a rotina, marca quais séries de
-# TRABALHO são "até a falha" ou "feeder" (aquecimento não entra aqui — regra 5,
-# ele nem conta como target_sets). Bate com o SetType do app (FEEDER,
-# TO_FAILURE); as demais posições ficam None = série reta normal, sem opinião.
+# INTENÇÃO DE SÉRIE — quando o coach monta a rotina, marca qual das séries de
+# TRABALHO é "até a falha" (bate com o SetType TO_FAILURE do app). Aquecimento
+# e feeder NÃO entram aqui: são preparação (rampa calculada a partir da carga
+# de trabalho, regra 5), aparecem ANTES da Série 1 e não consomem um slot de
+# target_sets — ver warmup_feeder_ramp_for. As demais posições ficam None =
+# série reta normal, sem opinião.
 # ---------------------------------------------------------------------------
 def set_intents_for(target_sets: int, is_compound: bool) -> list[str | None]:
-    """Lista do tamanho de target_sets com a intenção de cada série:
+    """Lista do tamanho de target_sets com a intenção de cada série de trabalho:
 
     - 1 série só (HIT-style: DC/Mentzer) -> ela é a série, então "até a falha"
       — é literalmente a filosofia dessas metodologias.
-    - Composto com 3+ séries -> a 1ª vira "feeder" (ramp-up antes da carga de
-      trabalho de verdade) e a última "até a falha"; as do meio ficam normais.
-    - Composto com 2 séries, ou qualquer isolado -> sem feeder (o fôlego extra
-      de ramp-up rende menos num isolado ou numa dupla de séries); só a
-      última série vira "até a falha".
+    - 2+ séries -> só a última vira "até a falha"; as demais ficam normais
+      (série reta, RIR sugerido por suggested_work_rir).
     """
     if target_sets <= 0:
         return []
@@ -327,6 +327,42 @@ def set_intents_for(target_sets: int, is_compound: bool) -> list[str | None]:
         return ["to_failure"]
     intents: list[str | None] = [None] * target_sets
     intents[-1] = "to_failure"
-    if is_compound and target_sets >= 3:
-        intents[0] = "feeder"
     return intents
+
+
+def suggested_work_rir(period: str) -> int:
+    """RIR sugerido pra uma série de trabalho reta (nem aquecimento/feeder,
+    nem até a falha — essa fica sempre em RIR 0). Faixa recomendada é 2 a 0
+    RIR; só na fase de intensificação (perto do topo do mesociclo/MVR) vale
+    puxar pra 1 a 0 RIR — falha total só quando a pessoa realmente não
+    conseguir mais uma repetição, não um chute."""
+    return 1 if period == "intensificacao" else 2
+
+
+# ---------------------------------------------------------------------------
+# AQUECIMENTO + FEEDER — TODO exercício tem exatamente uma série de aquecimento
+# e uma de feeder na frente, calculadas a partir da carga REAL (a mais pesada
+# entre as séries de trabalho/falha do exercício, não um chute). Nenhuma das
+# duas conta no número de séries do título/log book — é preparação, não
+# trabalho (regra 5). O feeder NÃO é rampa: é uma única série a 50%.
+# ---------------------------------------------------------------------------
+def warmup_feeder_ramp_for(base_weight_kg: float | None) -> list[dict]:
+    """Aquecimento (25% da carga, 12–15 reps) + feeder (50% da carga, 8–10
+    reps). `base_weight_kg` é a carga mais pesada entre as séries de trabalho
+    e de falha do exercício (o mais pesado entre os dois). Sempre retorna as
+    duas séries — na primeira vez no exercício ainda não há carga pra basear
+    o peso, então weight_kg vem None e a pessoa preenche na mão (mesmo padrão
+    das séries de trabalho sem histórico)."""
+
+    def _round(kg: float) -> float | None:
+        return round(kg * 2) / 2 if kg else None  # incremento de 0.5kg
+
+    base = base_weight_kg if base_weight_kg and base_weight_kg > 0 else None
+    return [
+        {"kind": "warmup", "label": "Aquecimento",
+         "weight_kg": _round(base * 0.25) if base else None,
+         "reps_min": 12, "reps_max": 15},
+        {"kind": "feeder", "label": "Feeder",
+         "weight_kg": _round(base * 0.50) if base else None,
+         "reps_min": 8, "reps_max": 10},
+    ]

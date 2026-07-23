@@ -43,7 +43,7 @@ def start_session(
 ) -> dict:
     routine = db.execute(
         select(Routine)
-        .options(selectinload(Routine.exercises))
+        .options(selectinload(Routine.exercises).selectinload(RoutineExercise.exercise))
         .where(Routine.id == payload.routine_id)
     ).scalar_one_or_none()
     if routine is None or routine.user_id != current_user.id:
@@ -58,7 +58,7 @@ def start_session(
     db.commit()
     db.refresh(session)
 
-    prefill = workout_service.build_prefill(db, current_user.id, routine)
+    prefill = workout_service.build_prefill(db, current_user, routine)
     return {"session": session, "prefill": prefill}
 
 
@@ -72,12 +72,12 @@ def preview_session(
     sessão — pra pessoa ver o treino antes de começar. Mesmo prefill do start."""
     routine = db.execute(
         select(Routine)
-        .options(selectinload(Routine.exercises))
+        .options(selectinload(Routine.exercises).selectinload(RoutineExercise.exercise))
         .where(Routine.id == routine_id)
     ).scalar_one_or_none()
     if routine is None or routine.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rotina não encontrada")
-    return workout_service.build_prefill(db, current_user.id, routine)
+    return workout_service.build_prefill(db, current_user, routine)
 
 
 @router.post("/{session_id}/sets", response_model=WorkoutSetLogRead, status_code=status.HTTP_201_CREATED)

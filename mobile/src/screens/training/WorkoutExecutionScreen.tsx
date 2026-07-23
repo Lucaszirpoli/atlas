@@ -25,12 +25,13 @@ import { OptionButton } from "../../components/OptionButton";
 import { RestTimerOverlay } from "../../components/RestTimerOverlay";
 import { useActiveWorkout } from "../../context/ActiveWorkoutContext";
 import { useTheme } from "../../theme/ThemeProvider";
+import { fmtKg } from "../../utils/format";
 import { mensagemDeErro } from "../../utils/errorMessage";
 
 const SET_TYPE_LABELS: Record<SetType, string> = {
   warmup: "Aquecimento",
   straight: "Válida",
-  feeder: "Preparatória",
+  feeder: "Feeder",
   drop_set: "Drop-set",
   rest_pause: "Rest-pause",
   myo_reps: "Myo-reps",
@@ -46,6 +47,12 @@ const SET_TYPE_LABELS: Record<SetType, string> = {
   circuit: "Circuito",
 };
 const SET_TYPE_ORDER = Object.keys(SET_TYPE_LABELS) as SetType[];
+
+const SET_LETTER_HELP_TEXT =
+  "A = Aquecimento: a primeira série, bem leve (25% da carga de trabalho), só pra preparar a articulação e o músculo — não é série de esforço.\n\n" +
+  "P = Feeder: a segunda série, um pouco mais pesada (50% da carga de trabalho), pra chegar afiado na primeira série de trabalho — também não conta como esforço.\n\n" +
+  "1, 2, 3... = Séries de trabalho: as séries que valem, com o peso e reps que você realmente treina.\n\n" +
+  "F = Até a falha: a última série de trabalho, levada até não dar mais pra fazer outra rep com boa forma (RIR 0).";
 
 // Badge da série: toque cicla entre os 4 tipos "rápidos" (normal → A → P → F).
 // As demais técnicas (drop-set, superset etc.) continuam só no "mais opções".
@@ -111,24 +118,39 @@ export function WorkoutExecutionScreen() {
       setRoutine(r);
       const initial = r.exercises.map((re) => {
         const pre = prefill.find((p) => p.exercise_id === re.exercise_id);
-        return Array.from({ length: re.target_sets }, (_, i) => {
+        // Rampa de aquecimento/feeder (calculada da carga real de trabalho)
+        // vem ANTES das séries de trabalho — já com peso/reps sugeridos,
+        // editáveis como qualquer série.
+        const prepRows: SetRow[] = (pre?.warmup_feeder ?? []).map((w) => ({
+          weight: w.weight_kg != null ? String(w.weight_kg) : "",
+          reps: String(w.reps_max),
+          completed: false,
+          setType: w.kind,
+          rpe: "",
+          rir: "",
+          showMore: false,
+        }));
+        const workRows: SetRow[] = Array.from({ length: re.target_sets }, (_, i) => {
           const previous = pre?.sets[i];
-          // Intenção que o coach definiu ao montar a rotina (até a falha /
-          // feeder) já vem pré-marcada no badge — a pessoa não precisa lembrar
-          // de marcar na hora. Rotina sem intenção (manual) cai no normal.
+          // Intenção que o coach definiu ao montar a rotina (até a falha) já
+          // vem pré-marcada no badge, com o RIR sugerido pro momento do ciclo
+          // — a pessoa não precisa lembrar de marcar na hora. Rotina sem
+          // intenção (manual) cai no normal.
           const intent = re.set_intents?.[i];
-          const setType: SetType = intent === "to_failure" || intent === "feeder" ? intent : "straight";
+          const isFailure = intent === "to_failure";
           return {
-            weight: previous ? String(previous.weight_kg) : "",
+            // Arredonda pro input não mostrar ruído de float (54.599999… → "54.6").
+            weight: previous ? String(Math.round(previous.weight_kg * 10) / 10) : "",
             reps: previous ? String(previous.reps) : "",
             completed: false,
-            setType,
+            setType: (isFailure ? "to_failure" : "straight") as SetType,
             rpe: "",
-            rir: "",
+            rir: isFailure ? "0" : String(pre?.suggested_rir ?? 2),
             showMore: false,
             previous,
           };
         });
+        return [...prepRows, ...workRows];
       });
       setSetsByExercise(initial);
     });
@@ -299,7 +321,10 @@ export function WorkoutExecutionScreen() {
 
               {/* Cabeçalho da tabela — Série / Anterior / kg / Reps / ✓ */}
               <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.sm, marginBottom: spacing.xs }}>
-                <Text style={[type.caption, { color: colors.textSecondary, width: 34 }]}>Série</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", width: 34 }}>
+                  <Text style={[type.caption, { color: colors.textSecondary }]}>Série</Text>
+                  <HelpDot title="Tipos de série" text={SET_LETTER_HELP_TEXT} />
+                </View>
                 <Text style={[type.caption, { color: colors.textSecondary, flex: 1 }]}>Anterior</Text>
                 <Text style={[type.caption, { color: colors.textSecondary, width: 56, textAlign: "center" }]}>kg</Text>
                 <Text style={[type.caption, { color: colors.textSecondary, width: 56, textAlign: "center", marginLeft: 6 }]}>Reps</Text>
@@ -308,6 +333,9 @@ export function WorkoutExecutionScreen() {
 
               {sets.map((row, idx) => {
                 const letter = QUICK_TYPE_LETTER[row.setType];
+                // Numeração só conta séries de TRABALHO (sem letra) — a rampa
+                // de aquecimento/feeder na frente não desloca "Série 1, 2, 3...".
+                const workNumber = sets.slice(0, idx).filter((r) => !QUICK_TYPE_LETTER[r.setType]).length + 1;
                 const badgeColor = row.setType === "to_failure" ? colors.danger : letter ? colors.warning : undefined;
                 return (
                   <Card
@@ -336,14 +364,14 @@ export function WorkoutExecutionScreen() {
                           }}
                         >
                           <Text style={[type.caption, { color: badgeColor ?? colors.textSecondary, fontWeight: "800" }]}>
-                            {letter ?? idx + 1}
+                            {letter ?? workNumber}
                           </Text>
                         </TouchableOpacity>
 
                         <View style={{ flex: 1, marginLeft: spacing.sm }}>
                           {row.previous ? (
                             <Text style={[type.caption, { color: colors.textSecondary }]} numberOfLines={1}>
-                              {row.previous.weight_kg}kg × {row.previous.reps}
+                              {fmtKg(row.previous.weight_kg)}kg × {row.previous.reps}
                             </Text>
                           ) : (
                             <Text style={[type.caption, { color: colors.textSecondary }]}>primeira vez</Text>
@@ -376,33 +404,36 @@ export function WorkoutExecutionScreen() {
 
                       {/* RIR — sempre visível, quick-select (espec.: exceção à
                           regra de "esconder atrás de mais opções", decidida
-                          com o usuário). */}
-                      <View style={{ flexDirection: "row", alignItems: "center", marginTop: spacing.xs, marginLeft: 38 }}>
-                        <Text style={[type.caption, { color: colors.textSecondary, marginRight: 6 }]}>RIR</Text>
-                        {RIR_OPTIONS.map((n) => {
-                          const selected = row.rir === String(n);
-                          return (
-                            <TouchableOpacity
-                              key={n}
-                              onPress={() => updateSet(exerciseIndex, idx, { rir: selected ? "" : String(n) })}
-                              hitSlop={4}
-                              style={{
-                                width: 32,
-                                height: 32,
-                                borderRadius: 16,
-                                marginRight: 8,
-                                alignItems: "center",
-                                justifyContent: "center",
-                                backgroundColor: selected ? colors.primary : colors.surfaceAlt,
-                              }}
-                            >
-                              <Text style={[type.caption, { color: selected ? colors.textOnPrimary : colors.textSecondary, fontWeight: "700", fontSize: 11 }]}>
-                                {n}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
+                          com o usuário). Não se aplica a aquecimento/feeder —
+                          são séries submáximas de preparação, não de esforço. */}
+                      {row.setType !== "warmup" && row.setType !== "feeder" ? (
+                        <View style={{ flexDirection: "row", alignItems: "center", marginTop: spacing.xs, marginLeft: 38 }}>
+                          <Text style={[type.caption, { color: colors.textSecondary, marginRight: 6 }]}>RIR</Text>
+                          {RIR_OPTIONS.map((n) => {
+                            const selected = row.rir === String(n);
+                            return (
+                              <TouchableOpacity
+                                key={n}
+                                onPress={() => updateSet(exerciseIndex, idx, { rir: selected ? "" : String(n) })}
+                                hitSlop={4}
+                                style={{
+                                  width: 32,
+                                  height: 32,
+                                  borderRadius: 16,
+                                  marginRight: 8,
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  backgroundColor: selected ? colors.primary : colors.surfaceAlt,
+                                }}
+                              >
+                                <Text style={[type.caption, { color: selected ? colors.textOnPrimary : colors.textSecondary, fontWeight: "700", fontSize: 11 }]}>
+                                  {n}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      ) : null}
 
                       <TouchableOpacity
                         onPress={() => updateSet(exerciseIndex, idx, { showMore: !row.showMore })}

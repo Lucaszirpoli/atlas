@@ -19,7 +19,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "versionCode": 26
+      "versionCode": 28
     },
     "web": {
       "favicon": "./assets/favicon.png"
