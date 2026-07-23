@@ -82,9 +82,15 @@ def _weeks_accumulating(db: Session, user_id: int, now: datetime) -> float | Non
     deload aplicado (mesmo já terminado); sem deload, o início do objetivo
     (baseline). É o que diz à ondulatória quando fechar o mesociclo e ao seletor
     de técnica se estamos em acumulação ou intensificação. None = sem referência."""
+    # Só deloads que valeram (não revertidos) marcam o começo de um ciclo — um
+    # deload desfeito pelo usuário NÃO reseta o mesociclo.
     ref = _aware(db.execute(
         select(CoachingAction.created_at)
-        .where(CoachingAction.user_id == user_id, CoachingAction.kind == "deload")
+        .where(
+            CoachingAction.user_id == user_id,
+            CoachingAction.kind == "deload",
+            CoachingAction.reverted_at.is_(None),
+        )
         .order_by(CoachingAction.created_at.desc(), CoachingAction.id.desc())
         .limit(1)
     ).scalar_one_or_none())
