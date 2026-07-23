@@ -1,4 +1,5 @@
 import { api } from "./client";
+import type { DietPlan } from "./ai";
 
 export type CoachingSeverity = "info" | "attention" | "action";
 
@@ -338,14 +339,27 @@ export async function buildCoachWorkout(): Promise<BuildWorkoutResult> {
 
 export type CoachChatMessage = { role: "user" | "assistant"; content: string };
 
-/** Pergunte ao coach. A IA responde ancorada na análise determinística. */
+// Algo que o coach FEZ no turno (montou treino, trocou exercício, gerou dieta).
+export type CoachChatAction = {
+  type: "workout_built" | "exercise_swapped" | "diet_generated" | string;
+  summary: string;
+};
+
+export type CoachChatResult = {
+  answer: string;
+  used_ai: boolean;
+  // Ações executadas neste turno (o coach agindo sobre treino/dieta).
+  actions: CoachChatAction[];
+  // Cardápio gerado (quando a pessoa pediu dieta) — pra ver, salvar PDF, aplicar.
+  diet_plan: DietPlan | null;
+};
+
+/** Pergunte ao coach. Ele responde ancorado na análise E pode AGIR quando você
+ * pede (montar/trocar treino, trocar exercício, gerar dieta). */
 export async function coachChat(
   question: string,
   history: CoachChatMessage[]
-): Promise<{ answer: string; used_ai: boolean }> {
-  const { data } = await api.post<{ answer: string; used_ai: boolean }>("/coaching/chat", {
-    question,
-    history,
-  });
+): Promise<CoachChatResult> {
+  const { data } = await api.post<CoachChatResult>("/coaching/chat", { question, history });
   return data;
 }

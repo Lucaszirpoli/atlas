@@ -92,9 +92,21 @@ class CoachChatRequest(BaseModel):
     history: list[CoachChatMessage] = Field(default_factory=list)
 
 
+class CoachChatAction(BaseModel):
+    """Algo que o coach FEZ no turno (montou treino, trocou exercício, gerou
+    dieta) — o app mostra como confirmação."""
+
+    type: str  # workout_built | exercise_swapped | diet_generated
+    summary: str
+
+
 class CoachChatResponse(BaseModel):
     answer: str
     used_ai: bool
+    # Ações executadas neste turno (o coach agindo sobre treino/dieta).
+    actions: list[CoachChatAction] = []
+    # Cardápio gerado (quando a pessoa pediu dieta) — pra ver, salvar PDF, aplicar.
+    diet_plan: dict[str, Any] | None = None
 
 
 class CoachingInsight(BaseModel):

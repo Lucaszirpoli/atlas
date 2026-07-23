@@ -2,13 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-import re
 from datetime import datetime, timedelta, timezone
 
-from app.ai.methods import get_method, recommend_method_for_profile
-from app.ai.methods_engine import build_plan
 from app.coaching import chat as coach_chat
 from app.coaching import training_brain
+from app.coaching import workout_builder
 from app.coaching.engine import analyze, progression_step, weekly_checkin
 from app.coaching.metrics import compute_metrics
 from app.core.db import get_db
@@ -18,8 +16,8 @@ from app.models.coaching_action import CoachingAction
 from app.models.coaching_adjustment import CoachingAdjustment
 from app.models.coaching_baseline import CoachingBaseline
 from app.models.coaching_technique_cue import CoachingTechniqueCue
-from app.models.exercise import Exercise, MuscleGroup, quality_order
-from app.models.routine import Routine, RoutineExercise
+from app.models.exercise import Exercise, quality_order
+from app.models.routine import Routine
 from app.models.user import Plan, User
 from app.models.user_profile import GoalPace
 from app.services import goal_service
@@ -408,24 +406,6 @@ def set_training_prefs(
     return SetGoalConfigResult(ok=True, message="Preferências de treino atualizadas — o coach já monta e ajusta com elas.")
 
 
-def _first_int(s, default: int) -> int:
-    m = re.search(r"\d+", str(s or ""))
-    return int(m.group()) if m else default
-
-
-def _parse_reps(s) -> tuple[int, int]:
-    """Faixa de reps a partir do texto do método ('8-12', '6', '15-30+')."""
-    txt = str(s or "")
-    m = re.search(r"(\d+)\s*[-–]\s*(\d+)", txt)
-    if m:
-        return int(m.group(1)), int(m.group(2))
-    one = re.search(r"\d+", txt)
-    if one:
-        n = int(one.group())
-        return n, n
-    return 8, 12
-
-
 @router.post("/build-workout", response_model=BuildWorkoutResult)
 def build_workout(
     current_user: User = Depends(get_current_user),
@@ -437,72 +417,10 @@ def build_workout(
     não deleta, regra 4). A troca de UM exercício específico continua nas barras;
     aqui é o treino inteiro. Determinístico (sem IA). Pro."""
     _require_pro(current_user)
-    profile = getattr(current_user, "profile", None)
-    if profile is None:
-        raise HTTPException(status_code=400, detail="Complete seu perfil primeiro.")
-
-    exp = profile.experience_level.value if profile.experience_level else None
-    goal = profile.goal.value if profile.goal else None
-    days = len(profile.available_days) if profile.available_days else None
-    method = get_method(recommend_method_for_profile(exp, goal, days))
-    if method is None:
-        raise HTTPException(status_code=500, detail="Não achei um método pra montar agora.")
-
-    weak = training_brain.valid_weak_point(profile.weak_point)
-    wp: MuscleGroup | None = None
-    if weak:
-        try:
-            wp = MuscleGroup(weak)
-        except ValueError:
-            wp = None
-    session_target = training_brain.session_exercise_target(profile.session_length)
-    plan = build_plan(db, method, available_days=days, weak_point=wp, session_target=session_target)
-
-    # Substitui o treino ativo: arquiva o que existe (não deleta) e cria o novo.
-    for r in db.execute(
-        select(Routine).where(Routine.user_id == current_user.id, Routine.is_archived.is_(False))
-    ).scalars():
-        r.is_archived = True
-    db.flush()
-
-    nomes: list[str] = []
-    total_ex = 0
-    for s in plan.sessions:
-        slots = [sl for sl in s.slots if sl.exercise_id is not None]
-        if not slots:
-            continue
-        nome = f"{method.name} — {s.day_label} · {s.focus}"[:100]
-        routine = Routine(user_id=current_user.id, name=nome)
-        db.add(routine)
-        db.flush()
-        for i, sl in enumerate(slots):
-            rmin, rmax = _parse_reps(sl.reps)
-            db.add(RoutineExercise(
-                routine_id=routine.id, exercise_id=sl.exercise_id, sort_order=i,
-                target_sets=max(1, min(_first_int(sl.sets, 3), 8)),
-                target_reps_min=max(1, rmin), target_reps_max=max(rmin, rmax),
-                rest_seconds=max(0, _first_int(sl.rest_seconds, 90)),
-                notes=sl.note,
-            ))
-            total_ex += 1
-        nomes.append(nome)
-    db.commit()
-
-    weak_label = training_brain.WEAK_POINT_LABEL.get(weak) if weak else None
-    cardio_note = None
-    if profile.wants_cardio:
-        cardio_note = ("Como você quer cardio, inclua 2× de 20–30 min na semana (esteira, bike ou elíptico), "
-                       "de preferência longe dos dias pesados de perna.")
-    else:
-        cardio_note = training_brain.cardio_warning(goal, profile.wants_cardio)
-    period_label = training_brain.PERIODIZATION_LABEL.get(_periodization_of(current_user), "Automática")
-    return BuildWorkoutResult(
-        method_name=method.name, author=method.author, days=len(nomes),
-        routines=nomes, total_exercises=total_ex, weak_point_label=weak_label,
-        session_range=training_brain.session_range_text(profile.session_length),
-        cardio_note=cardio_note, periodization_label=period_label,
-        message=f"Pronto — montei {len(nomes)} treino(s) no método {method.name}. Já estão nas suas rotinas, é só treinar.",
-    )
+    try:
+        return BuildWorkoutResult(**workout_builder.build_and_save(db, current_user))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/apply/transition", response_model=ApplyDietResult)
@@ -984,8 +902,8 @@ def coach_chat_turn(
     _require_pro(current_user)
     analysis = analyze(compute_metrics(db, current_user.id))
     history = [{"role": h.role, "content": h.content} for h in payload.history]
-    texto, used_ai = coach_chat.answer(analysis, payload.question, history)
-    return CoachChatResponse(answer=texto, used_ai=used_ai)
+    result = coach_chat.answer(db, current_user, analysis, payload.question, history)
+    return CoachChatResponse(**result)
 
 
 @router.get("/adjustments", response_model=list[CoachingAdjustmentRead])
