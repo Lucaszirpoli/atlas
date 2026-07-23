@@ -10,13 +10,14 @@ ativas — arquivando as antigas (nunca deleta, regra 4).
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.methods import coach_custom_spec
 from app.ai.methods_engine import build_plan
-from app.coaching import training_brain
+from app.coaching import cycle_state, training_brain, volume_landmarks
 from app.models.coaching_technique_cue import CoachingTechniqueCue
 from app.models.exercise import MuscleGroup
 from app.models.routine import Routine, RoutineExercise
@@ -73,6 +74,31 @@ def build_and_save(db: Session, user: User) -> dict:
     session_target = training_brain.session_exercise_target(profile.session_length)
     plan = build_plan(db, method, available_days=days, weak_points=wps, session_target=session_target)
 
+    # Volume semanal por grupo muscular (regra: sobe/desce série por músculo
+    # dentro da faixa MEV-MRV baseada em evidência, ajustada por nível — nunca
+    # um número fixo igual pra todo exercício, regra 6/espec. Parte 3 item 3).
+    # Conta quantas vagas da semana treinam cada músculo como principal, pega
+    # o alvo semanal do músculo e distribui entre essas vagas.
+    weeks_acc = cycle_state.weeks_accumulating(db, user.id, datetime.now(timezone.utc))
+    slot_count_by_muscle: dict[str, int] = {}
+    for s in plan.sessions:
+        for sl in s.slots:
+            if sl.exercise_id is None:
+                continue
+            slot_count_by_muscle[sl.muscle_group] = slot_count_by_muscle.get(sl.muscle_group, 0) + 1
+
+    base_by_muscle: dict[str, int] = {}
+    remainder_by_muscle: dict[str, int] = {}
+    for muscle_value, n_slots in slot_count_by_muscle.items():
+        try:
+            muscle = MuscleGroup(muscle_value)
+        except ValueError:
+            base_by_muscle[muscle_value], remainder_by_muscle[muscle_value] = 3, 0
+            continue
+        weekly = volume_landmarks.weekly_target_sets(muscle, exp, weeks_acc)
+        base_by_muscle[muscle_value] = weekly // n_slots
+        remainder_by_muscle[muscle_value] = weekly % n_slots
+
     # Substitui o treino ativo: arquiva o que existe (não deleta) e cria o novo.
     for r in db.execute(
         select(Routine).where(Routine.user_id == user.id, Routine.is_archived.is_(False))
@@ -104,7 +130,13 @@ def build_and_save(db: Session, user: User) -> dict:
         db.flush()
         for i, sl in enumerate(slots):
             rmin, rmax = _parse_reps(sl.reps)
-            sets = max(1, min(_first_int(sl.sets, 3), 8))
+            # Base do volume-alvo do músculo dividido pelas vagas; o resto da
+            # divisão vai pro(s) primeiro(s) exercício(s) do músculo na semana.
+            sets = base_by_muscle.get(sl.muscle_group, 3)
+            if remainder_by_muscle.get(sl.muscle_group, 0) > 0:
+                sets += 1
+                remainder_by_muscle[sl.muscle_group] -= 1
+            sets = max(volume_landmarks.PER_EXERCISE_MIN, min(sets, volume_landmarks.PER_EXERCISE_MAX))
             db.add(RoutineExercise(
                 routine_id=routine.id, exercise_id=sl.exercise_id, sort_order=i,
                 target_sets=sets,
