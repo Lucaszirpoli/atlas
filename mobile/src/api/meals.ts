@@ -100,6 +100,17 @@ export async function listMealsForDay(isoDate: string): Promise<MealLog[]> {
   return data;
 }
 
+/** Corrige a quantidade de um item já registrado (toque no alimento no diário).
+ * O backend reconta kcal/macros. As gramas são a base; unit_label/unit_amount
+ * acompanham quando a pessoa editou por medida caseira. */
+export async function updateMealItem(
+  itemId: number,
+  payload: { quantity_g: number; unit_label?: string | null; unit_amount?: number | null }
+): Promise<MealLogItem> {
+  const { data } = await api.patch<MealLogItem>(`/meals/items/${itemId}`, payload);
+  return data;
+}
+
 export async function deleteMealLog(id: number): Promise<void> {
   await api.delete(`/meals/${id}`);
 }

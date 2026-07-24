@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
-import { FlatList, Image, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, FlatList, Image, Pressable, Text, TextInput, View } from "react-native";
 
 import { resolveMediaUrl } from "../../api/client";
 import {
@@ -53,6 +53,7 @@ export function ExercisePickerScreen() {
   const [query, setQuery] = useState("");
   const [muscle, setMuscle] = useState<MuscleGroup | null>(null);
   const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [searching, setSearching] = useState(false);
 
   // Cadastro de exercício próprio. O endpoint POST /exercises existia desde o
   // começo e o app nunca chamou — não havia como cadastrar o aparelho da sua
@@ -91,14 +92,27 @@ export function ExercisePickerScreen() {
     }
   }
 
+  // Busca ao vivo (estilo Google): a cada tecla, com um pequeno debounce, os
+  // resultados vão aparecendo. `cancelled` evita que uma busca antiga
+  // sobrescreva uma mais nova ao digitar rápido.
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      listExercises({
-        ...(query.trim() ? { q: query.trim() } : {}),
-        ...(muscle ? { muscle_group: muscle } : {}),
-      }).then(setExercises);
-    }, 250);
-    return () => clearTimeout(timeout);
+    let cancelled = false;
+    setSearching(true);
+    const timeout = setTimeout(async () => {
+      try {
+        const data = await listExercises({
+          ...(query.trim() ? { q: query.trim() } : {}),
+          ...(muscle ? { muscle_group: muscle } : {}),
+        });
+        if (!cancelled) setExercises(data);
+      } finally {
+        if (!cancelled) setSearching(false);
+      }
+    }, 180);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
   }, [query, muscle]);
 
   if (creating) {
@@ -214,8 +228,10 @@ export function ExercisePickerScreen() {
           onChangeText={setQuery}
           placeholder="Buscar exercício..."
           placeholderTextColor={colors.textSecondary}
+          autoCorrect={false}
           style={[type.body, { flex: 1, color: colors.textPrimary, marginLeft: spacing.sm, height: "100%" }]}
         />
+        {searching ? <ActivityIndicator size="small" color={colors.primary} /> : null}
       </View>
 
       {/* Filtro por grupo muscular. contentContainerStyle centra os chips no

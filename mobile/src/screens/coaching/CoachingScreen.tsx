@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Modal, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import {
@@ -23,21 +23,44 @@ import {
   type CoachingInsight,
   type TrainingPrefs,
 } from "../../api/coaching";
+import { getConsistency, type ConsistencyHistory } from "../../api/evolution";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { InfoDialog } from "../../components/InfoDialog";
-import { PaceSelector } from "../../components/PaceSelector";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
-import {
-  DEFAULT_CARD_ORDER,
-  loadCardOrder,
-  saveCardOrder,
-  type CoachingCardId,
-} from "../../utils/coachingCardOrder";
 import { mensagemDeErro } from "../../utils/errorMessage";
 import { OnboardingScreen } from "../onboarding/OnboardingScreen";
 import { CoachingProgress } from "./CoachingProgress";
+
+// Seções do "mapa" do hub — cada uma abre uma tela de detalhe com o conteúdo
+// denso que antes ficava tudo empilhado.
+type CoachingSectionId = "objetivo" | "treino" | "dieta" | "progresso";
+
+// Níveis de constância (gamificação). O nível vem do RECORDE de dias seguidos
+// (só cresce), então "subir de nível" é permanente; o streak atual é a chama viva.
+const CONSISTENCY_LEVELS = [
+  { min: 0, label: "Começando" },
+  { min: 3, label: "Aquecendo" },
+  { min: 7, label: "Constante" },
+  { min: 14, label: "Disciplinado" },
+  { min: 21, label: "Focado" },
+  { min: 30, label: "Imparável" },
+];
+
+function nivelConstancia(bestStreak: number): {
+  level: number;
+  label: string;
+  floor: number;
+  next: number | null;
+} {
+  let idx = 0;
+  for (let i = 0; i < CONSISTENCY_LEVELS.length; i++) {
+    if (bestStreak >= CONSISTENCY_LEVELS[i].min) idx = i;
+  }
+  const next = idx < CONSISTENCY_LEVELS.length - 1 ? CONSISTENCY_LEVELS[idx + 1].min : null;
+  return { level: idx, label: CONSISTENCY_LEVELS[idx].label, floor: CONSISTENCY_LEVELS[idx].min, next };
+}
 
 // Objetivo -> rótulo + ícone (a análise gira em torno do objetivo atual).
 const GOAL_META: Record<string, { label: string; icon: keyof typeof Ionicons.glyphMap }> = {
@@ -86,29 +109,36 @@ export function CoachingScreen() {
   const [analysis, setAnalysis] = useState<CoachingAnalysis | null>(null);
   const [changes, setChanges] = useState<CoachingChange[]>([]);
   const [checkin, setCheckin] = useState<CoachingCheckin | null>(null);
-  // Gráfico aberto num modal (null = fechado). Não fica mais fixo na tela — abre
-  // ao tocar o ícone de gráfico de uma barra e fecha no "x".
-  const [chartOpen, setChartOpen] = useState<CoachingChart | null>(null);
-  // Janela dos gráficos = a mesma da análise (o período do objetivo).
-  const chartWindow = analysis?.window_days ?? 56;
+  const [consistency, setConsistency] = useState<ConsistencyHistory | null>(null);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState(false);
   const [aviso, setAviso] = useState<{ title: string; message: string } | null>(null);
-  const scrollRef = useRef<ScrollView>(null);
 
-  const onOpenChart = useCallback((chart: CoachingChart) => setChartOpen(chart), []);
+  // Navegação do hub: null = o mapa; senão a seção aberta. O gráfico não é mais
+  // um modal — vira a seção "progresso", com a métrica pré-selecionada.
+  const [section, setSection] = useState<CoachingSectionId | null>(null);
+  const [progressMetric, setProgressMetric] = useState<CoachingChart>("peso");
+
+  const openChart = useCallback((chart: CoachingChart) => {
+    setProgressMetric(chart);
+    setSection("progresso");
+  }, []);
 
   const load = useCallback(() => {
     if (!isPro) return Promise.resolve();
     setErro(false);
     return Promise.all([
       getCoachingAnalysis().then(setAnalysis),
-      // Check-in e "o que o coach mudou" são secundários — não derrubam a tela.
+      // Check-in, "o que o coach mudou" e constância são secundários — não
+      // derrubam a tela se falharem.
       getCoachingCheckin()
         .then(setCheckin)
         .catch(() => {}),
       listCoachingChanges()
         .then(setChanges)
+        .catch(() => {}),
+      getConsistency()
+        .then(setConsistency)
         .catch(() => {}),
     ])
       .catch(() => setErro(true))
@@ -144,15 +174,11 @@ export function CoachingScreen() {
 
   return (
     <ScrollView
-      ref={scrollRef}
       style={{ flex: 1, backgroundColor: colors.bg }}
       contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
     >
-      {/* Análise do período do objetivo — o motor determinístico (sem IA) lê os
-          registros. O card de objetivo + o check-in da semana vêm dentro dela,
-          pra ficarem harmônicos (sem o antigo seletor de 4/8/12 semanas). */}
       {loading && !analysis ? (
         <Card style={{ marginBottom: spacing.md, alignItems: "center", paddingVertical: spacing.xl }}>
           <ActivityIndicator color={colors.primary} />
@@ -168,17 +194,35 @@ export function CoachingScreen() {
           </Text>
         </Card>
       ) : analysis ? (
-        <AnalysisView
-          analysis={analysis}
-          checkin={checkin}
-          changes={changes}
-          onApplied={onApplied}
-          onOpenChart={onOpenChart}
-          onOpenObjective={() => navigation.navigate("NutritionModule", { screen: "GoalSettings" })}
-          onOpenTraining={() => navigation.navigate("TrainingModule")}
-          onAskCoach={() => navigation.navigate("CoachChat")}
-          onOpenMeasurements={() => navigation.navigate("NutritionModule", { screen: "Measurements" })}
-        />
+        section == null ? (
+          <CoachingHub
+            analysis={analysis}
+            checkin={checkin}
+            changes={changes}
+            consistency={consistency}
+            onApplied={onApplied}
+            onOpenChart={openChart}
+            onOpenSection={setSection}
+            onAskCoach={() => navigation.navigate("CoachChat")}
+          />
+        ) : (
+          <CoachingSectionView
+            section={section}
+            analysis={analysis}
+            changes={changes}
+            onBack={() => setSection(null)}
+            onApplied={onApplied}
+            progressMetric={progressMetric}
+            onProgressMetric={setProgressMetric}
+            onReload={load}
+            onOpenObjective={() => navigation.navigate("NutritionModule", { screen: "GoalSettings" })}
+            onOpenTraining={() => navigation.navigate("TrainingModule")}
+            onOpenDiary={() => navigation.navigate("NutritionModule")}
+            onOpenTemplates={() => navigation.navigate("NutritionModule", { screen: "DietTemplates" })}
+            onOpenMeasurements={() => navigation.navigate("NutritionModule", { screen: "Measurements" })}
+            onAskCoach={() => navigation.navigate("CoachChat")}
+          />
+        )
       ) : null}
 
       <InfoDialog
@@ -187,310 +231,420 @@ export function CoachingScreen() {
         title={aviso?.title ?? ""}
         message={aviso?.message}
       />
-
-      {/* Gráfico em modal — abre ao tocar o ícone de gráfico de uma barra, fecha
-          no "x". Não fica mais fixo ocupando a tela. */}
-      <ChartModal
-        chart={chartOpen}
-        insights={analysis?.insights ?? []}
-        periodDays={chartWindow}
-        onClose={() => setChartOpen(null)}
-        onDataChanged={load}
-      />
     </ScrollView>
   );
 }
 
-// Modal do gráfico de uma dimensão (peso/calorias/macros/sono/carga). Reusa o
-// CoachingProgress (com seu seletor interno pra trocar de gráfico) num overlay.
-function ChartModal({
-  chart,
-  insights,
-  periodDays,
-  onClose,
-  onDataChanged,
-}: {
-  chart: CoachingChart | null;
-  insights: CoachingInsight[];
-  periodDays: number;
-  onClose: () => void;
-  onDataChanged: () => void;
-}) {
-  const { colors, type, spacing, radius } = useTheme();
-  // Estado local do gráfico visível — começa no que a barra pediu, e o seletor
-  // interno do CoachingProgress deixa trocar sem fechar.
-  const [metric, setMetric] = useState<CoachingChart>("peso");
-  useEffect(() => {
-    if (chart != null) setMetric(chart);
-  }, [chart]);
-  // O MESMO texto que aparecia na barra daquela dimensão — acompanha a troca de
-  // métrica dentro do modal (carga usa a barra 'carga', não 'treino').
-  const ins = insights.find((i) => i.key === metric) ?? insights.find((i) => i.chart === metric);
-  const tint = ins
-    ? ins.severity === "action"
-      ? colors.primary
-      : ins.severity === "attention"
-      ? colors.warning
-      : colors.success
-    : colors.primary;
-  return (
-    <Modal visible={chart != null} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", padding: spacing.md }}>
-        <View style={{ backgroundColor: colors.surface, borderRadius: radius.card, padding: spacing.md, maxHeight: "85%" }}>
-          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
-            <Text style={[type.h2, { color: colors.textPrimary, flex: 1 }]}>Seu progresso</Text>
-            <TouchableOpacity
-              onPress={onClose}
-              hitSlop={10}
-              style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors.surfaceAlt, alignItems: "center", justifyContent: "center" }}
-            >
-              <Ionicons name="close" size={20} color={colors.textPrimary} />
-            </TouchableOpacity>
-          </View>
-          {chart != null ? (
-            <ScrollView keyboardShouldPersistTaps="handled">
-              {/* A leitura do coach daquela dimensão (mesmo texto da barra). */}
-              {ins ? (
-                <View style={{ borderLeftWidth: 3, borderLeftColor: tint, paddingLeft: spacing.sm, marginBottom: spacing.md }}>
-                  <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700", marginBottom: 2 }]}>{ins.title}</Text>
-                  <Text style={[type.bodySmall, { color: colors.textSecondary, lineHeight: 20 }]}>{ins.detail}</Text>
-                </View>
-              ) : null}
-              <CoachingProgress
-                periodDays={periodDays}
-                metric={metric}
-                onMetricChange={setMetric}
-                onDataChanged={onDataChanged}
-              />
-            </ScrollView>
-          ) : null}
-        </View>
-      </View>
-    </Modal>
-  );
+// Semana do objetivo a partir do marco (baseline). "Semana 1", "Semana 3"...
+function semanaLabel(baseline: string | null): string | null {
+  if (!baseline) return null;
+  const dias = Math.floor((Date.now() - new Date(baseline).getTime()) / 86400000);
+  return `Semana ${dias < 7 ? 1 : Math.floor(dias / 7) + 1}`;
 }
 
-function AnalysisView({
+// HUB — a casa do Coaching. Um newcomer bate o olho e entende: quem é meu coach
+// e em que fase estou (topo) · como estou indo, com constância gamificada
+// (progresso) · o que fazer agora (missões) · pra onde ir (mapa de 4 seções).
+// Tudo que é denso (prefs, gráficos, "o que mudou") mora dentro das seções.
+function CoachingHub({
   analysis,
   checkin,
   changes,
+  consistency,
   onApplied,
   onOpenChart,
-  onOpenObjective,
-  onOpenTraining,
+  onOpenSection,
   onAskCoach,
-  onOpenMeasurements,
 }: {
   analysis: CoachingAnalysis;
   checkin: CoachingCheckin | null;
   changes: CoachingChange[];
+  consistency: ConsistencyHistory | null;
   onApplied: (title: string, message: string) => void;
   onOpenChart: (chart: CoachingChart) => void;
+  onOpenSection: (s: CoachingSectionId) => void;
+  onAskCoach: () => void;
+}) {
+  const { colors, type, spacing, radius } = useTheme();
+  const meta = GOAL_META[analysis.goal ?? ""] ?? { label: "Seu objetivo", icon: "compass" as const };
+  const semana = semanaLabel(analysis.metrics.baseline_at);
+  const leitura = checkin?.headline ?? analysis.headline;
+
+  const rank = (i: CoachingInsight) => (i.adjustment ? 0 : 10) + (i.severity === "action" ? 0 : 1);
+  const missoes = analysis.insights.filter((i) => i.severity !== "info").sort((a, b) => rank(a) - rank(b));
+  const ok = analysis.insights.filter((i) => i.severity === "info");
+
+  const streak = consistency?.current_streak ?? 0;
+  const best = consistency?.best_streak ?? 0;
+  const nv = nivelConstancia(best);
+  const inLevel = nv.next != null ? Math.min(Math.max((best - nv.floor) / (nv.next - nv.floor), 0), 1) : 1;
+  const semConstancia = streak === 0 && best === 0;
+
+  const pace = analysis.metrics.pace;
+  const alvo = pace?.target_weight_kg ?? null;
+  const atual = pace?.current_weight_kg ?? analysis.metrics.weight_kg ?? null;
+  const faltam = alvo != null && atual != null ? atual - alvo : null;
+
+  const workout = analysis.metrics.workout;
+
+  return (
+    <>
+      {/* HERO — coach + fase + leitura + constância gamificada. */}
+      <Card accent={colors.primary} style={{ marginBottom: spacing.md }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: spacing.sm }}>
+          <View
+            style={{
+              width: 44, height: 44, borderRadius: 14,
+              backgroundColor: colors.primary + "1F",
+              alignItems: "center", justifyContent: "center",
+            }}
+          >
+            <Ionicons name={meta.icon} size={22} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={[type.caption, { color: colors.textSecondary, letterSpacing: 0.5, textTransform: "uppercase" }]}>
+              Seu coaching
+            </Text>
+            <Text style={[type.h2, { color: colors.textPrimary }]} numberOfLines={1}>{meta.label}</Text>
+          </View>
+          {semana ? (
+            <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: radius.pill, paddingVertical: 5, paddingHorizontal: 11 }}>
+              <Text style={[type.caption, { color: colors.textPrimary, fontWeight: "800" }]}>{semana}</Text>
+            </View>
+          ) : null}
+        </View>
+
+        <Text style={[type.body, { color: colors.textPrimary, lineHeight: 22 }]}>{leitura}</Text>
+
+        {/* Constância gamificada */}
+        <View style={{ borderTopWidth: 1, borderTopColor: colors.border, marginTop: spacing.md, paddingTop: spacing.md }}>
+          {semConstancia ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Ionicons name="flame-outline" size={20} color={colors.textSecondary} />
+              <Text style={[type.bodySmall, { color: colors.textSecondary, flex: 1 }]}>
+                Registre treino, dieta e sono no dia a dia pra construir sua constância.
+              </Text>
+            </View>
+          ) : (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+              {/* Chama do streak */}
+              <View style={{ alignItems: "center", minWidth: 66 }}>
+                <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 3 }}>
+                  <Ionicons name="flame" size={22} color={colors.primary} />
+                  <Text style={[type.display, { color: colors.textPrimary, fontSize: 30 }]}>{streak}</Text>
+                </View>
+                <Text style={[type.caption, { color: colors.textSecondary }]}>dias seguidos</Text>
+              </View>
+              {/* Nível de constância + barra */}
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                  <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "800" }]}>
+                    Nível {nv.level} · {nv.label}
+                  </Text>
+                  <Text style={[type.caption, { color: colors.textSecondary }]}>recorde {best}</Text>
+                </View>
+                <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.surfaceAlt, overflow: "hidden" }}>
+                  <View style={{ width: `${inLevel * 100}%`, height: "100%", backgroundColor: colors.primary }} />
+                </View>
+                <Text style={[type.caption, { color: colors.textSecondary, marginTop: 3 }]}>
+                  {nv.next != null ? `Próximo nível ao chegar em ${nv.next} dias seguidos` : "Nível máximo — imparável!"}
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* Alvo de peso (quando o objetivo tem peso-alvo) */}
+          {faltam != null && Math.abs(faltam) >= 0.1 ? (
+            <TouchableOpacity
+              onPress={() => onOpenChart("peso")}
+              activeOpacity={0.7}
+              style={{
+                flexDirection: "row", alignItems: "center", gap: 6, marginTop: spacing.md,
+                backgroundColor: colors.surfaceAlt, borderRadius: radius.pill,
+                paddingVertical: 7, paddingHorizontal: 12, alignSelf: "flex-start",
+              }}
+            >
+              <Ionicons name="flag" size={13} color={colors.primary} />
+              <Text style={[type.caption, { color: colors.textPrimary, fontWeight: "700" }]}>
+                Alvo {alvo} kg · faltam {Math.abs(faltam).toFixed(1).replace(".", ",")} kg
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </Card>
+
+      {/* MISSÕES DA SEMANA — o que fazer agora. */}
+      <Text style={[type.caption, { color: colors.textSecondary, letterSpacing: 1, textTransform: "uppercase", marginBottom: spacing.sm }]}>
+        {missoes.length > 0 ? `Missões da semana · ${missoes.length}` : "Missões da semana"}
+      </Text>
+      {missoes.length > 0 ? (
+        missoes.map((ins) => <InsightBar key={ins.key} ins={ins} onApplied={onApplied} onOpenChart={onOpenChart} />)
+      ) : (
+        <Card accent={colors.success} style={{ marginBottom: spacing.sm }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <View style={{ width: 40, height: 40, borderRadius: 13, backgroundColor: colors.success + "22", alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name="checkmark-done" size={22} color={colors.success} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>Tudo em dia!</Text>
+              <Text style={[type.caption, { color: colors.textSecondary, marginTop: 1 }]}>
+                Sem ajustes pendentes. Siga registrando que eu aviso quando algo mudar.
+              </Text>
+            </View>
+          </View>
+        </Card>
+      )}
+      {ok.length > 0 ? <StatusPills bars={ok} onOpenChart={onOpenChart} /> : null}
+
+      {/* MAPA — as 4 seções. Resolve o "caçar as coisas". */}
+      <Text style={[type.caption, { color: colors.textSecondary, letterSpacing: 1, textTransform: "uppercase", marginTop: spacing.sm, marginBottom: spacing.sm }]}>
+        Explorar
+      </Text>
+      <View style={{ gap: spacing.sm }}>
+        <View style={{ flexDirection: "row", gap: spacing.sm }}>
+          <SectionTile icon="flag" title="Objetivo" subtitle="Metas e ritmo" onPress={() => onOpenSection("objetivo")} />
+          <SectionTile
+            icon="barbell"
+            title="Treino"
+            subtitle={workout?.built ? `${workout.count} treino${workout.count === 1 ? "" : "s"}` : "Montar treino"}
+            onPress={() => onOpenSection("treino")}
+          />
+        </View>
+        <View style={{ flexDirection: "row", gap: spacing.sm }}>
+          <SectionTile
+            icon="restaurant"
+            title="Dieta"
+            subtitle={analysis.metrics.goal_kcal ? `${Math.round(analysis.metrics.goal_kcal)} kcal/dia` : "Definir meta"}
+            onPress={() => onOpenSection("dieta")}
+          />
+          <SectionTile icon="stats-chart" title="Progresso" subtitle="Gráficos e peso" onPress={() => onOpenSection("progresso")} />
+        </View>
+      </View>
+
+      {/* Pergunte ao coach */}
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={onAskCoach}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.md,
+          backgroundColor: colors.primary + "14",
+          borderWidth: 1,
+          borderColor: colors.primary + "33",
+          borderRadius: radius.card,
+          padding: spacing.md,
+          marginTop: spacing.md,
+        }}
+      >
+        <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: colors.primary + "22", alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name="chatbubbles" size={22} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>Pergunte ao coach</Text>
+          <Text style={[type.caption, { color: colors.textSecondary, marginTop: 1 }]}>
+            Dúvidas sobre análise, treino, dieta e sono
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+      </TouchableOpacity>
+
+      {/* O que o coach mudou — histórico, discreto no fim. */}
+      {changes.length > 0 ? (
+        <View style={{ marginTop: spacing.lg }}>
+          <ChangesPanel changes={changes} onChanged={(msg) => onApplied("Pronto", msg)} />
+        </View>
+      ) : null}
+    </>
+  );
+}
+
+// Um quadrado do mapa de seções.
+function SectionTile({
+  icon,
+  title,
+  subtitle,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  subtitle: string;
+  onPress: () => void;
+}) {
+  const { colors, type, spacing, shadow } = useTheme();
+  return (
+    <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={{ flex: 1 }}>
+      <View style={[{ backgroundColor: colors.surface, borderRadius: 18, padding: spacing.md, minHeight: 96 }, shadow.sm]}>
+        <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: colors.primary + "18", alignItems: "center", justifyContent: "center", marginBottom: spacing.sm }}>
+          <Ionicons name={icon} size={20} color={colors.primary} />
+        </View>
+        <Text style={[type.body, { color: colors.textPrimary, fontWeight: "800" }]}>{title}</Text>
+        <Text style={[type.caption, { color: colors.textSecondary, marginTop: 1 }]} numberOfLines={1}>
+          {subtitle}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// Detalhe de uma seção do mapa. Reúne o conteúdo denso (que antes ficava tudo
+// empilhado) sob um cabeçalho com voltar.
+function CoachingSectionView({
+  section,
+  analysis,
+  onBack,
+  onApplied,
+  progressMetric,
+  onProgressMetric,
+  onReload,
+  onOpenObjective,
+  onOpenTraining,
+  onOpenDiary,
+  onOpenTemplates,
+  onOpenMeasurements,
+  onAskCoach,
+}: {
+  section: CoachingSectionId;
+  analysis: CoachingAnalysis;
+  changes: CoachingChange[];
+  onBack: () => void;
+  onApplied: (title: string, message: string) => void;
+  progressMetric: CoachingChart;
+  onProgressMetric: (m: CoachingChart) => void;
+  onReload: () => void;
   onOpenObjective: () => void;
   onOpenTraining: () => void;
-  onAskCoach: () => void;
+  onOpenDiary: () => void;
+  onOpenTemplates: () => void;
   onOpenMeasurements: () => void;
+  onAskCoach: () => void;
 }) {
   const { colors, type, spacing, radius } = useTheme();
   const meta = GOAL_META[analysis.goal ?? ""] ?? { label: "Seu objetivo", icon: "compass" as const };
   const fase = faseTexto(analysis.metrics.baseline_at);
-  const transition = analysis.metrics.transition;
-  // Card do objetivo recolhido por padrão: mostra objetivo + a leitura curta;
-  // a setinha expande o ritmo e os detalhes.
-  const [expObj, setExpObj] = useState(false);
+  const m = analysis.metrics;
+  const [expObj, setExpObj] = useState(true);
 
-  // Barras de sugestão (ação/atenção) ficam FIXAS entre os dois grupos — são
-  // geradas pela análise, não um "card"; as que estão "tudo certo" viram o
-  // card móvel "tudo_certo" (pílulas), no grupo de baixo.
-  const rank = (i: CoachingInsight) => (i.adjustment ? 0 : 10) + (i.severity === "action" ? 0 : 1);
-  const acionaveis = analysis.insights.filter((i) => i.severity !== "info").sort((a, b) => rank(a) - rank(b));
-  const ok = analysis.insights.filter((i) => i.severity === "info");
-
-  // Ordem dos cards — salva no aparelho. "Reordenar" mostra setinhas ↑↓ em
-  // cada um; sem lib de arrastar instalada, é o jeito simples e confiável de
-  // mover. GRUPO ÚNICO, sem barreira: qualquer card vai pra qualquer posição.
-  // As barras de sugestão (geradas pela análise, não cards) ficam fixas no topo.
-  const [order, setOrder] = useState<CoachingCardId[]>(DEFAULT_CARD_ORDER);
-  const [reordering, setReordering] = useState(false);
-  useEffect(() => {
-    loadCardOrder().then(setOrder);
-  }, []);
-
-  const isAvailable = useCallback(
-    (id: CoachingCardId): boolean => {
-      if (id === "como_monto") return !!analysis.metrics.training_prefs;
-      if (id === "checkin") return !!(checkin && checkin.has_data);
-      if (id === "tudo_certo") return ok.length > 0;
-      if (id === "o_que_mudou") return changes.length > 0;
-      return true; // seu_treino, pergunte_coach, objetivo, seus_dados
-    },
-    [analysis.metrics.training_prefs, checkin, ok.length, changes.length]
-  );
-
-  function moveCard(id: CoachingCardId, dir: 1 | -1) {
-    setOrder((prev) => {
-      // Move dentro da lista de cards VISÍVEIS (um grupo só, sem barreira) —
-      // troca com o vizinho visível pra cima/baixo, pulando os que estão ocultos.
-      const visiveis = prev.filter((x) => isAvailable(x));
-      const idx = visiveis.indexOf(id);
-      const destino = idx + dir;
-      if (destino < 0 || destino >= visiveis.length) return prev;
-      const outroId = visiveis[destino];
-      const next = [...prev];
-      const i1 = next.indexOf(id);
-      const i2 = next.indexOf(outroId);
-      [next[i1], next[i2]] = [next[i2], next[i1]];
-      saveCardOrder(next);
-      return next;
-    });
-  }
-
-  // Conteúdo de cada card, pelo id — a MESMA JSX de antes, só endereçável pra
-  // poder renderizar na ordem escolhida pela pessoa.
-  function renderCard(id: CoachingCardId): React.ReactNode {
-    switch (id) {
-      case "objetivo":
-        return <ObjetivoCard analysis={analysis} meta={meta} fase={fase} transition={transition}
-          expanded={expObj} onToggle={() => setExpObj((v) => !v)} onOpenObjective={onOpenObjective} />;
-      case "como_monto":
-        return analysis.metrics.training_prefs ? (
-          <TrainingPrefsCard prefs={analysis.metrics.training_prefs} onChanged={onApplied} />
-        ) : null;
-      case "seu_treino":
-        return <WorkoutCard workout={analysis.metrics.workout} onApplied={onApplied} onOpenTraining={onOpenTraining} />;
-      case "pergunte_coach":
-        return (
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={onAskCoach}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: spacing.md,
-              backgroundColor: colors.primary + "14",
-              borderWidth: 1,
-              borderColor: colors.primary + "33",
-              borderRadius: radius.card,
-              padding: spacing.md,
-            }}
-          >
-            <View
-              style={{
-                width: 42, height: 42, borderRadius: 14,
-                backgroundColor: colors.primary + "22",
-                alignItems: "center", justifyContent: "center",
-              }}
-            >
-              <Ionicons name="chatbubbles" size={22} color={colors.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>Pergunte ao coach</Text>
-              <Text style={[type.caption, { color: colors.textSecondary, marginTop: 1 }]}>
-                Tire dúvidas sobre sua análise, treino, dieta e sono
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.primary} />
-          </TouchableOpacity>
-        );
-      case "checkin":
-        return checkin && checkin.has_data ? <WeeklyCheckin checkin={checkin} /> : null;
-      case "tudo_certo":
-        return ok.length > 0 ? <StatusPills bars={ok} onOpenChart={onOpenChart} /> : null;
-      case "o_que_mudou":
-        return changes.length > 0 ? (
-          <ChangesPanel changes={changes} onChanged={(msg) => onApplied("Pronto", msg)} />
-        ) : null;
-      case "seus_dados":
-        return (
-          <View>
-            <Text style={[type.caption, { color: colors.textSecondary, letterSpacing: 1, textTransform: "uppercase", marginBottom: spacing.sm }]}>
-              Seus dados e análises
-            </Text>
-            <CoachRow
-              icon="body"
-              tint={colors.info}
-              title="Medidas e fotos"
-              subtitle="Circunferências e fotos de progresso"
-              onPress={onOpenMeasurements}
-            />
-          </View>
-        );
-      default:
-        return null;
-    }
-  }
-
-  // Todos os cards visíveis, na ordem escolhida, com a setinha ↑↓ (só em modo
-  // "Reordenar"). Grupo único: qualquer card sobe/desce em relação a qualquer
-  // outro, sem barreira.
-  function renderCards() {
-    const visible = order.filter((id) => isAvailable(id));
-    return visible.map((id, idx) => {
-      const content = renderCard(id);
-      if (content == null) return null;
-      return (
-        <View key={id} style={{ marginBottom: spacing.md }}>
-          {reordering ? (
-            <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 6, marginBottom: 6 }}>
-              <TouchableOpacity
-                disabled={idx === 0}
-                onPress={() => moveCard(id, -1)}
-                style={{
-                  width: 30, height: 30, borderRadius: 8, backgroundColor: colors.surfaceAlt,
-                  alignItems: "center", justifyContent: "center", opacity: idx === 0 ? 0.3 : 1,
-                }}
-              >
-                <Ionicons name="chevron-up" size={16} color={colors.textSecondary} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                disabled={idx === visible.length - 1}
-                onPress={() => moveCard(id, 1)}
-                style={{
-                  width: 30, height: 30, borderRadius: 8, backgroundColor: colors.surfaceAlt,
-                  alignItems: "center", justifyContent: "center", opacity: idx === visible.length - 1 ? 0.3 : 1,
-                }}
-              >
-                <Ionicons name="chevron-down" size={16} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-          ) : null}
-          {content}
-        </View>
-      );
-    });
-  }
+  const titulo =
+    section === "objetivo"
+      ? "Objetivo & metas"
+      : section === "treino"
+      ? "Meu treino"
+      : section === "dieta"
+      ? "Minha dieta"
+      : "Meu progresso";
 
   return (
     <>
-      {/* Reordenar — some quieto quando não está em uso; a setinha ↑↓ aparece
-          em cada card só nesse modo. */}
-      <View style={{ flexDirection: "row", justifyContent: "flex-end", marginBottom: spacing.sm }}>
+      {/* Cabeçalho da seção com voltar. */}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md }}>
         <TouchableOpacity
-          onPress={() => setReordering((v) => !v)}
-          activeOpacity={0.7}
-          style={{
-            flexDirection: "row", alignItems: "center", gap: 6,
-            paddingVertical: 6, paddingHorizontal: 12, borderRadius: radius.pill,
-            backgroundColor: reordering ? colors.primary + "1A" : colors.surfaceAlt,
-            borderWidth: 1, borderColor: reordering ? colors.primary : colors.border,
-          }}
+          onPress={onBack}
+          hitSlop={8}
+          style={{ width: 40, height: 40, borderRadius: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" }}
         >
-          <Ionicons name={reordering ? "checkmark" : "swap-vertical"} size={14} color={reordering ? colors.primary : colors.textSecondary} />
-          <Text style={[type.caption, { color: reordering ? colors.primary : colors.textSecondary, fontWeight: "700" }]}>
-            {reordering ? "Pronto" : "Reordenar"}
-          </Text>
+          <Ionicons name="arrow-back" size={20} color={colors.textPrimary} />
         </TouchableOpacity>
+        <Text style={[type.h1, { color: colors.textPrimary, fontSize: 22 }]}>{titulo}</Text>
       </View>
 
-      {/* Barras de sugestão — fixas no topo, em card cheio, as que pedem uma
-          decisão (com ajuste primeiro). São geradas pela análise, não cards:
-          por isso não entram na reordenação. Os cards, abaixo, movem livremente. */}
-      {acionaveis.map((ins) => (
-        <InsightBar key={ins.key} ins={ins} onApplied={onApplied} onOpenChart={onOpenChart} />
-      ))}
+      {section === "objetivo" ? (
+        <ObjetivoCard
+          analysis={analysis}
+          meta={meta}
+          fase={fase}
+          transition={m.transition}
+          expanded={expObj}
+          onToggle={() => setExpObj((v) => !v)}
+          onOpenObjective={onOpenObjective}
+        />
+      ) : null}
 
-      {renderCards()}
+      {section === "treino" ? (
+        <>
+          {m.training_prefs ? <TrainingPrefsCard prefs={m.training_prefs} onChanged={onApplied} /> : null}
+          <WorkoutCard workout={m.workout} onApplied={onApplied} onOpenTraining={onOpenTraining} />
+        </>
+      ) : null}
+
+      {section === "dieta" ? (
+        <>
+          <Card style={{ marginBottom: spacing.md }}>
+            <Text style={[type.caption, { color: colors.primary, fontWeight: "800", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: spacing.sm }]}>
+              Sua meta atual
+            </Text>
+            {m.goal_kcal ? (
+              <>
+                <View style={{ flexDirection: "row", alignItems: "baseline", gap: 5, marginBottom: spacing.sm }}>
+                  <Text style={[type.display, { color: colors.textPrimary, fontSize: 30 }]}>{Math.round(m.goal_kcal)}</Text>
+                  <Text style={[type.body, { color: colors.textSecondary }]}>kcal / dia</Text>
+                </View>
+                <View style={{ flexDirection: "row", gap: spacing.md }}>
+                  <MacroChip label="Proteína" goal={m.protein_target_g} avg={m.avg_protein_g} color={colors.moduleTraining} />
+                  <MacroChip label="Carbo" goal={m.goal_carbs_g} avg={m.avg_carbs_g} color={colors.info} />
+                  <MacroChip label="Gordura" goal={m.goal_fat_g} avg={m.avg_fat_g} color={colors.warning} />
+                </View>
+                {m.avg_kcal != null ? (
+                  <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm }]}>
+                    Média recente: {Math.round(m.avg_kcal)} kcal/dia.
+                  </Text>
+                ) : null}
+              </>
+            ) : (
+              <Text style={[type.bodySmall, { color: colors.textSecondary }]}>
+                Você ainda não tem meta calórica. Defina uma pra o coach acompanhar sua dieta.
+              </Text>
+            )}
+          </Card>
+
+          <CoachRow icon="book" tint={colors.moduleNutrition} title="Abrir meu diário" subtitle="Registrar refeições e água de hoje" onPress={onOpenDiary} />
+          <CoachRow icon="sparkles" tint={colors.primary} title="Gerar dieta com o coach" subtitle="Um cardápio na sua meta, em segundos" onPress={onAskCoach} />
+          <CoachRow icon="restaurant" tint={colors.moduleTraining} title="Dietas prontas" subtitle="Cardápios prontos pra adaptar" onPress={onOpenTemplates} />
+          <View style={{ marginTop: spacing.xs }}>
+            <Button title="Ajustar meta calórica" variant="secondary" compact onPress={onOpenObjective} />
+          </View>
+        </>
+      ) : null}
+
+      {section === "progresso" ? (
+        <>
+          <CoachingProgress
+            periodDays={analysis.window_days}
+            metric={progressMetric}
+            onMetricChange={onProgressMetric}
+            onDataChanged={onReload}
+          />
+          <CoachRow
+            icon="body"
+            tint={colors.info}
+            title="Medidas e fotos"
+            subtitle="Circunferências e fotos de progresso"
+            onPress={onOpenMeasurements}
+          />
+        </>
+      ) : null}
     </>
+  );
+}
+
+// Chip de macro (meta + média) na seção Dieta.
+function MacroChip({ label, goal, avg, color }: { label: string; goal: number | null; avg: number | null; color: string }) {
+  const { colors, type } = useTheme();
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 2 }}>
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
+        <Text style={[type.caption, { color: colors.textSecondary }]} numberOfLines={1}>{label}</Text>
+      </View>
+      <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "700" }]} numberOfLines={1}>
+        {goal != null ? `${Math.round(goal)}g` : "—"}
+      </Text>
+      {avg != null ? (
+        <Text style={[type.caption, { color: colors.textSecondary }]} numberOfLines={1}>
+          méd {Math.round(avg)}g
+        </Text>
+      ) : null}
+    </View>
   );
 }
 
@@ -1567,7 +1721,7 @@ function CoachingPaywall() {
         <Button title="Assinar o Pro" onPress={() => navigation.navigate("Paywall")} />
       </View>
       <Text style={[type.caption, { color: colors.textSecondary, textAlign: "center", marginTop: spacing.md, lineHeight: 18 }]}>
-        No plano Free você continua registrando calorias e água, usando as dietas prontas, montando até 3 rotinas
+        No plano Free você continua registrando calorias e água, usando as dietas prontas, montando suas rotinas
         e os 10 métodos de treino.
       </Text>
     </ScrollView>

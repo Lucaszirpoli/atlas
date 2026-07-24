@@ -4,12 +4,14 @@ from sqlalchemy.orm import Session
 from app.models.routine import Routine
 from app.models.user import Plan
 
-# Limite de rotinas ativas por plano — regra de negócio da Parte 4 da
-# especificação (não simplificar sem confirmar): 3 no Free, 7 no Pro.
-# Rotinas arquivadas não contam pro limite.
+# Rotinas ativas ILIMITADAS (Free e Pro) — regra amendada pelo dono do produto
+# depois da spec original (que dizia 3/7). Bater num teto silencioso fazia
+# "salvar rotina" falhar (o motivo de uma rotina "não salvar" na aba de treino).
+# None = sem limite; o resto do código (can_create/bulk) já trata None como
+# "pode sempre". Arquivadas nunca contaram mesmo.
 ACTIVE_ROUTINE_LIMITS: dict[Plan, int | None] = {
-    Plan.FREE: 3,
-    Plan.PRO: 7,
+    Plan.FREE: None,
+    Plan.PRO: None,
 }
 
 

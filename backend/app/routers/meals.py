@@ -15,6 +15,8 @@ from app.schemas.meal import (
     MealCategoryRead,
     MealCategoryUpdate,
     MealLogCreate,
+    MealLogItemRead,
+    MealLogItemUpdate,
     MealLogRead,
     MealParseRequest,
     ParsedMealItem,
@@ -173,6 +175,21 @@ def create_saved_meal(
     db.commit()
     db.refresh(saved_meal)
     return saved_meal
+
+
+@router.patch("/items/{item_id}", response_model=MealLogItemRead)
+def update_meal_item(
+    item_id: int,
+    payload: MealLogItemUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> MealLogItem:
+    """Corrige a quantidade de um alimento já registrado (a pessoa tocou no item
+    no diário e ajustou). Reconta kcal/macros pela tabela do alimento."""
+    item = meal_service.update_meal_item(db, current_user.id, item_id, payload)
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item não encontrado")
+    return item
 
 
 @router.delete("/{meal_log_id}", status_code=status.HTTP_204_NO_CONTENT)

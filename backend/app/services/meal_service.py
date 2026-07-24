@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.models.food import Food
 from app.models.meal import DEFAULT_MEAL_CATEGORY_NAMES, MealCategory, MealLog, MealLogItem
-from app.schemas.meal import MealLogCreate
+from app.schemas.meal import MealLogCreate, MealLogItemUpdate
 
 
 def ensure_default_categories(db: Session, user_id: int) -> list[MealCategory]:
@@ -63,3 +63,32 @@ def log_meal(db: Session, user_id: int, payload: MealLogCreate) -> MealLog:
     db.commit()
     db.refresh(meal_log)
     return meal_log
+
+
+def update_meal_item(
+    db: Session, user_id: int, item_id: int, payload: MealLogItemUpdate
+) -> MealLogItem | None:
+    """Corrige a quantidade de um item já registrado e reconta os valores
+    nutricionais (kcal/macros) pela tabela do alimento. Retorna None se o item
+    não existe ou não é do usuário. Não cria histórico novo — é a correção de
+    um erro de digitação na hora, permitida pelo model."""
+    item = db.get(MealLogItem, item_id)
+    if item is None:
+        return None
+    meal_log = db.get(MealLog, item.meal_log_id)
+    if meal_log is None or meal_log.user_id != user_id:
+        return None
+
+    food = db.get(Food, item.food_id)
+    if food is None:
+        return None
+
+    item.quantity_g = payload.quantity_g
+    item.unit_label = payload.unit_label
+    item.unit_amount = payload.unit_amount
+    for key, value in _snapshot_item(food, payload.quantity_g).items():
+        setattr(item, key, value)
+
+    db.commit()
+    db.refresh(item)
+    return item

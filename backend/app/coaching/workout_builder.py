@@ -72,7 +72,13 @@ def build_and_save(db: Session, user: User) -> dict:
         except ValueError:
             pass
     session_target = training_brain.session_exercise_target(profile.session_length)
-    plan = build_plan(db, method, available_days=days, weak_points=wps, session_target=session_target)
+    # Sessão curta: prioriza compostos multiarticulares e máquinas que pegam
+    # vários músculos, pra render mais estímulo no pouco tempo.
+    curto = training_brain.valid_session_length(profile.session_length) == "curto"
+    plan = build_plan(
+        db, method, available_days=days, weak_points=wps,
+        session_target=session_target, time_efficient=curto,
+    )
 
     # Volume semanal por grupo muscular (regra: sobe/desce série por músculo
     # dentro da faixa MEV-MRV baseada em evidência, ajustada por nível — nunca
@@ -115,7 +121,6 @@ def build_and_save(db: Session, user: User) -> dict:
     # isolado e muscle round nunca apareceria. Não sobrescreve uma dica já
     # ativa nesse exercício por outro motivo (ex.: platô) nem duplica ao
     # refazer o treino.
-    curto = training_brain.valid_session_length(profile.session_length) == "curto"
     technique_applied: list[str] = []
 
     nomes: list[str] = []

@@ -44,14 +44,24 @@ TOOLS = [
     {
         "name": "trocar_exercicio",
         "description": (
-            "Troca UM exercício específico do treino da pessoa por uma variação equivalente "
-            "(mesmo músculo, estímulo novo). Use quando ela pedir pra trocar um exercício "
-            "citando o nome dele (ex.: 'troca o agachamento', 'não curto a rosca scott')."
+            "Troca UM exercício do treino da pessoa. Se ela disser POR QUAL exercício quer trocar "
+            "(ex.: 'troca o supino reto pelo supino inclinado com halteres', 'põe leg press no lugar do "
+            "agachamento'), passe esse nome EXATO em `por` — é obrigatório respeitar o que ela pediu, "
+            "NÃO escolher outro. Só deixe `por` vazio quando ela pedir a troca sem dizer por qual "
+            "(ex.: 'troca o agachamento por outra coisa', 'não curto a rosca scott') — aí o coach "
+            "escolhe uma variação equivalente do mesmo músculo."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "exercicio": {"type": "string", "description": "Nome do exercício a trocar."},
+                "exercicio": {"type": "string", "description": "Nome do exercício a SAIR do treino."},
+                "por": {
+                    "type": "string",
+                    "description": (
+                        "Nome EXATO do exercício que a pessoa pediu pra ENTRAR no lugar. Preencha sempre "
+                        "que ela citar um exercício específico. Vazio = deixar o coach escolher a variação."
+                    ),
+                },
                 "motivo": {"type": "string", "description": "Por que trocar (opcional)."},
             },
             "required": ["exercicio"],
@@ -147,6 +157,33 @@ def _find_user_exercise(db: Session, user_id: int, name: str) -> Exercise | None
     return None
 
 
+def _find_base_exercise(db: Session, user_id: int, name: str) -> Exercise | None:
+    """Acha o exercício EXATO que a pessoa pediu pra entrar no lugar — busca na
+    base visível (curados + os customizados dela). Match por nome exato primeiro,
+    depois por conter, sempre preferindo o de melhor qualidade (nome limpo)."""
+    alvo = normalize_search_text(name)
+    if not alvo:
+        return None
+    cands = list(
+        db.execute(
+            select(Exercise)
+            .where(
+                Exercise.is_hidden.is_(False),
+                (Exercise.is_custom.is_(False)) | (Exercise.created_by_user_id == user_id),
+            )
+            .order_by(*quality_order())
+        ).scalars()
+    )
+    exato = [e for e in cands if normalize_search_text(e.name) == alvo]
+    if exato:
+        return exato[0]
+    # "contém" nos dois sentidos: "supino inclinado halteres" acha "Supino
+    # inclinado com halteres" e vice-versa. quality_order já ordenou, então o
+    # primeiro match é o melhor.
+    contendo = [e for e in cands if alvo in normalize_search_text(e.name) or normalize_search_text(e.name) in alvo]
+    return contendo[0] if contendo else None
+
+
 def _alternative(db: Session, orig: Exercise) -> Exercise | None:
     base = select(Exercise).where(
         Exercise.primary_muscle_group == orig.primary_muscle_group,
@@ -203,9 +240,23 @@ def run_tool(db: Session, user: User, name: str, tool_input: dict) -> dict:
         orig = _find_user_exercise(db, user.id, nome)
         if orig is None:
             return {"for_model": {"erro": f"Não encontrei '{nome}' no treino da pessoa."}}
-        alt = _alternative(db, orig)
-        if alt is None:
-            return {"for_model": {"erro": f"Não achei uma variação boa pra trocar {orig.name}."}}
+        # Exercício-destino EXATO pedido pela pessoa tem prioridade absoluta —
+        # o coach NÃO escolhe outro. Só cai na variação automática quando ela
+        # não disse por qual trocar.
+        pedido = (tool_input.get("por") or "").strip()
+        if pedido:
+            alt = _find_base_exercise(db, user.id, pedido)
+            if alt is None:
+                return {"for_model": {"erro": (
+                    f"Não achei '{pedido}' na base de exercícios pra colocar no lugar. "
+                    "Confirme o nome com a pessoa ou peça pra ela cadastrar esse exercício."
+                )}}
+            if alt.id == orig.id:
+                return {"for_model": {"erro": f"'{orig.name}' já é esse exercício — nada pra trocar."}}
+        else:
+            alt = _alternative(db, orig)
+            if alt is None:
+                return {"for_model": {"erro": f"Não achei uma variação boa pra trocar {orig.name}."}}
         # Edição DEFINITIVA na rotina — não é overlay/sugestão: muda o
         # exercise_id de verdade em toda ocorrência ativa (a rotina pode ter o
         # mesmo exercício em mais de um dia).

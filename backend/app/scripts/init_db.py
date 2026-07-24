@@ -17,6 +17,7 @@ from app.scripts import (
     retranslate_exercises,
     seed_exercisedb,
     seed_exercises,
+    seed_exercises_curated,
     seed_exercises_open,
     seed_food_portions,
     seed_plant_based,
@@ -144,6 +145,12 @@ def run() -> None:
     # antiga (free-exercise-db) — sem apagar, pra não orfanar rotinas/histórico.
     # Idempotente e sem chamada de API (lê o snapshot versionado).
     seed_exercisedb.run()
+
+    # Biblioteca curada (117 exercícios pedidos): roda por ÚLTIMO, DEPOIS do
+    # seed_exercisedb, porque ele esconde a base antiga — e este seed força
+    # is_hidden=False, garantindo que os 117 fiquem visíveis na busca/motor.
+    # Idempotente (upsert por nome), então roda em todo boot sem duplicar.
+    seed_exercises_curated.run()
 
     # Medidas caseiras embutidas (gramas/unidades): deriva uma FoodPortion do
     # default_portion de cada alimento. Depois dos seeds de comida, idempotente.

@@ -44,19 +44,20 @@ _FOCUS_MUSCLES: dict[str, list[MuscleGroup]] = {
     "superior": [MuscleGroup.CHEST, MuscleGroup.BACK, MuscleGroup.SHOULDERS, MuscleGroup.BICEPS, MuscleGroup.TRICEPS],
     "inferior": [MuscleGroup.QUADS, MuscleGroup.HAMSTRINGS, MuscleGroup.GLUTES, MuscleGroup.CALVES],
     # A/B do superior/inferior (split de 4 dias do coach): mesmos músculos nos
-    # dois dias (2×/semana por grupo — regra 6), mas EMPASE diferente pela ordem
-    # do rodízio. O dia A puxa/prioriza peito e quadríceps; o B, costas e
-    # posterior. Isso dá exercícios diferentes e coerentes entre os dois dias em
-    # vez de o segundo dia raspar as sobras (o "segundo inferior esquisito").
-    "superior a": [MuscleGroup.CHEST, MuscleGroup.SHOULDERS, MuscleGroup.TRICEPS, MuscleGroup.BACK, MuscleGroup.BICEPS],
-    "superior b": [MuscleGroup.BACK, MuscleGroup.BICEPS, MuscleGroup.CHEST, MuscleGroup.SHOULDERS, MuscleGroup.TRICEPS],
-    "inferior a": [MuscleGroup.QUADS, MuscleGroup.CALVES, MuscleGroup.GLUTES, MuscleGroup.HAMSTRINGS],
+    # dois dias (2×/semana por grupo — regra 6), mas ÊNFASE diferente pela ordem
+    # do rodízio. REGRA: os GRANDES (peito, costas, pernas) vêm SEMPRE primeiro na
+    # lista — assim, numa sessão curta com poucas vagas, quem é cortado é sempre um
+    # músculo pequeno (ombro/braço), nunca costas ou peito (o bug do "upper curto
+    # que saía sem costas"). A ênfase A/B se dá por QUAL grande lidera.
+    "superior a": [MuscleGroup.CHEST, MuscleGroup.BACK, MuscleGroup.SHOULDERS, MuscleGroup.TRICEPS, MuscleGroup.BICEPS],
+    "superior b": [MuscleGroup.BACK, MuscleGroup.CHEST, MuscleGroup.SHOULDERS, MuscleGroup.BICEPS, MuscleGroup.TRICEPS],
+    "inferior a": [MuscleGroup.QUADS, MuscleGroup.GLUTES, MuscleGroup.HAMSTRINGS, MuscleGroup.CALVES],
     "inferior b": [MuscleGroup.HAMSTRINGS, MuscleGroup.GLUTES, MuscleGroup.QUADS, MuscleGroup.CALVES],
     "full body": [MuscleGroup.CHEST, MuscleGroup.BACK, MuscleGroup.QUADS, MuscleGroup.SHOULDERS, MuscleGroup.BICEPS],
     "full body a": [MuscleGroup.CHEST, MuscleGroup.BACK, MuscleGroup.QUADS, MuscleGroup.SHOULDERS],
     "full body b": [MuscleGroup.BACK, MuscleGroup.HAMSTRINGS, MuscleGroup.SHOULDERS, MuscleGroup.BICEPS, MuscleGroup.TRICEPS],
-    "a": [MuscleGroup.CHEST, MuscleGroup.SHOULDERS, MuscleGroup.TRICEPS, MuscleGroup.QUADS],
-    "b": [MuscleGroup.BACK, MuscleGroup.BICEPS, MuscleGroup.HAMSTRINGS, MuscleGroup.CALVES],
+    "a": [MuscleGroup.CHEST, MuscleGroup.QUADS, MuscleGroup.SHOULDERS, MuscleGroup.TRICEPS],
+    "b": [MuscleGroup.BACK, MuscleGroup.HAMSTRINGS, MuscleGroup.BICEPS, MuscleGroup.CALVES],
     # --- Métodos de FORÇA -------------------------------------------------
     # 5/3/1 e Juggernaut nomeiam o dia pelo levantamento principal; Westside
     # usa ME/DE (esforço máximo / dinâmico) por metade do corpo. Sem estes
@@ -345,6 +346,7 @@ def build_plan(
     weak_point: MuscleGroup | None = None,
     weak_points: list[MuscleGroup] | None = None,
     session_target: int | None = None,
+    time_efficient: bool = False,
 ) -> WorkoutPlan:
     """weak_point / weak_points: músculo(s) a priorizar nos acessórios (até 2).
     `weak_points` (lista) tem precedência; `weak_point` (singular) é mantido pros
@@ -355,7 +357,12 @@ def build_plan(
     session_target: nº-alvo de exercícios por sessão (vem do tempo disponível da
     pessoa — Curto/Médio/Longo). Sobrepõe o padrão do método, mas dentro de um
     limite seguro (3–9) pra não descaracterizar métodos minimalistas nem estourar
-    a proporção composto/isolado que a validação cobra."""
+    a proporção composto/isolado que a validação cobra.
+
+    time_efficient: sessão CURTA. Com pouco tempo, prioriza exercícios
+    MULTIARTICULARES e máquinas que pegam vários músculos de uma vez (chest
+    press, leg press, puxada) — mais estímulo por minuto. Sobe a proporção de
+    compostos e a preferência por máquina/cabo também nos compostos."""
     # Lista efetiva de pontos fracos (a plural manda; a singular é o fallback).
     wp_list = list(weak_points) if weak_points else ([weak_point] if weak_point else [])
     days = resolve_days(method, available_days)
@@ -367,6 +374,10 @@ def build_plan(
 
     # Proporção composto/isolado (default 0.5 quando o método não fixa).
     ratio = method.compound_ratio if method.compound_ratio is not None else 0.5
+    # Tempo curto: mais compostos multiarticulares pra render por minuto. Só
+    # empurra pra cima (nunca abaixo do que o método pede).
+    if time_efficient:
+        ratio = max(ratio, 0.6)
 
     # Parâmetros da fase ativa (ou base do método).
     sets = (phase.sets if phase else None) or method.sets_per_exercise or "—"
@@ -380,7 +391,9 @@ def build_plan(
     forbid_heavy_week = method.key == "y3t" and phase_index == 2
 
     schedule = method.schedule_suggestions.get(days, [])
-    prefer_machines = method.key in ("kuba", "fst7")
+    # Máquinas/cabo primeiro: métodos que pedem (Kuba/FST-7) OU sessão curta
+    # (multiarticular de máquina rende mais estímulo por minuto).
+    prefer_machines = method.key in ("kuba", "fst7") or time_efficient
 
     plan = WorkoutPlan(
         method_key=method.key,
@@ -463,7 +476,9 @@ def build_plan(
                 n_compound - len(compounds),
                 used_ids,
                 forbid_heavy_week,
-                False,
+                # Compostos de máquina (leg press, chest press, puxada) primeiro
+                # só quando o tempo é curto — nos demais, barra/livre lidera.
+                time_efficient,
                 covered=frozenset(e.primary_muscle_group for e in compounds),
                 session_ids=frozenset(e.id for e in compounds),
             )

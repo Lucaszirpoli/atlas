@@ -1,13 +1,14 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import React, { useCallback, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, useWindowDimensions, View } from "react-native";
+import { ScrollView, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { getCurrentGoal, type CalorieGoal } from "../../api/goals";
 import { listMealsForDay, type MealLog } from "../../api/meals";
 import { listRoutines, type Routine } from "../../api/routines";
 import { listSleepLogs, type SleepLog } from "../../api/sleep";
+import { listWeightLogs, logWeight, type WeightLog } from "../../api/weight";
 import { listWorkoutSessions, type WorkoutSessionDetail } from "../../api/workoutSessions";
 import { AtlasLogo } from "../../components/AtlasLogo";
 import { Avatar } from "../../components/Avatar";
@@ -32,7 +33,7 @@ function localKey(d: Date): string {
 }
 
 export function DashboardScreen() {
-  const { colors, type, spacing } = useTheme();
+  const { colors, type, spacing, shadow } = useTheme();
   const navigation = useNavigation<any>();
   const { user } = useAuth();
   const { width } = useWindowDimensions();
@@ -43,20 +44,23 @@ export function DashboardScreen() {
   const [sleepLogs, setSleepLogs] = useState<SleepLog[]>([]);
   const [sessions, setSessions] = useState<WorkoutSessionDetail[]>([]);
   const [routines, setRoutines] = useState<Routine[]>([]);
+  const [weightLogs, setWeightLogs] = useState<WeightLog[]>([]);
 
   async function load() {
-    const [g, m, s, sess, r] = await Promise.all([
+    const [g, m, s, sess, r, w] = await Promise.all([
       getCurrentGoal().catch(() => null),
       listMealsForDay(todayIso()).catch(() => []),
       listSleepLogs().catch(() => []),
       listWorkoutSessions().catch(() => []),
       listRoutines().catch(() => []),
+      listWeightLogs().catch(() => []),
     ]);
     setGoal(g);
     setMeals(m);
     setSleepLogs(s);
     setSessions(sess);
     setRoutines(r);
+    setWeightLogs(w);
   }
 
   useFocusEffect(
@@ -292,18 +296,8 @@ export function DashboardScreen() {
           </View>
 
           <View style={{ flexDirection: "row", gap, flex: 1 }}>
-          {/* Sono — gráfico da semana atual */}
-          <Tile minH={tile} onPress={() => navigation.navigate("Sleep")}>
-            <TileHeader icon="moon" tint={colors.moduleSleep} title="Sono" />
-            <View style={{ flex: 1, justifyContent: "flex-end" }}>
-              <WeekSleepChart hours={sleepByDay} />
-            </View>
-            <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.xs }]}>
-              {avgSleep > 0
-                ? `média ${Math.floor(avgSleep)}h${String(Math.round((avgSleep % 1) * 60)).padStart(2, "0")} esta semana`
-                : "sem registros esta semana"}
-            </Text>
-          </Tile>
+          {/* Peso — registro rápido, no quadrado (antes era o Sono). */}
+          <WeightTile logs={weightLogs} onLogged={load} minH={tile} />
 
           {/* Treino — treino de hoje */}
           <Tile minH={tile} onPress={() => navigation.navigate("TrainingModule")}>
@@ -346,8 +340,197 @@ export function DashboardScreen() {
           </Tile>
           </View>
         </View>
+
+        {/* Sono — card largo embaixo (antes era o Peso). */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate("Sleep")}
+          style={{ width: contentW, marginTop: gap }}
+        >
+          <View style={[{ backgroundColor: colors.surface, borderRadius: 22, padding: spacing.md }, shadow.sm]}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: spacing.sm }}>
+              <View
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 11,
+                  backgroundColor: colors.moduleSleep + "22",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons name="moon" size={19} color={colors.moduleSleep} />
+              </View>
+              <Text style={[type.h2, { color: colors.textPrimary, fontSize: 16, flex: 1 }]}>Sono</Text>
+              <Text style={[type.caption, { color: colors.textSecondary }]}>
+                {avgSleep > 0
+                  ? `média ${Math.floor(avgSleep)}h${String(Math.round((avgSleep % 1) * 60)).padStart(2, "0")}`
+                  : "sem registros"}
+              </Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+            </View>
+            <WeekSleepChart hours={sleepByDay} />
+          </View>
+        </TouchableOpacity>
       </ScrollView>
     </View>
+  );
+}
+
+/** Quadrado de peso da home: peso atual + tendência + registro rápido (stepper
+ * pré-preenchido com o último peso). Compacto pra caber no grid 2×2. */
+function WeightTile({ logs, onLogged, minH }: { logs: WeightLog[]; onLogged: () => void; minH: number }) {
+  const { colors, type, spacing, radius, shadow } = useTheme();
+  const sorted = [...logs].sort((a, b) => a.recorded_at.localeCompare(b.recorded_at));
+  const current = sorted.length ? sorted[sorted.length - 1] : null;
+
+  // Tendência vs o registro mais próximo de 7 dias atrás (fallback: o primeiro).
+  const trend = (() => {
+    if (!current || sorted.length < 2) return null;
+    const curT = new Date(current.recorded_at).getTime();
+    const weekAgo = curT - 7 * 86400000;
+    const past = [...sorted.slice(0, -1)].reverse().find((l) => new Date(l.recorded_at).getTime() <= weekAgo) ?? sorted[0];
+    const delta = current.weight_kg - past.weight_kg;
+    if (Math.abs(delta) < 0.05) return { delta: 0 };
+    return { delta };
+  })();
+
+  const [input, setInput] = useState("");
+  const [saving, setSaving] = useState(false);
+  // Valor efetivo do stepper: o que a pessoa digitou, ou o último peso.
+  const base = input !== "" ? Number(input.replace(",", ".")) : current?.weight_kg ?? 0;
+  const valid = Number.isFinite(base) && base > 0;
+
+  function bump(delta: number) {
+    const next = Math.max(0, Math.round((base + delta) * 10) / 10);
+    setInput(String(next).replace(".", ","));
+  }
+
+  async function salvar() {
+    if (!valid) return;
+    setSaving(true);
+    try {
+      await logWeight(Math.round(base * 10) / 10);
+      setInput("");
+      onLogged();
+    } catch {
+      /* silencioso */
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <View style={[{ flex: 1, minHeight: minH, backgroundColor: colors.surface, borderRadius: 22, padding: spacing.md }, shadow.sm]}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <View
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 11,
+            backgroundColor: colors.moduleSleep + "22",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ionicons name="scale" size={19} color={colors.moduleSleep} />
+        </View>
+        <Text style={[type.h2, { color: colors.textPrimary, fontSize: 16 }]}>Peso</Text>
+      </View>
+
+      {/* Peso atual + tendência */}
+      <View style={{ flex: 1, justifyContent: "center", paddingVertical: spacing.xs }}>
+        {current ? (
+          <>
+            <Text style={[type.h1, { color: colors.textPrimary, fontSize: 26 }]}>
+              {current.weight_kg.toString().replace(".", ",")}{" "}
+              <Text style={[type.caption, { color: colors.textSecondary }]}>kg</Text>
+            </Text>
+            {trend ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 3, marginTop: 1 }}>
+                <Ionicons
+                  name={trend.delta === 0 ? "remove" : trend.delta < 0 ? "arrow-down" : "arrow-up"}
+                  size={12}
+                  color={trend.delta === 0 ? colors.textSecondary : colors.success}
+                />
+                <Text style={[type.caption, { color: colors.textSecondary }]}>
+                  {trend.delta === 0
+                    ? "estável"
+                    : `${Math.abs(trend.delta).toFixed(1).replace(".", ",")} kg / sem`}
+                </Text>
+              </View>
+            ) : null}
+          </>
+        ) : (
+          <Text style={[type.caption, { color: colors.textSecondary }]}>Registre seu peso 👇</Text>
+        )}
+      </View>
+
+      {/* Stepper compacto: − valor +  e Registrar */}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 }}>
+        <StepBtn icon="remove" onPress={() => bump(-0.1)} />
+        <View
+          style={{
+            flex: 1,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 2,
+            backgroundColor: colors.surfaceAlt,
+            borderRadius: radius.button,
+            height: 40,
+          }}
+        >
+          <TextInput
+            value={input !== "" ? input : current ? String(current.weight_kg).replace(".", ",") : ""}
+            onChangeText={(v) => setInput(v.replace(/[^0-9.,]/g, ""))}
+            keyboardType="decimal-pad"
+            placeholder="0,0"
+            placeholderTextColor={colors.textSecondary}
+            style={[type.h2, { color: colors.textPrimary, fontSize: 17, minWidth: 34, textAlign: "center", paddingVertical: 0 }]}
+          />
+          <Text style={[type.caption, { color: colors.textSecondary }]}>kg</Text>
+        </View>
+        <StepBtn icon="add" onPress={() => bump(0.1)} />
+      </View>
+      <TouchableOpacity
+        onPress={salvar}
+        disabled={!valid || saving}
+        activeOpacity={0.85}
+        style={{
+          height: 40,
+          borderRadius: radius.button,
+          backgroundColor: colors.primary,
+          alignItems: "center",
+          justifyContent: "center",
+          opacity: !valid || saving ? 0.5 : 1,
+        }}
+      >
+        <Text style={[type.bodySmall, { color: colors.textOnPrimary, fontWeight: "700" }]}>
+          {saving ? "..." : "Registrar"}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function StepBtn({ icon, onPress }: { icon: keyof typeof Ionicons.glyphMap; onPress: () => void }) {
+  const { colors } = useTheme();
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
+      style={{
+        width: 36,
+        height: 40,
+        borderRadius: 11,
+        backgroundColor: colors.surfaceAlt,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Ionicons name={icon} size={18} color={colors.textPrimary} />
+    </TouchableOpacity>
   );
 }
 

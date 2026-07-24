@@ -37,6 +37,16 @@ class MealLogCreate(BaseModel):
     items: list[MealLogItemCreate] = Field(min_length=1)
 
 
+class MealLogItemUpdate(BaseModel):
+    """Correção da quantidade de um item já registrado (a pessoa tocou no
+    alimento no diário e ajustou). As gramas continuam a base do cálculo; o
+    rótulo/contagem da medida caseira acompanham se ela editou por unidade."""
+
+    quantity_g: float = Field(gt=0)
+    unit_label: str | None = Field(default=None, max_length=50)
+    unit_amount: float | None = Field(default=None, gt=0)
+
+
 class MealLogItemRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

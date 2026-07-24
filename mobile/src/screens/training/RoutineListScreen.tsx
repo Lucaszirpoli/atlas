@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import React, { useCallback, useState } from "react";
-import { Alert, FlatList, Pressable, Text, TouchableOpacity, View } from "react-native";
+import { Alert, FlatList, Pressable, RefreshControl, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -29,12 +29,40 @@ export function RoutineListScreen() {
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [optionsRoutine, setOptionsRoutine] = useState<Routine | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Routine | null>(null);
+  // Antes: listRoutines().then(setRoutines) SEM catch. Se essa chamada falhava
+  // (timeout/rede), a aba ficava vazia em silêncio — a rotina existia (aparecia
+  // no Coaching, que faz outra chamada) mas "sumia" aqui. Agora o erro é
+  // visível e recarregável.
+  const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const data = await listRoutines();
+      setRoutines(data);
+      setLoadError(false);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoaded(true);
+    }
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      listRoutines().then(setRoutines);
-    }, [])
+      load();
+    }, [load])
   );
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   async function handleStart(routine: Routine) {
     try {
@@ -76,7 +104,7 @@ export function RoutineListScreen() {
           onPress: async () => {
             try {
               await duplicateRoutine(optionsRoutine.id);
-              listRoutines().then(setRoutines);
+              load();
             } catch (err: any) {
               Alert.alert("Não foi possível duplicar", mensagemDeErro(err, "Tente novamente."));
             }
@@ -86,7 +114,7 @@ export function RoutineListScreen() {
           label: "Arquivar",
           onPress: async () => {
             await archiveRoutine(optionsRoutine.id);
-            listRoutines().then(setRoutines);
+            load();
           },
         },
         { label: "Excluir", destructive: true, onPress: () => setDeleteTarget(optionsRoutine) },
@@ -125,6 +153,7 @@ export function RoutineListScreen() {
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={{ paddingBottom: spacing.lg }}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         ListHeaderComponent={
           // 10 métodos consagrados (grátis). A geração por IA saiu daqui — o
           // acompanhamento personalizado vive agora só no Coaching (Pro).
@@ -190,27 +219,52 @@ export function RoutineListScreen() {
           );
         }}
         ListEmptyComponent={
-          <Card>
-            <View style={{ alignItems: "center", paddingVertical: spacing.lg }}>
-              <View
-                style={{
-                  width: 64,
-                  height: 64,
-                  borderRadius: 22,
-                  backgroundColor: colors.secondarySoft,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginBottom: spacing.md,
-                }}
-              >
-                <Ionicons name="barbell" size={30} color={colors.secondary} />
+          loadError ? (
+            <Card>
+              <View style={{ alignItems: "center", paddingVertical: spacing.lg }}>
+                <View
+                  style={{
+                    width: 64,
+                    height: 64,
+                    borderRadius: 22,
+                    backgroundColor: colors.warning + "22",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginBottom: spacing.md,
+                  }}
+                >
+                  <Ionicons name="cloud-offline" size={30} color={colors.warning} />
+                </View>
+                <Text style={[type.h2, { color: colors.textPrimary, marginBottom: 4 }]}>Não consegui carregar</Text>
+                <Text style={[type.bodySmall, { color: colors.textSecondary, textAlign: "center", marginBottom: spacing.md }]}>
+                  Suas rotinas estão salvas — foi só a conexão.{"\n"}Puxe pra baixo ou toque pra tentar de novo.
+                </Text>
+                <Button title="Tentar de novo" variant="secondary" onPress={load} />
               </View>
-              <Text style={[type.h2, { color: colors.textPrimary, marginBottom: 4 }]}>Nenhuma rotina ainda</Text>
-              <Text style={[type.bodySmall, { color: colors.textSecondary, textAlign: "center" }]}>
-                Crie sua primeira rotina de treino{"\n"}e comece a registrar sua evolução.
-              </Text>
-            </View>
-          </Card>
+            </Card>
+          ) : !loaded ? null : (
+            <Card>
+              <View style={{ alignItems: "center", paddingVertical: spacing.lg }}>
+                <View
+                  style={{
+                    width: 64,
+                    height: 64,
+                    borderRadius: 22,
+                    backgroundColor: colors.secondarySoft,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginBottom: spacing.md,
+                  }}
+                >
+                  <Ionicons name="barbell" size={30} color={colors.secondary} />
+                </View>
+                <Text style={[type.h2, { color: colors.textPrimary, marginBottom: 4 }]}>Nenhuma rotina ainda</Text>
+                <Text style={[type.bodySmall, { color: colors.textSecondary, textAlign: "center" }]}>
+                  Crie sua primeira rotina de treino{"\n"}e comece a registrar sua evolução.
+                </Text>
+              </View>
+            </Card>
+          )
         }
       />
 
