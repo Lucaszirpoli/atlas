@@ -34,9 +34,13 @@ _LEVEL_FACTOR = {"iniciante": 0.75, "intermediario": 1.0, "avancado": 1.15}
 
 # Faixa segura de séries por EXERCÍCIO (depois de distribuir o volume do
 # músculo entre as vagas que o treinam) — nunca deixa 1 exercício isolado
-# carregar todo o volume nem virar quantidade irrisória.
+# carregar todo o volume do músculo (bug real: remada curva sozinha saindo
+# com 5+ séries quando o músculo tinha poucas vagas na semana) nem virar
+# quantidade irrisória. 4 é o teto de séries retas num único exercício;
+# volume que não coube nesse teto fica pro próximo exercício do mesmo
+# músculo em vez de empilhar tudo num só.
 PER_EXERCISE_MIN = 2
-PER_EXERCISE_MAX = 6
+PER_EXERCISE_MAX = 4
 
 
 def weekly_set_range(muscle: MuscleGroup, level: str | None) -> tuple[int, int]:
