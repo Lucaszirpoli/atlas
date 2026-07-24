@@ -9,6 +9,7 @@ import { Card } from "../../components/Card";
 import { OptionButton } from "../../components/OptionButton";
 import { useTheme } from "../../theme/ThemeProvider";
 import { mensagemDeErro } from "../../utils/errorMessage";
+import { SleepCoachHeader } from "../coaching/CoachModuleHeader";
 
 const WAKE_FEELING_LABELS: Record<WakeFeeling, string> = {
   descansado: "😊 Descansado",
@@ -107,6 +108,9 @@ export function SleepScreen() {
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
     >
+      {/* Contexto do coach (Pro): leitura do sono. Some no Free. */}
+      <SleepCoachHeader />
+
       <Card accent={colors.moduleSleep} style={{ marginBottom: spacing.lg }}>
         <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.md }}>
           <Ionicons name="moon" size={20} color={colors.moduleSleep} />

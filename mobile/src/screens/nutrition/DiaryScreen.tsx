@@ -31,6 +31,7 @@ import { QuantityEditor, type QuantityValue } from "../../components/QuantityEdi
 import { useTheme } from "../../theme/ThemeProvider";
 import { mensagemDeErro } from "../../utils/errorMessage";
 import { formatQuantity } from "../../utils/portion";
+import { DietCoachHeader } from "../coaching/CoachModuleHeader";
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -191,6 +192,9 @@ export function DiaryScreen() {
       refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />}
       showsVerticalScrollIndicator={false}
     >
+      {/* Cabeçalho do coach (Pro): meta calórica + macros + leitura. Some no Free. */}
+      <DietCoachHeader />
+
       {/* RESUMO COMPACTO — "restantes" em destaque + barra + macros. Toque abre a
           meta. Sem o anel grande de antes: as refeições são o foco. */}
       <Card style={{ marginBottom: spacing.md }}>

@@ -231,21 +231,3 @@ export async function applyDiet(
   return data;
 }
 
-export type MealPhotoItem = {
-  nome_identificado: string;
-  food_id: number | null;
-  quantidade_estimada_g: number;
-  confianca: "alta" | "media" | "baixa";
-};
-
-export async function analyzeMealPhoto(
-  imageBase64: string,
-  mediaType = "image/jpeg"
-): Promise<{ itens: MealPhotoItem[]; aviso: string }> {
-  const { data } = await api.post(
-    "/ai/meal-photo",
-    { image_base64: imageBase64, media_type: mediaType },
-    { timeout: AI_TIMEOUT_MS }
-  );
-  return data;
-}

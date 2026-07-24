@@ -28,7 +28,6 @@ import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { InfoDialog } from "../../components/InfoDialog";
 import { QuantityEditor, type QuantityValue } from "../../components/QuantityEditor";
-import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
 import { formatQuantity } from "../../utils/portion";
 import { addRecentFood, listRecentFoods } from "../../utils/recentFoods";
@@ -43,7 +42,6 @@ export function AddFoodScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const { categoryId, barcodeResult } = route.params ?? {};
-  const { user } = useAuth();
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Food[]>([]);
@@ -452,19 +450,6 @@ export function AddFoodScreen() {
             label="Criar receita"
             color={colors.moduleTraining}
             onPress={() => setModoReceita(true)}
-          />
-          <QuickAction
-            icon="camera"
-            label={user?.plan === "pro" ? "Foto (IA)" : "Foto (Pro)"}
-            color={colors.secondary}
-            locked={user?.plan !== "pro"}
-            onPress={() => {
-              if (user?.plan !== "pro") {
-                Alert.alert("Exclusivo do Pro", "Assine o Pro para registrar refeições por foto.");
-                return;
-              }
-              navigation.navigate("MealPhoto", { categoryId });
-            }}
           />
         </View>
       ) : null}

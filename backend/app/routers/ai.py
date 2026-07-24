@@ -9,10 +9,9 @@ from app.ai.diet_engine import MacroTarget, build_diet_plan
 from app.ai.methods import get_method, list_methods, recommend_method_for_profile
 from app.ai.methods_ai import generate_method_plan
 from app.ai.orchestrator import run_chat_turn
-from app.ai.vision import analyze_meal_photo
 from app.core.config import settings
 from app.core.db import get_db
-from app.core.security import get_current_user, require_pro_plan
+from app.core.security import get_current_user
 from app.models.chat_message import ChatMessage
 from app.models.user import Plan, User
 from app.models.user_profile import UserProfile
@@ -22,8 +21,6 @@ from app.schemas.ai import (
     ChatMessageRead,
     ChatRequest,
     ChatResponse,
-    MealPhotoAnalyzeRequest,
-    MealPhotoAnalyzeResponse,
 )
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -415,7 +412,7 @@ def chat(
                 status_code=status.HTTP_402_PAYMENT_REQUIRED,
                 detail=(
                     "Você usou suas mensagens grátis com o assistente. Assine o Pro "
-                    "para conversar sem limite, montar treino por IA e registrar refeição por foto."
+                    "para conversar sem limite e montar treino e dieta por IA."
                 ),
             )
     try:
@@ -453,19 +450,3 @@ def chat_history(
     rows = list(db.execute(stmt).scalars())
     rows.reverse()
     return rows
-
-
-@router.post("/meal-photo", response_model=MealPhotoAnalyzeResponse)
-def analyze_photo(
-    payload: MealPhotoAnalyzeRequest,
-    current_user: User = Depends(require_pro_plan),
-    db: Session = Depends(get_db),
-) -> dict:
-    _require_api_key()
-    try:
-        return analyze_meal_photo(db, payload.image_base64, payload.media_type)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Não consegui analisar a foto agora ({type(exc).__name__}). Tente de novo.",
-        ) from exc

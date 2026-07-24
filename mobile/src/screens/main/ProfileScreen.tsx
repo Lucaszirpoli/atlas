@@ -89,7 +89,7 @@ export function ProfileScreen() {
             </Text>
             <Text style={[type.caption, { color: colors.textSecondary }]}>
               {user?.plan === "pro"
-                ? "Assistente de IA ilimitado + foto de refeição"
+                ? "Coaching, assistente de IA ilimitado e treino/dieta por IA"
                 : "Treino e dieta manual são livres · a IA é do Pro"}
             </Text>
           </View>
@@ -169,7 +169,15 @@ export function ProfileScreen() {
 
       {/* Menu */}
       <Card padded={false} style={{ marginBottom: spacing.lg }}>
-        <MenuRow icon="trending-up" label="Evolução" onPress={() => navigation.navigate("Evolution")} first />
+        {user?.plan === "pro" ? (
+          <MenuRow
+            icon="swap-vertical"
+            label="Layout da tela inicial"
+            onPress={() => navigation.navigate("HomeLayout")}
+            first
+          />
+        ) : null}
+        <MenuRow icon="trending-up" label="Evolução" onPress={() => navigation.navigate("Evolution")} first={user?.plan !== "pro"} />
         <MenuRow icon="moon" label="Sono" onPress={() => navigation.navigate("Sleep")} />
         <MenuRow icon="mail" label="E-mail" trailing={user?.email} />
       </Card>

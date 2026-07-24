@@ -12,11 +12,12 @@ import { ChatScreen } from "../screens/ai/ChatScreen";
 import { CoachChatScreen } from "../screens/coaching/CoachChatScreen";
 import { CoachingScreen } from "../screens/coaching/CoachingScreen";
 import { EvolutionScreen } from "../screens/evolution/EvolutionScreen";
-import { DashboardScreen } from "../screens/main/DashboardScreen";
 import { PaywallScreen } from "../screens/main/PaywallScreen";
 import { ProfileScreen } from "../screens/main/ProfileScreen";
+import { HomeLayoutScreen } from "../screens/settings/HomeLayoutScreen";
 import { SleepScreen } from "../screens/sleep/SleepScreen";
 import { WaterScreen } from "../screens/water/WaterScreen";
+import { WeightScreen } from "../screens/weight/WeightScreen";
 import { useTheme } from "../theme/ThemeProvider";
 import { AuthStack } from "./AuthStack";
 import { navigationRef } from "./navigationRef";
@@ -38,20 +39,26 @@ function AppStack() {
         headerTitleStyle: { fontWeight: "700" },
       }}
     >
-      {/* Tela principal única */}
-      <Stack.Screen name="Dashboard" component={DashboardScreen} />
+      {/* Home = Coaching. É a primeira tela do app (Pro vê o hub; Free vê a
+          grade de módulos). Sem header — a própria tela tem o seu cabeçalho. */}
+      <Stack.Screen name="Home" component={CoachingScreen} />
 
-      {/* Módulos abertos a partir das faixas */}
+      {/* Módulos abertos a partir da home */}
       <Stack.Screen name="NutritionModule" component={NutritionStack} />
       <Stack.Screen name="TrainingModule" component={TrainingStack} />
       <Stack.Screen name="Social" component={SocialStack} />
 
       {/* Telas individuais */}
       <Stack.Screen name="Sleep" component={SleepScreen} options={{ headerShown: true, title: "Sono" }} />
+      <Stack.Screen name="Weight" component={WeightScreen} options={{ headerShown: true, title: "Peso" }} />
       <Stack.Screen name="Water" component={WaterScreen} options={{ headerShown: true, title: "Água" }} />
       <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: true, title: "Perfil" }} />
+      <Stack.Screen
+        name="HomeLayout"
+        component={HomeLayoutScreen}
+        options={{ headerShown: true, title: "Layout da tela inicial" }}
+      />
       <Stack.Screen name="Paywall" component={PaywallScreen} options={{ headerShown: true, title: "ATLAS Pro" }} />
-      <Stack.Screen name="Coaching" component={CoachingScreen} options={{ headerShown: true, title: "Coaching" }} />
       <Stack.Screen name="CoachChat" component={CoachChatScreen} options={{ headerShown: true, title: "Pergunte ao coach" }} />
       <Stack.Screen name="Evolution" component={EvolutionScreen} options={{ headerShown: true, title: "Evolução" }} />
       <Stack.Screen name="AiHub" component={AiHubScreen} options={{ headerShown: true, title: "Treino com IA" }} />

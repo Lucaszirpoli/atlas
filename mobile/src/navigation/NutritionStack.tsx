@@ -9,7 +9,6 @@ import { CalorieHistoryScreen } from "../screens/nutrition/CalorieHistoryScreen"
 import { DiaryScreen } from "../screens/nutrition/DiaryScreen";
 import { DietTemplatesScreen } from "../screens/nutrition/DietTemplatesScreen";
 import { GoalSettingsScreen } from "../screens/nutrition/GoalSettingsScreen";
-import { MealPhotoScreen } from "../screens/nutrition/MealPhotoScreen";
 import { MeasurementsScreen } from "../screens/nutrition/MeasurementsScreen";
 import { QuickLogScreen } from "../screens/nutrition/QuickLogScreen";
 import { useTheme } from "../theme/ThemeProvider";
@@ -43,11 +42,6 @@ export function NutritionStack() {
         options={{ title: "Escanear código de barras" }}
       />
       <Stack.Screen name="GoalSettings" component={GoalSettingsScreen} options={{ title: "Meta calórica" }} />
-      <Stack.Screen
-        name="MealPhoto"
-        component={MealPhotoScreen}
-        options={{ title: "Registrar por foto" }}
-      />
       <Stack.Screen name="Measurements" component={MeasurementsScreen} options={{ title: "Medidas e fotos" }} />
       <Stack.Screen name="CalorieHistory" component={CalorieHistoryScreen} options={{ title: "Histórico de calorias" }} />
     </Stack.Navigator>

@@ -19,6 +19,7 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { useActiveWorkout } from "../../context/ActiveWorkoutContext";
 import { useTheme } from "../../theme/ThemeProvider";
 import { mensagemDeErro } from "../../utils/errorMessage";
+import { TrainingCoachHeader } from "../coaching/CoachModuleHeader";
 
 export function RoutineListScreen() {
   const { colors, type, spacing, radius } = useTheme();
@@ -155,8 +156,12 @@ export function RoutineListScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         ListHeaderComponent={
-          // 10 métodos consagrados (grátis). A geração por IA saiu daqui — o
-          // acompanhamento personalizado vive agora só no Coaching (Pro).
+          <>
+          {/* Cabeçalho do coach (Pro): como o coach monta seu treino + seu
+              treino atual. Some no Free — que vê só as rotinas manuais. */}
+          <TrainingCoachHeader />
+          {/* 10 métodos consagrados (grátis). A geração por IA saiu daqui — o
+              acompanhamento personalizado vive agora só no Coaching (Pro). */}
           <TouchableOpacity
             activeOpacity={0.85}
             onPress={() => navigation.navigate("AiHub")}
@@ -190,6 +195,7 @@ export function RoutineListScreen() {
             </View>
             <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
           </TouchableOpacity>
+          </>
         }
         renderItem={({ item }) => {
           const totalSets = item.exercises.reduce((s, e) => s + e.target_sets, 0);

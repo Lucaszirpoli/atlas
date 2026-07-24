@@ -9,6 +9,7 @@ from app.models.saved_meal import FavoriteFood
 from app.models.user import User
 from app.schemas.food import FoodCreate, FoodPortionCreate, FoodPortionRead, FoodRead
 from app.services import food_service
+from app.services.content_filter import contains_banned_term
 
 router = APIRouter(prefix="/foods", tags=["foods"])
 
@@ -53,6 +54,14 @@ def create_custom_food(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Food:
+    # Filtro +18: a base de alimentos é compartilhada entre todos, então um nome
+    # impróprio apareceria na busca de todo mundo. Só vale pro cadastro manual —
+    # produtos de código de barras (Open Food Facts) são reais e não passam aqui.
+    if contains_banned_term(payload.name):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Esse nome não é permitido. Escolha outro nome para o alimento.",
+        )
     food = Food(
         source=FoodSource.CUSTOM,
         created_by_user_id=current_user.id,

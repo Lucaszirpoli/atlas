@@ -24,20 +24,3 @@ class ChatMessageRead(BaseModel):
     content: str
     proposed_action: dict | None
     created_at: datetime
-
-
-class MealPhotoAnalyzeRequest(BaseModel):
-    image_base64: str
-    media_type: str = Field(default="image/jpeg")
-
-
-class MealPhotoItem(BaseModel):
-    nome_identificado: str
-    food_id: int | None
-    quantidade_estimada_g: float
-    confianca: str
-
-
-class MealPhotoAnalyzeResponse(BaseModel):
-    itens: list[MealPhotoItem]
-    aviso: str
