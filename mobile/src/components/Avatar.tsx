@@ -1,12 +1,23 @@
 import React from "react";
-import { Text, View } from "react-native";
+import { Image, Text, View } from "react-native";
 
 import { useTheme } from "../theme/ThemeProvider";
 
 const PALETTE = ["#1F7A5C", "#FF6B35", "#4A5B8C", "#E8637A", "#3B82C4", "#E8A33D"];
 
-/** Avatar circular com as iniciais do nome, cor estável derivada do handle. */
-export function Avatar({ name, handle, size = 40 }: { name: string; handle: string; size?: number }) {
+/** Avatar circular: foto (só a do PRÓPRIO usuário, salva no aparelho) quando
+ * tem, senão as iniciais do nome com cor estável derivada do handle. */
+export function Avatar({
+  name,
+  handle,
+  size = 40,
+  photoUri,
+}: {
+  name: string;
+  handle: string;
+  size?: number;
+  photoUri?: string | null;
+}) {
   const { colors, type } = useTheme();
   const initials = name
     .split(" ")
@@ -15,6 +26,15 @@ export function Avatar({ name, handle, size = 40 }: { name: string; handle: stri
     .map((p) => p[0]?.toUpperCase())
     .join("");
   const color = PALETTE[[...handle].reduce((a, c) => a + c.charCodeAt(0), 0) % PALETTE.length];
+
+  if (photoUri) {
+    return (
+      <Image
+        source={{ uri: photoUri }}
+        style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color }}
+      />
+    );
+  }
 
   return (
     <View

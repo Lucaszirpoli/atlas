@@ -10,6 +10,7 @@ import { WorkoutExecutionScreen } from "../screens/training/WorkoutExecutionScre
 import { WorkoutHistoryScreen } from "../screens/training/WorkoutHistoryScreen";
 import { WorkoutInsightsScreen } from "../screens/training/WorkoutInsightsScreen";
 import { WorkoutPreviewScreen } from "../screens/training/WorkoutPreviewScreen";
+import { WorkoutSessionEditScreen } from "../screens/training/WorkoutSessionEditScreen";
 import { WorkoutSummaryScreen } from "../screens/training/WorkoutSummaryScreen";
 import { useTheme } from "../theme/ThemeProvider";
 
@@ -56,6 +57,11 @@ export function TrainingStack() {
         name="WorkoutHistory"
         component={WorkoutHistoryScreen}
         options={{ title: "Histórico de treinos" }}
+      />
+      <Stack.Screen
+        name="WorkoutSessionEdit"
+        component={WorkoutSessionEditScreen}
+        options={{ title: "Corrigir treino" }}
       />
       <Stack.Screen
         name="WorkoutExecution"

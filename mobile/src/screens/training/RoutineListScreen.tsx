@@ -156,46 +156,9 @@ export function RoutineListScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         ListHeaderComponent={
-          <>
-          {/* Cabeçalho do coach (Pro): como o coach monta seu treino + seu
-              treino atual. Some no Free — que vê só as rotinas manuais. */}
+          // Cabeçalho do coach (Pro): como o coach monta seu treino + seu
+          // treino atual. Some no Free — que vê só as rotinas manuais.
           <TrainingCoachHeader />
-          {/* 10 métodos consagrados (grátis). A geração por IA saiu daqui — o
-              acompanhamento personalizado vive agora só no Coaching (Pro). */}
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => navigation.navigate("AiHub")}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              backgroundColor: colors.moduleTraining,
-              borderRadius: radius.card,
-              padding: spacing.md,
-              marginBottom: spacing.md,
-            }}
-          >
-            <View
-              style={{
-                width: 46,
-                height: 46,
-                borderRadius: 15,
-                backgroundColor: "rgba(255,255,255,0.22)",
-                alignItems: "center",
-                justifyContent: "center",
-                marginRight: spacing.md,
-              }}
-            >
-              <Ionicons name="barbell" size={24} color="#FFFFFF" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[type.h2, { color: "#FFFFFF", fontSize: 16 }]}>Métodos de treino</Text>
-              <Text style={[type.caption, { color: "rgba(255,255,255,0.9)" }]} numberOfLines={2}>
-                10 metodologias consagradas, prontas pra montar sua rotina
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
-          </TouchableOpacity>
-          </>
         }
         renderItem={({ item }) => {
           const totalSets = item.exercises.reduce((s, e) => s + e.target_sets, 0);
@@ -276,9 +239,47 @@ export function RoutineListScreen() {
 
       <Button title="Nova rotina" icon="+" onPress={() => navigation.navigate("RoutineBuilder", {})} />
 
-      {/* Importar fica logo abaixo do "Nova rotina": é aqui que quem chegou de
-          outro app procura, e redigitar tudo é o motivo nº1 de desistir de
-          trocar. Discreto de propósito — serve uma vez na vida do usuário. */}
+      {/* 10 métodos consagrados (grátis) — fica abaixo da última rotina, igual
+          "Dietas prontas" na aba de Dieta (discovery, não atrapalha quem já
+          tem rotina montada). A geração por IA saiu daqui — o acompanhamento
+          personalizado vive agora só no Coaching (Pro). */}
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={() => navigation.navigate("AiHub")}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          backgroundColor: colors.moduleTraining,
+          borderRadius: radius.card,
+          padding: spacing.md,
+          marginTop: spacing.md,
+        }}
+      >
+        <View
+          style={{
+            width: 46,
+            height: 46,
+            borderRadius: 15,
+            backgroundColor: "rgba(255,255,255,0.22)",
+            alignItems: "center",
+            justifyContent: "center",
+            marginRight: spacing.md,
+          }}
+        >
+          <Ionicons name="barbell" size={24} color="#FFFFFF" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[type.h2, { color: "#FFFFFF", fontSize: 16 }]}>Métodos de treino</Text>
+          <Text style={[type.caption, { color: "rgba(255,255,255,0.9)" }]} numberOfLines={2}>
+            10 metodologias consagradas, prontas pra montar sua rotina
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
+      </TouchableOpacity>
+
+      {/* Importar fica por último: é aqui que quem chegou de outro app
+          procura, e redigitar tudo é o motivo nº1 de desistir de trocar.
+          Discreto de propósito — serve uma vez na vida do usuário. */}
       <Pressable
         onPress={() => navigation.navigate("ImportRoutines")}
         style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingTop: spacing.md }}

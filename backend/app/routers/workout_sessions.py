@@ -18,6 +18,7 @@ from app.schemas.workout_session import (
     WorkoutSessionSummary,
     WorkoutSetLogCreate,
     WorkoutSetLogRead,
+    WorkoutSetLogUpdate,
 )
 from app.services import feed_service, workout_service
 
@@ -95,6 +96,34 @@ def log_set(
 
     set_log = WorkoutSetLog(session_id=session.id, **payload.model_dump())
     db.add(set_log)
+    db.commit()
+    db.refresh(set_log)
+    return set_log
+
+
+@router.patch("/sets/{set_id}", response_model=WorkoutSetLogRead)
+def update_set(
+    set_id: int,
+    payload: WorkoutSetLogUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> WorkoutSetLog:
+    """Corrige peso/reps de uma série já registrada — inclusive de um treino de
+    dia passado (Histórico de treinos › tocar o treino). Mesma ideia do
+    /meals/items/{id} no diário: corrige o valor errado na própria linha, sem
+    apagar o registro nem criar uma nova série."""
+    set_log = db.execute(
+        select(WorkoutSetLog)
+        .options(selectinload(WorkoutSetLog.exercise), selectinload(WorkoutSetLog.session))
+        .where(WorkoutSetLog.id == set_id)
+    ).scalar_one_or_none()
+    if set_log is None or set_log.session.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Série não encontrada")
+
+    if payload.weight_kg is not None:
+        set_log.weight_kg = payload.weight_kg
+    if payload.reps is not None:
+        set_log.reps = payload.reps
     db.commit()
     db.refresh(set_log)
     return set_log

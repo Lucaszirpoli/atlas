@@ -107,5 +107,12 @@ export function useHomeLayout() {
     resetHomeOrder();
   }, []);
 
-  return { order, loading, move, resetToDefault, reload };
+  /** Define a ordem inteira de uma vez (arrastar-e-soltar na home, em vez de
+   * mover um bloco de cada vez com as setinhas). */
+  const reorder = useCallback((novaOrdem: HomeBlockId[]) => {
+    setOrder(novaOrdem);
+    saveHomeOrder(novaOrdem);
+  }, []);
+
+  return { order, loading, move, reorder, resetToDefault, reload };
 }

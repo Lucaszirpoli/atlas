@@ -136,3 +136,18 @@ export async function listWorkoutSessions(routineId?: number): Promise<WorkoutSe
   });
   return data;
 }
+
+export async function getWorkoutSession(sessionId: number): Promise<WorkoutSessionDetail> {
+  const { data } = await api.get<WorkoutSessionDetail>(`/workout-sessions/${sessionId}`);
+  return data;
+}
+
+/** Corrige peso/reps de uma série já registrada (inclusive de um treino
+ * passado) — pra quando a pessoa digitou errado na hora. */
+export async function updateWorkoutSet(
+  setId: number,
+  payload: { weight_kg?: number; reps?: number }
+): Promise<WorkoutSetLog> {
+  const { data } = await api.patch<WorkoutSetLog>(`/workout-sessions/sets/${setId}`, payload);
+  return data;
+}

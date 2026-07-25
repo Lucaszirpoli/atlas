@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Modal, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   applyCoachAction,
@@ -25,11 +26,13 @@ import { AtlasLogo } from "../../components/AtlasLogo";
 import { Avatar } from "../../components/Avatar";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
+import { DraggableList } from "../../components/DraggableList";
 import { InfoDialog } from "../../components/InfoDialog";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
 import { mensagemDeErro } from "../../utils/errorMessage";
 import { useHomeLayout, type HomeBlockId } from "../../utils/homeLayout";
+import { useProfilePhoto } from "../../utils/profilePhoto";
 import { OnboardingScreen } from "../onboarding/OnboardingScreen";
 import {
   ExpandToggle,
@@ -110,6 +113,7 @@ export function CoachingScreen() {
   const { colors, type, spacing } = useTheme();
   const navigation = useNavigation<any>();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const isPro = user?.plan === "pro";
 
   const [analysis, setAnalysis] = useState<CoachingAnalysis | null>(null);
@@ -119,6 +123,9 @@ export function CoachingScreen() {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState(false);
   const [aviso, setAviso] = useState<{ title: string; message: string } | null>(null);
+  // Trava o scroll do ScrollView externo enquanto a pessoa arrasta um bloco
+  // pra reordenar a home — senão os dois gestos (scroll e arrastar) brigam.
+  const [homeDragging, setHomeDragging] = useState(false);
 
   // Navegação do hub: null = o mapa; senão a seção aberta. O gráfico não é mais
   // um modal — vira a seção "progresso", com a métrica pré-selecionada.
@@ -191,9 +198,10 @@ export function CoachingScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
+      contentContainerStyle={{ padding: spacing.lg, paddingTop: spacing.lg + insets.top, paddingBottom: spacing.xxl }}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
+      scrollEnabled={!homeDragging}
     >
       {section == null ? <HomeHeader navigation={navigation} user={user} /> : null}
       {loading && !analysis ? (
@@ -214,6 +222,8 @@ export function CoachingScreen() {
         section == null ? (
           <CoachingHub
             order={homeLayout.order}
+            onReorder={homeLayout.reorder}
+            onDragStateChange={setHomeDragging}
             analysis={analysis}
             checkin={checkin}
             changes={changes}
@@ -270,6 +280,7 @@ function greeting(): string {
 function HomeHeader({ navigation, user }: { navigation: any; user: ReturnType<typeof useAuth>["user"] }) {
   const { colors, type, spacing } = useTheme();
   const firstName = user?.display_name?.split(" ")[0] ?? "";
+  const profilePhoto = useProfilePhoto();
   return (
     <View style={{ marginBottom: spacing.md }}>
       <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.md }}>
@@ -278,7 +289,7 @@ function HomeHeader({ navigation, user }: { navigation: any; user: ReturnType<ty
           {greeting()}, {firstName}
         </Text>
         <TouchableOpacity onPress={() => navigation.navigate("Profile")}>
-          <Avatar name={user?.display_name ?? "?"} handle={user?.handle ?? "?"} size={40} />
+          <Avatar name={user?.display_name ?? "?"} handle={user?.handle ?? "?"} size={40} photoUri={profilePhoto.uri} />
         </TouchableOpacity>
       </View>
       <SocialPills navigation={navigation} />
@@ -366,6 +377,7 @@ function TileGrid({
  * (sem IA não há o que mostrar ali). */
 function FreeHome({ navigation, user }: { navigation: any; user: ReturnType<typeof useAuth>["user"] }) {
   const { colors, type, spacing, radius } = useTheme();
+  const insets = useSafeAreaInsets();
   const tiles = [
     { icon: "barbell" as const, title: "Treino", subtitle: "Rotinas e métodos", onPress: () => navigation.navigate("TrainingModule") },
     { icon: "restaurant" as const, title: "Dieta", subtitle: "Refeições e água", onPress: () => navigation.navigate("NutritionModule") },
@@ -375,7 +387,7 @@ function FreeHome({ navigation, user }: { navigation: any; user: ReturnType<type
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
+      contentContainerStyle={{ padding: spacing.lg, paddingTop: spacing.lg + insets.top, paddingBottom: spacing.xxl }}
     >
       <HomeHeader navigation={navigation} user={user} />
 
@@ -433,6 +445,8 @@ function semanaLabel(baseline: string | null): string | null {
 // Tudo que é denso (prefs, gráficos, "o que mudou") mora dentro das seções.
 function CoachingHub({
   order,
+  onReorder,
+  onDragStateChange,
   analysis,
   checkin,
   changes,
@@ -447,6 +461,8 @@ function CoachingHub({
   onAskCoach,
 }: {
   order: HomeBlockId[];
+  onReorder: (order: HomeBlockId[]) => void;
+  onDragStateChange: (dragging: boolean) => void;
   analysis: CoachingAnalysis;
   checkin: CoachingCheckin | null;
   changes: CoachingChange[];
@@ -668,12 +684,36 @@ function CoachingHub({
     ) : null,
   };
 
+  // Blocos condicionais (ex: "tudo certo" sem nada ok, "o que mudou" sem
+  // ajustes) ficam null — não entram na lista arrastável (não faz sentido
+  // arrastar um bloco vazio), mas continuam guardando o lugar na ordem
+  // salva pra reaparecerem no mesmo lugar relativo quando tiverem conteúdo.
+  const visiveis = order.filter((id) => blocks[id] != null);
+
+  function handleReorder(novaOrdemVisivel: HomeBlockId[]) {
+    const escondidos = order.filter((id) => blocks[id] == null);
+    const resultado = [...novaOrdemVisivel];
+    escondidos.forEach((id) => {
+      const idxOriginal = order.indexOf(id);
+      let inserirDepoisDe: HomeBlockId | null = null;
+      for (let i = idxOriginal - 1; i >= 0; i--) {
+        if (resultado.includes(order[i])) {
+          inserirDepoisDe = order[i];
+          break;
+        }
+      }
+      const pos = inserirDepoisDe ? resultado.indexOf(inserirDepoisDe) + 1 : 0;
+      resultado.splice(pos, 0, id);
+    });
+    onReorder(resultado);
+  }
+
   return (
-    <>
-      {order.map((id) => (
-        <React.Fragment key={id}>{blocks[id]}</React.Fragment>
-      ))}
-    </>
+    <DraggableList
+      items={visiveis.map((id) => ({ id, node: blocks[id] }))}
+      onReorder={handleReorder}
+      onDragStateChange={onDragStateChange}
+    />
   );
 }
 

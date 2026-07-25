@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import React, { useCallback, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,6 +18,7 @@ import { useTheme } from "../../theme/ThemeProvider";
  * Excluir aqui apaga a sessão e as séries dela do histórico. */
 export function WorkoutHistoryScreen() {
   const { colors, type, spacing } = useTheme();
+  const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
 
   const [sessions, setSessions] = useState<WorkoutSessionDetail[]>([]);
@@ -64,7 +65,7 @@ export function WorkoutHistoryScreen() {
       showsVerticalScrollIndicator={false}
     >
       <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
-        Toque na lixeira para excluir um treino salvo por engano.
+        Toque num treino para corrigir peso/reps. Toque na lixeira para excluir um treino salvo por engano.
       </Text>
 
       {sessions.length === 0 ? (
@@ -80,7 +81,11 @@ export function WorkoutHistoryScreen() {
 
       {sessions.map((s) => (
         <Card key={s.id} style={{ marginBottom: spacing.sm }}>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate("WorkoutSessionEdit", { sessionId: s.id })}
+            activeOpacity={0.7}
+            style={{ flexDirection: "row", alignItems: "center" }}
+          >
             <View style={{ flex: 1 }}>
               <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>
                 {new Date(s.started_at).toLocaleDateString("pt-BR", {
@@ -94,10 +99,11 @@ export function WorkoutHistoryScreen() {
                 {durationOf(s)}
               </Text>
             </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} style={{ marginRight: spacing.xs }} />
             <TouchableOpacity onPress={() => setDeleteTarget(s)} hitSlop={10} style={{ padding: spacing.xs }}>
               <Ionicons name="trash-outline" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
-          </View>
+          </TouchableOpacity>
         </Card>
       ))}
 

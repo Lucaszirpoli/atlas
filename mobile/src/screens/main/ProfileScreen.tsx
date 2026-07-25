@@ -1,19 +1,42 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import React, { useCallback } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import * as ImagePicker from "expo-image-picker";
+import React, { useCallback, useState } from "react";
+import { Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { syncPlan } from "../../api/billing";
 import { configurePurchases, getEntitlementActive, isNativePurchasesAvailable } from "../../api/purchases";
+import { ActionSheet, type ActionSheetOption } from "../../components/ActionSheet";
 import { Avatar } from "../../components/Avatar";
 import { Card } from "../../components/Card";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme, type ThemeMode } from "../../theme/ThemeProvider";
+import { useProfilePhoto } from "../../utils/profilePhoto";
 
 export function ProfileScreen() {
   const { colors, type, spacing, mode, setMode } = useTheme();
   const navigation = useNavigation<any>();
   const { user, signOut, refreshUser } = useAuth();
+  const profilePhoto = useProfilePhoto();
+  const [showPhotoMenu, setShowPhotoMenu] = useState(false);
+
+  async function escolherFoto() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert("Permissão necessária", "Precisamos acessar suas fotos para isso.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.8, allowsEditing: true, aspect: [1, 1] });
+    if (result.canceled || !result.assets[0]) return;
+    await profilePhoto.escolher(result.assets[0].uri);
+  }
+
+  const photoMenuOptions: ActionSheetOption[] = [
+    { label: profilePhoto.uri ? "Trocar foto" : "Escolher foto", onPress: escolherFoto },
+    ...(profilePhoto.uri
+      ? [{ label: "Remover foto", destructive: true, onPress: () => profilePhoto.remover() }]
+      : []),
+  ];
 
   // Sempre que a tela ganha foco, revalida o plano — assim, se a compra do Pro
   // foi confirmada pelo webhook depois que a pessoa saiu do paywall, o status
@@ -53,12 +76,46 @@ export function ProfileScreen() {
     >
       {/* Cabeçalho do perfil */}
       <View style={{ alignItems: "center", marginBottom: spacing.lg }}>
-        <Avatar name={user?.display_name ?? "?"} handle={user?.handle ?? "?"} size={86} />
+        <TouchableOpacity onPress={() => setShowPhotoMenu(true)} activeOpacity={0.85}>
+          <Avatar
+            name={user?.display_name ?? "?"}
+            handle={user?.handle ?? "?"}
+            size={86}
+            photoUri={profilePhoto.uri}
+          />
+          <View
+            style={{
+              position: "absolute",
+              right: -2,
+              bottom: -2,
+              width: 28,
+              height: 28,
+              borderRadius: 14,
+              backgroundColor: colors.primary,
+              borderWidth: 2,
+              borderColor: colors.bg,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons name="camera" size={13} color={colors.textOnPrimary} />
+          </View>
+        </TouchableOpacity>
         <Text style={[type.h1, { color: colors.textPrimary, marginTop: spacing.md }]}>
           {user?.display_name}
         </Text>
         <Text style={[type.body, { color: colors.textSecondary }]}>@{user?.handle}</Text>
+        <Text style={[type.caption, { color: colors.textSecondary, marginTop: 2 }]}>
+          Foto salva só neste aparelho — ainda não aparece pros seus amigos
+        </Text>
       </View>
+
+      <ActionSheet
+        visible={showPhotoMenu}
+        onClose={() => setShowPhotoMenu(false)}
+        title="Foto de perfil"
+        options={photoMenuOptions}
+      />
 
       {/* Plano */}
       <Card

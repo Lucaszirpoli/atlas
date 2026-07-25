@@ -1,3 +1,4 @@
+import { useNavigation } from "@react-navigation/native";
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 
@@ -17,6 +18,7 @@ const PERIODOS: { dias: number; label: string }[] = [
  * período — "quanto comi na média da semana / nos últimos X dias". */
 export function CalorieHistoryScreen() {
   const { colors, type, spacing, radius } = useTheme();
+  const navigation = useNavigation<any>();
   const [dias, setDias] = useState(30);
   const [data, setData] = useState<NutritionHistory | null>(null);
   const [loading, setLoading] = useState(true);
@@ -112,9 +114,14 @@ export function CalorieHistoryScreen() {
             <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "700", marginBottom: spacing.sm }]}>
               Calorias por dia
             </Text>
-            <Barras dias={data?.days ?? []} maxKcal={stats.maxKcal} meta={meta} />
+            <Barras
+              dias={data?.days ?? []}
+              maxKcal={stats.maxKcal}
+              meta={meta}
+              onSelectDay={(iso) => navigation.navigate("Diary", { date: iso })}
+            />
             <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm }]}>
-              Cada barra é um dia. A linha tracejada é a sua meta. Dias sem registro ficam vazios.
+              Cada barra é um dia — toque pra ver e editar o que foi registrado. A linha tracejada é a sua meta.
             </Text>
           </Card>
         </>
@@ -154,10 +161,12 @@ function Barras({
   dias,
   maxKcal,
   meta,
+  onSelectDay,
 }: {
   dias: { date: string; kcal: number }[];
   maxKcal: number;
   meta: number | null;
+  onSelectDay: (iso: string) => void;
 }) {
   const { colors } = useTheme();
   const ALTURA = 130;
@@ -169,16 +178,21 @@ function Barras({
           const h = maxKcal > 0 ? Math.max(d.kcal > 0 ? 3 : 0, (d.kcal / maxKcal) * ALTURA) : 0;
           const acima = meta != null && d.kcal > meta * 1.05;
           return (
-            <View
+            <Pressable
               key={d.date}
-              style={{
-                flex: 1,
-                height: h,
-                backgroundColor: d.kcal === 0 ? colors.border : acima ? colors.warning : colors.success,
-                borderTopLeftRadius: 3,
-                borderTopRightRadius: 3,
-              }}
-            />
+              onPress={() => onSelectDay(d.date)}
+              hitSlop={2}
+              style={{ flex: 1, height: ALTURA, justifyContent: "flex-end" }}
+            >
+              <View
+                style={{
+                  height: h,
+                  backgroundColor: d.kcal === 0 ? colors.border : acima ? colors.warning : colors.success,
+                  borderTopLeftRadius: 3,
+                  borderTopRightRadius: 3,
+                }}
+              />
+            </Pressable>
           );
         })}
       </View>

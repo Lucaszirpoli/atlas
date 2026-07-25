@@ -29,7 +29,8 @@ import { Card } from "../../components/Card";
 import { InfoDialog } from "../../components/InfoDialog";
 import { QuantityEditor, type QuantityValue } from "../../components/QuantityEditor";
 import { useTheme } from "../../theme/ThemeProvider";
-import { formatQuantity } from "../../utils/portion";
+import { diaLabel, isoToday } from "../../utils/date";
+import { formatQuantity, initialQuantityFor } from "../../utils/portion";
 import { addRecentFood, listRecentFoods } from "../../utils/recentFoods";
 import { mensagemDeErro } from "../../utils/errorMessage";
 
@@ -41,7 +42,17 @@ export function AddFoodScreen() {
   const { colors, type, spacing, radius } = useTheme();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { categoryId, barcodeResult } = route.params ?? {};
+  const { categoryId, barcodeResult, date } = route.params ?? {};
+
+  // Quando chega de um dia passado (Diário › setinha de dia), registra NAQUELE
+  // dia — mantendo a hora atual, só trocando a data, pra não bagunçar a ordem
+  // das refeições no diário do dia.
+  function loggedAtFor(): string {
+    if (!date) return new Date().toISOString();
+    const agora = new Date();
+    const [y, m, d] = String(date).split("-").map(Number);
+    return new Date(y, m - 1, d, agora.getHours(), agora.getMinutes(), agora.getSeconds()).toISOString();
+  }
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Food[]>([]);
@@ -93,7 +104,7 @@ export function AddFoodScreen() {
     setCesta((c) =>
       c.some((i) => i.food.id === food.id)
         ? c.filter((i) => i.food.id !== food.id)
-        : [...c, { food, quantity_g: food.default_portion_g ?? 100, unit_label: null, unit_amount: null }]
+        : [...c, { food, ...initialQuantityFor(food) }]
     );
   }
 
@@ -122,7 +133,7 @@ export function AddFoodScreen() {
       // que mandava um por vez.
       await logMeal({
         meal_category_id: categoryId,
-        logged_at: new Date().toISOString(),
+        logged_at: loggedAtFor(),
         items: cesta.map((i) => ({
           food_id: i.food.id,
           quantity_g: i.quantity_g,
@@ -254,7 +265,7 @@ export function AddFoodScreen() {
       });
       setCustomMode(false);
       setSelectedFood(food);
-      setDetailQty({ quantity_g: food.default_portion_g ?? 100, unit_label: null, unit_amount: null });
+      setDetailQty(initialQuantityFor(food));
     } catch (err: any) {
       Alert.alert("Não foi possível cadastrar", mensagemDeErro(err, "Tente novamente."));
     } finally {
@@ -265,7 +276,7 @@ export function AddFoodScreen() {
   useEffect(() => {
     if (barcodeResult) {
       setSelectedFood(barcodeResult);
-      setDetailQty({ quantity_g: barcodeResult.default_portion_g ?? 100, unit_label: null, unit_amount: null });
+      setDetailQty(initialQuantityFor(barcodeResult));
     }
   }, [barcodeResult]);
 
@@ -328,7 +339,7 @@ export function AddFoodScreen() {
       // (ver REQUEST_TIMEOUT_MS em api/client.ts).
       await logMeal({
         meal_category_id: categoryId,
-        logged_at: new Date().toISOString(),
+        logged_at: loggedAtFor(),
         items: [
           {
             food_id: selectedFood.id,
@@ -411,6 +422,28 @@ export function AddFoodScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.lg }}>
+      {/* Quando chega de um dia passado, deixa claro em qual dia vai
+          registrar — senão parece que tá lançando em hoje por engano. */}
+      {date && date !== isoToday() ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+            backgroundColor: colors.primary + "18",
+            borderRadius: radius.button,
+            paddingVertical: 8,
+            paddingHorizontal: spacing.md,
+            marginBottom: spacing.md,
+          }}
+        >
+          <Ionicons name="calendar" size={15} color={colors.primary} />
+          <Text style={[type.caption, { color: colors.primary, fontWeight: "700" }]}>
+            Registrando em {diaLabel(date).toLowerCase()}
+          </Text>
+        </View>
+      ) : null}
+
       {/* Busca */}
       <View
         style={{

@@ -62,6 +62,16 @@ class WorkoutSetLogCreate(BaseModel):
     rir: int | None = Field(default=None, ge=0, le=10)
 
 
+class WorkoutSetLogUpdate(BaseModel):
+    """Correção de uma série já registrada (peso/reps digitados errado, ou
+    treino de um dia passado que a pessoa quer ajustar). Histórico continua
+    append-only nas TABELAS de log (nenhuma linha nova é criada por outro
+    registro) — isto só corrige o valor da própria linha, não cria uma nova."""
+
+    weight_kg: float | None = Field(default=None, ge=0)
+    reps: int | None = Field(default=None, ge=0)
+
+
 class WorkoutSetLogRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

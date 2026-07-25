@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import React, { useCallback, useState } from "react";
+import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -31,11 +31,8 @@ import { QuantityEditor, type QuantityValue } from "../../components/QuantityEdi
 import { useTheme } from "../../theme/ThemeProvider";
 import { mensagemDeErro } from "../../utils/errorMessage";
 import { formatQuantity } from "../../utils/portion";
+import { addDaysIso, diaLabel, isoToday } from "../../utils/date";
 import { DietCoachHeader } from "../coaching/CoachModuleHeader";
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 const CATEGORY_ICONS: [RegExp, keyof typeof Ionicons.glyphMap][] = [
   [/café|cafe/i, "cafe"],
@@ -53,6 +50,18 @@ function categoryIcon(name: string): keyof typeof Ionicons.glyphMap {
 export function DiaryScreen() {
   const { colors, type, spacing, radius } = useTheme();
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+
+  // Dia visto no diário — por padrão hoje, mas dá pra navegar pros dias
+  // anteriores (setinhas) ou chegar aqui já num dia específico (ex: tocando
+  // uma barra no Histórico de calorias). Editar o passado é só reaproveitar o
+  // MESMO fluxo de hoje com outra data — os endpoints já são por dia/id.
+  const [selectedDate, setSelectedDate] = useState<string>(route.params?.date ?? isoToday());
+  useEffect(() => {
+    if (route.params?.date && route.params.date !== selectedDate) setSelectedDate(route.params.date);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route.params?.date]);
+  const isToday = selectedDate === isoToday();
 
   const [categories, setCategories] = useState<MealCategory[]>([]);
   const [meals, setMeals] = useState<MealLog[]>([]);
@@ -80,9 +89,11 @@ export function DiaryScreen() {
   async function loadAll() {
     const [cats, mealsForDay, currentGoal, waterToday] = await Promise.all([
       listMealCategories(),
-      listMealsForDay(todayIso()),
+      listMealsForDay(selectedDate),
       getCurrentGoal(),
-      getTodayWaterSummary(),
+      // Água só existe pra HOJE no backend (não dá pra editar água de dias
+      // passados ainda) — em dias passados nem busca.
+      isToday ? getTodayWaterSummary() : Promise.resolve(null),
     ]);
     setCategories(cats);
     setMeals(mealsForDay);
@@ -143,13 +154,14 @@ export function DiaryScreen() {
   async function salvarDiaComoDieta() {
     const itens = meals.flatMap((m) => m.items).map((i) => ({ food_id: i.food_id, quantity_g: i.quantity_g }));
     if (itens.length === 0) return;
-    const hoje = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+    const [ano, mes, diaN] = selectedDate.split("-");
+    const rotulo = `${diaN}/${mes}`;
     setSavingDay(true);
     try {
-      await createSavedMeal({ name: `Dieta de ${hoje}`, items: itens });
+      await createSavedMeal({ name: `Dieta de ${rotulo}`, items: itens });
       setDayAviso({
         title: "Dia salvo como dieta!",
-        message: `Os ${itens.length} itens de hoje viraram o modelo "Dieta de ${hoje}" — reutilize em Adicionar alimento › Suas receitas.`,
+        message: `Os ${itens.length} itens de ${diaLabel(selectedDate).toLowerCase()} viraram o modelo "Dieta de ${rotulo}" — reutilize em Adicionar alimento › Suas receitas.`,
       });
     } catch (err: any) {
       setDayAviso({ title: "Não consegui salvar", message: mensagemDeErro(err, "Tente novamente.") });
@@ -161,7 +173,8 @@ export function DiaryScreen() {
   useFocusEffect(
     useCallback(() => {
       loadAll();
-    }, [])
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedDate])
   );
 
   async function handleRefresh() {
@@ -195,6 +208,30 @@ export function DiaryScreen() {
       {/* Cabeçalho do coach (Pro): meta calórica + macros + leitura. Some no Free. */}
       <DietCoachHeader />
 
+      {/* Navegação por dia: dá pra ver e EDITAR dias anteriores (mesmas ações
+          de hoje — corrigir quantidade, remover, adicionar). Só não avança
+          pro futuro. */}
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, marginBottom: spacing.md }}>
+        <TouchableOpacity
+          onPress={() => setSelectedDate((d) => addDaysIso(d, -1))}
+          hitSlop={10}
+          style={{ width: 34, height: 34, borderRadius: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" }}
+        >
+          <Ionicons name="chevron-back" size={18} color={colors.textPrimary} />
+        </TouchableOpacity>
+        <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700", minWidth: 120, textAlign: "center" }]}>
+          {diaLabel(selectedDate)}
+        </Text>
+        <TouchableOpacity
+          onPress={() => !isToday && setSelectedDate((d) => addDaysIso(d, 1))}
+          disabled={isToday}
+          hitSlop={10}
+          style={{ width: 34, height: 34, borderRadius: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", opacity: isToday ? 0.35 : 1 }}
+        >
+          <Ionicons name="chevron-forward" size={18} color={colors.textPrimary} />
+        </TouchableOpacity>
+      </View>
+
       {/* RESUMO COMPACTO — "restantes" em destaque + barra + macros. Toque abre a
           meta. Sem o anel grande de antes: as refeições são o foco. */}
       <Card style={{ marginBottom: spacing.md }}>
@@ -202,7 +239,15 @@ export function DiaryScreen() {
           <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between" }}>
             <View>
               <Text style={[type.caption, { color: colors.textSecondary }]}>
-                {kcalGoal > 0 ? (overGoal ? "Acima da meta" : "Restantes hoje") : "Consumido hoje"}
+                {kcalGoal > 0
+                  ? overGoal
+                    ? "Acima da meta"
+                    : isToday
+                    ? "Restantes hoje"
+                    : "Restantes"
+                  : isToday
+                  ? "Consumido hoje"
+                  : `Consumido em ${diaLabel(selectedDate).toLowerCase()}`}
               </Text>
               <View style={{ flexDirection: "row", alignItems: "baseline", gap: 5 }}>
                 <Text style={[type.display, { color: overGoal ? colors.warning : colors.textPrimary, fontSize: 34 }]}>
@@ -282,7 +327,10 @@ export function DiaryScreen() {
         </View>
       </Card>
 
-      {/* Água — compacta, logo abaixo do resumo. */}
+      {/* Água — compacta, logo abaixo do resumo. Só existe pra hoje: o
+          backend registra água sempre no dia atual, então some ao olhar um
+          dia passado (senão os botões "+ml" pareceriam editar aquele dia). */}
+      {isToday ? (
       <Card style={{ marginBottom: spacing.lg }}>
         <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
           <Ionicons name="water" size={18} color={colors.info} />
@@ -325,10 +373,11 @@ export function DiaryScreen() {
           ))}
         </View>
       </Card>
+      ) : null}
 
       {/* REFEIÇÕES — o foco da tela, estilo FatSecret. */}
       <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.sm, letterSpacing: 1, textTransform: "uppercase" }]}>
-        Refeições de hoje
+        Refeições {isToday ? "de hoje" : `de ${diaLabel(selectedDate).toLowerCase()}`}
       </Text>
       {categories.map((category) => {
         const categoryMeals = meals.filter((m) => m.meal_category_id === category.id);
@@ -362,7 +411,7 @@ export function DiaryScreen() {
                 ) : null}
               </View>
               <TouchableOpacity
-                onPress={() => navigation.navigate("AddFood", { categoryId: category.id })}
+                onPress={() => navigation.navigate("AddFood", { categoryId: category.id, date: selectedDate })}
                 activeOpacity={0.8}
                 style={{
                   width: 38,
