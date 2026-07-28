@@ -6,12 +6,17 @@ detecção/diagnóstico é que interpretam.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from statistics import median as _median
+
+from app.coaching.robust_stats import robust_average
+from app.core.usertime import local_date, profile_tz, today_local
 from app.models.calorie_goal import CalorieGoal
 from app.models.coaching_baseline import CoachingBaseline
 from app.models.exercise import Exercise
@@ -37,12 +42,24 @@ class NutritionMetrics:
     goal_protein_g: float | None
     goal_carbs_g: float | None
     goal_fat_g: float | None
-    avg_kcal_logged: float | None  # média nos dias COM registro
+    # Médias ROBUSTAS (mediana / winsorizada) sobre os dias ENCERRADOS e
+    # VÁLIDOS — nunca média simples, nunca o dia de hoje, nunca um dia
+    # registrado pela metade. Ver coaching/robust_stats.py e services/day_quality.py.
+    avg_kcal_logged: float | None
     avg_protein_logged: float | None
     avg_carbs_logged: float | None
     avg_fat_logged: float | None
-    days_logged: int
+    days_logged: int  # dias válidos que entraram na conta
     window_days: int
+    # Rastro da estatística, pra UI poder ser honesta sobre confiança.
+    avg_method: str = "insuficiente"  # mediana | winsorizada | insuficiente
+    avg_confidence: str = "insuficiente"  # insuficiente | baixa | media | alta
+    outlier_days: int = 0  # dias cujo peso na média foi limitado (não apagados)
+    # Dias encerrados que a pessoa precisa resolver (registro parece incompleto).
+    days_needing_attention: list[str] = field(default_factory=list)
+    # Dias com algum registro, incluindo os que ficaram fora das médias. Base
+    # da métrica de adesão AO REGISTRO, separada da adesão à dieta.
+    days_with_any_log: int = 0
 
 
 @dataclass
@@ -133,28 +150,28 @@ def _weight_metrics(db: Session, user_id: int, since: datetime) -> tuple[WeightM
                          pct_bodyweight_per_week=pct, points=len(logs), span_days=span_days), latest_any
 
 
-def _nutrition_metrics(db: Session, user_id: int, since: datetime, window_days: int) -> NutritionMetrics:
-    meals = db.execute(
-        select(MealLog)
-        .options(selectinload(MealLog.items))
-        .where(MealLog.user_id == user_id, MealLog.logged_at >= since)
-    ).scalars()
+def _nutrition_metrics(
+    db: Session, user_id: int, since: datetime, window_days: int, tz: ZoneInfo
+) -> NutritionMetrics:
+    """Médias nutricionais da janela. Duas regras da spec §10 mandam aqui:
 
-    kcal_by_day: dict[str, float] = defaultdict(float)
-    prot_by_day: dict[str, float] = defaultdict(float)
-    carb_by_day: dict[str, float] = defaultdict(float)
-    fat_by_day: dict[str, float] = defaultdict(float)
-    for meal in meals:
-        key = meal.logged_at.date().isoformat()
-        kcal_by_day[key] += sum(i.kcal for i in meal.items)
-        prot_by_day[key] += sum(i.protein_g for i in meal.items)
-        carb_by_day[key] += sum(i.carbs_g for i in meal.items)
-        fat_by_day[key] += sum(i.fat_g for i in meal.items)
+    - só dia ENCERRADO no fuso da pessoa entra (o dia de hoje está em
+      andamento — 300 kcal às 10h não é "a ingestão do dia");
+    - só dia VÁLIDO entra (registro pela metade fica de fora até a pessoa
+      confirmar ou marcar como incompleto).
 
-    days_logged = len(kcal_by_day)
+    E a média nunca é simples: é mediana ou winsorizada conforme a quantidade
+    de dias válidos, pra um churrasco não mandar na leitura do mês.
+    """
+    from app.services.day_quality import nutrition_days
 
-    def _avg(d: dict[str, float], nd: int = 0) -> float | None:
-        return round(sum(d.values()) / days_logged, nd) if days_logged else None
+    dias = nutrition_days(db, user_id, tz, since, include_today=False)
+    validos = [d for d in dias if d.valid_for_average]
+
+    kcal = robust_average([d.kcal for d in validos])
+    prot = robust_average([d.protein_g for d in validos])
+    carb = robust_average([d.carbs_g for d in validos])
+    fat = robust_average([d.fat_g for d in validos])
 
     goal = db.execute(
         select(CalorieGoal)
@@ -163,17 +180,25 @@ def _nutrition_metrics(db: Session, user_id: int, since: datetime, window_days: 
         .limit(1)
     ).scalar_one_or_none()
 
+    def _round(r, nd: int = 0) -> float | None:
+        return None if r.value is None else round(r.value, nd)
+
     return NutritionMetrics(
         goal_kcal=goal.kcal if goal else None,
         goal_protein_g=goal.protein_g if goal else None,
         goal_carbs_g=goal.carbs_g if goal else None,
         goal_fat_g=goal.fat_g if goal else None,
-        avg_kcal_logged=None if _avg(kcal_by_day) is None else round(sum(kcal_by_day.values()) / days_logged),
-        avg_protein_logged=_avg(prot_by_day, 1),
-        avg_carbs_logged=_avg(carb_by_day, 1),
-        avg_fat_logged=_avg(fat_by_day, 1),
-        days_logged=days_logged,
+        avg_kcal_logged=_round(kcal),
+        avg_protein_logged=_round(prot, 1),
+        avg_carbs_logged=_round(carb, 1),
+        avg_fat_logged=_round(fat, 1),
+        days_logged=len(validos),
         window_days=window_days,
+        avg_method=kcal.method,
+        avg_confidence=kcal.confidence,
+        outlier_days=kcal.outliers,
+        days_needing_attention=[d.day.isoformat() for d in dias if d.needs_attention],
+        days_with_any_log=len(dias),
     )
 
 
@@ -183,7 +208,7 @@ def _e1rm(weight_kg: float, reps: int) -> float:
     return weight_kg * (1 + reps / 30.0)
 
 
-def _stalled_lifts(db: Session, user_id: int, since: datetime) -> list[dict]:
+def _stalled_lifts(db: Session, user_id: int, since: datetime, tz: ZoneInfo) -> list[dict]:
     """Exercícios principais que não progrediram: pra cada exercício treinado em
     ≥3 sessões num intervalo ≥14 dias, compara o melhor e1RM da metade recente
     com o da metade inicial. Sem ganho (dentro de 1%) = travado. Prioriza
@@ -217,7 +242,7 @@ def _stalled_lifts(db: Session, user_id: int, since: datetime) -> list[dict]:
             "muscle": muscle.value if hasattr(muscle, "value") else str(muscle),
             "sessions": {},
         })
-        day = started_at.date().isoformat()
+        day = local_date(started_at, tz).isoformat()
         e = _e1rm(w, reps)
         if e > d["sessions"].get(day, 0):
             d["sessions"][day] = e
@@ -256,7 +281,9 @@ _PROG_REP_CEIL_BODYWEIGHT = 18
 _NON_WORKING_SETS = {"warmup", "feeder"}
 
 
-def _progression_lifts(db: Session, user_id: int, since: datetime, stalled_ids: set[int]) -> list[dict]:
+def _progression_lifts(
+    db: Session, user_id: int, since: datetime, stalled_ids: set[int], tz: ZoneInfo
+) -> list[dict]:
     """Exercícios prontos pra subir a carga: no treino mais recente a pessoa
     bateu o TOPO da faixa de reps na série mais pesada, com folga (RIR ≥ 1 ou não
     informado). É o oposto do platô — por isso exclui quem já está travado. Sinal
@@ -300,7 +327,7 @@ def _progression_lifts(db: Session, user_id: int, since: datetime, stalled_ids: 
             "equipment": equip.value if hasattr(equip, "value") else str(equip),
             "days": {},
         })
-        day = started_at.date().isoformat()
+        day = local_date(started_at, tz).isoformat()
         cur = d["days"].get(day)
         # série de trabalho mais pesada do dia (empate: mais reps)
         if cur is None or (w or 0, reps) > (cur[0], cur[1]):
@@ -354,8 +381,13 @@ def _volume_trend(db: Session, user_id: int, since: datetime) -> float | None:
     return round((rec - ini) / ini * 100, 1)
 
 
-def _training_metrics(db: Session, user_id: int, since: datetime, window_days: int) -> TrainingMetrics:
-    # Só sessões CONCLUÍDAS contam como treino feito.
+def _training_metrics(
+    db: Session, user_id: int, since: datetime, window_days: int, tz: ZoneInfo
+) -> TrainingMetrics:
+    # Só sessões CONCLUÍDAS contam como treino feito. Diferente da nutrição, um
+    # treino concluído JÁ é um evento fechado — não depende da virada do dia
+    # pra estar completo. Por isso a regra do "dia em andamento" (§10.1) não se
+    # aplica aqui: quem treinou hoje de manhã vê o treino contando hoje mesmo.
     sessions = db.execute(
         select(WorkoutSession.started_at)
         .where(
@@ -366,14 +398,14 @@ def _training_metrics(db: Session, user_id: int, since: datetime, window_days: i
     ).scalars().all()
     n = len(sessions)
     weeks = max(window_days / 7.0, 1.0)
-    stalled = _stalled_lifts(db, user_id, since)
+    stalled = _stalled_lifts(db, user_id, since, tz)
     stalled_ids = {s["exercise_id"] for s in stalled}
     return TrainingMetrics(
         sessions=n,
         sessions_per_week=round(n / weeks, 2),
         window_days=window_days,
         stalled_lifts=stalled,
-        progression_lifts=_progression_lifts(db, user_id, since, stalled_ids),
+        progression_lifts=_progression_lifts(db, user_id, since, stalled_ids, tz),
         volume_trend_pct=_volume_trend(db, user_id, since),
     )
 
@@ -388,8 +420,10 @@ def _sleep_metrics(db: Session, user_id: int, since: datetime) -> SleepMetrics:
         return SleepMetrics(avg_hours=None, avg_quality=None, nights=0)
     hours = [(lg.wake_at - lg.sleep_at).total_seconds() / 3600.0 for lg in logs]
     hours = [h for h in hours if 0 < h < 24]  # descarta registro incoerente
-    avg_h = round(sum(hours) / len(hours), 1) if hours else None
-    avg_q = round(sum(lg.quality for lg in logs) / len(logs), 1)
+    # Sono usa MEDIANA (§10.4): uma virada de noite ou um domingo de 12h
+    # deslocam a média e sugeriam um padrão de sono que a pessoa não tem.
+    avg_h = None if not hours else round(float(_median(hours)), 1)
+    avg_q = round(float(_median([lg.quality for lg in logs])), 1)
     return SleepMetrics(avg_hours=avg_h, avg_quality=avg_q, nights=len(logs))
 
 
@@ -448,6 +482,9 @@ def _assemble_metrics(
         select(UserProfile).where(UserProfile.user_id == user_id)
     ).scalar_one_or_none()
     goal = profile.goal.value if profile else None
+    # Todo agrupamento por DIA daqui pra baixo usa o calendário da pessoa, não
+    # o calendário UTC do servidor (ver core/usertime.py).
+    tz = profile_tz(profile)
 
     weight, latest_any = _weight_metrics(db, user_id, since)
     return Metrics(
@@ -455,8 +492,8 @@ def _assemble_metrics(
         goal=goal,
         weight_kg=weight.latest_kg or latest_any,
         weight=weight,
-        nutrition=_nutrition_metrics(db, user_id, since, window_days),
-        training=_training_metrics(db, user_id, since, window_days),
+        nutrition=_nutrition_metrics(db, user_id, since, window_days, tz),
+        training=_training_metrics(db, user_id, since, window_days, tz),
         sleep=_sleep_metrics(db, user_id, since),
         baseline_at=baseline_at,
     )

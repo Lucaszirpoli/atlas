@@ -3,6 +3,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 
 import * as authApi from "../api/auth";
 import { TOKEN_STORAGE_KEY } from "../api/client";
+import { reportDeviceTimezone } from "../api/profile";
 
 type AuthContextValue = {
   isLoading: boolean;
@@ -52,6 +53,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const currentUser = await authApi.fetchCurrentUser();
       setUser(currentUser);
+      reportDeviceTimezone();
     } catch {
       await AsyncStorage.removeItem(TOKEN_STORAGE_KEY);
     } finally {
@@ -79,6 +81,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.setItem(TOKEN_STORAGE_KEY, accessToken);
     const currentUser = await authApi.fetchCurrentUser();
     setUser(currentUser);
+    // Não dá await: o app não espera infra pra abrir.
+    reportDeviceTimezone();
   }
 
   async function signIn(email: string, password: string) {

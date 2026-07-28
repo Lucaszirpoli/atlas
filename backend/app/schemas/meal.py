@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -72,6 +73,28 @@ class MealLogRead(BaseModel):
     meal_category_id: int
     logged_at: datetime
     items: list[MealLogItemRead]
+
+
+class NutritionDayRead(BaseModel):
+    """Um dia alimentar já classificado — o que foi registrado e se aquilo
+    pode virar estatística (spec §10.2/§10.3)."""
+
+    day: date
+    kcal: float
+    protein_g: float
+    carbs_g: float
+    fat_g: float
+    meals: int
+    quality: str  # completo | confirmar | provavelmente_incompleto
+    mark: str | None  # confirmed | incomplete | None (sem decisão da pessoa)
+    valid_for_average: bool
+    needs_attention: bool
+
+
+class NutritionDayMarkUpdate(BaseModel):
+    """Decisão do usuário sobre um dia. `None` volta pro automático."""
+
+    status: Literal["confirmed", "incomplete"] | None = None
 
 
 class MealParseRequest(BaseModel):

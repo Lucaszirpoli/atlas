@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import React, { useCallback, useState } from "react";
-import { Text, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
 
 import { getCoachingAnalysis, type CoachingAnalysis } from "../../api/coaching";
 import { Button } from "../../components/Button";
@@ -9,7 +9,7 @@ import { Card } from "../../components/Card";
 import { InfoDialog } from "../../components/InfoDialog";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
-import { DietMetaCard, TrainingPrefsCard, WorkoutCard } from "./coachBlocks";
+import { MacroChip, TrainingPrefsCard } from "./coachBlocks";
 
 /** Etiqueta "SEU COACHING" que abre cada bloco de coach nas telas de módulo. */
 function CoachLabel() {
@@ -64,39 +64,94 @@ export function TrainingCoachHeader() {
     <View style={{ marginBottom: spacing.sm }}>
       <CoachLabel />
       {analysis.metrics.training_prefs ? (
-        <TrainingPrefsCard prefs={analysis.metrics.training_prefs} onChanged={onApplied} />
+        <TrainingPrefsCard
+          prefs={analysis.metrics.training_prefs}
+          workout={analysis.metrics.workout}
+          onChanged={onApplied}
+        />
       ) : null}
-      <WorkoutCard workout={analysis.metrics.workout} onApplied={onApplied} onOpenTraining={() => {}} />
       <InfoDialog visible={aviso != null} onClose={() => setAviso(null)} title={aviso?.title ?? ""} message={aviso?.message} />
     </View>
   );
 }
 
 /** Cabeçalho do coach na tela de DIETA (Pro): meta calórica + macros + leitura.
- * Some pro Free. */
+ * Recolhido por padrão, com setinha pra expandir — mesmo padrão do card "Como
+ * eu monto seu treino". Some pro Free. */
 export function DietCoachHeader() {
   const { colors, type, spacing } = useTheme();
   const navigation = useNavigation<any>();
   const { isPro, analysis } = useCoachAnalysis();
+  const [expanded, setExpanded] = useState(false);
 
   if (!isPro || !analysis) return null;
+
+  const m = analysis.metrics;
+  const resumo = m.goal_kcal
+    ? `${Math.round(m.goal_kcal)} kcal/dia · P ${Math.round(m.protein_target_g ?? 0)}g · C ${Math.round(m.goal_carbs_g ?? 0)}g · G ${Math.round(m.goal_fat_g ?? 0)}g`
+    : "Você ainda não tem meta calórica — toque pra definir.";
 
   return (
     <View style={{ marginBottom: spacing.sm }}>
       <CoachLabel />
-      <DietMetaCard metrics={analysis.metrics} />
-      {analysis.headline ? (
-        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8, marginBottom: spacing.md, marginTop: -spacing.xs }}>
-          <Ionicons name="chatbubble-ellipses" size={15} color={colors.textSecondary} style={{ marginTop: 2 }} />
-          <Text style={[type.bodySmall, { color: colors.textSecondary, flex: 1, lineHeight: 20 }]}>{analysis.headline}</Text>
-        </View>
-      ) : null}
-      <Button
-        title="Ajustar meta calórica"
-        variant="secondary"
-        compact
-        onPress={() => navigation.navigate("GoalSettings")}
-      />
+      <Card style={{ marginBottom: spacing.md }}>
+        <TouchableOpacity
+          onPress={() => setExpanded((v) => !v)}
+          activeOpacity={0.7}
+          style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+        >
+          <Ionicons name="flag" size={16} color={colors.primary} />
+          <Text style={[type.caption, { color: colors.primary, fontWeight: "800", letterSpacing: 0.5, textTransform: "uppercase", flex: 1 }]}>
+            Sua meta atual
+          </Text>
+          <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={18} color={colors.textSecondary} />
+        </TouchableOpacity>
+
+        {expanded ? (
+          <View style={{ marginTop: spacing.sm }}>
+            {m.goal_kcal ? (
+              <>
+                <View style={{ flexDirection: "row", alignItems: "baseline", gap: 5, marginBottom: spacing.sm }}>
+                  <Text style={[type.display, { color: colors.textPrimary, fontSize: 30 }]}>{Math.round(m.goal_kcal)}</Text>
+                  <Text style={[type.body, { color: colors.textSecondary }]}>kcal / dia</Text>
+                </View>
+                <View style={{ flexDirection: "row", gap: spacing.md }}>
+                  <MacroChip label="Proteína" goal={m.protein_target_g} avg={m.avg_protein_g} color={colors.moduleTraining} />
+                  <MacroChip label="Carbo" goal={m.goal_carbs_g} avg={m.avg_carbs_g} color={colors.info} />
+                  <MacroChip label="Gordura" goal={m.goal_fat_g} avg={m.avg_fat_g} color={colors.warning} />
+                </View>
+                {m.avg_kcal != null ? (
+                  <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm }]}>
+                    Média recente: {Math.round(m.avg_kcal)} kcal/dia.
+                  </Text>
+                ) : null}
+              </>
+            ) : (
+              <Text style={[type.bodySmall, { color: colors.textSecondary }]}>
+                Você ainda não tem meta calórica. Defina uma pra o coach acompanhar sua dieta.
+              </Text>
+            )}
+            {analysis.headline ? (
+              <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8, marginTop: spacing.sm }}>
+                <Ionicons name="chatbubble-ellipses" size={15} color={colors.textSecondary} style={{ marginTop: 2 }} />
+                <Text style={[type.bodySmall, { color: colors.textSecondary, flex: 1, lineHeight: 20 }]}>{analysis.headline}</Text>
+              </View>
+            ) : null}
+            <View style={{ marginTop: spacing.md }}>
+              <Button
+                title="Ajustar meta calórica"
+                variant="secondary"
+                compact
+                onPress={() => navigation.navigate("GoalSettings")}
+              />
+            </View>
+          </View>
+        ) : (
+          <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.xs, lineHeight: 17 }]} numberOfLines={2}>
+            {resumo}
+          </Text>
+        )}
+      </Card>
     </View>
   );
 }

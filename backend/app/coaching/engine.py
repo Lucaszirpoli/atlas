@@ -154,6 +154,15 @@ def _calorias_insight(m: Metrics) -> Insight:
     if n.avg_kcal_logged is None or n.goal_kcal is None:
         return Insight("calorias", SEV_INFO, "Calorias", "Registre as refeições na maioria dos dias pra eu "
                        "comparar com a sua meta.", chart="calorias")
+    # Menos de 5 dias encerrados e válidos: mostra o número, mas NÃO conclui
+    # nada em cima dele (spec §10.4). Conclusão forte com 2 dias de dado é como
+    # o coach errava feio — e errava com confiança.
+    if n.avg_confidence == "insuficiente":
+        return Insight("calorias", SEV_INFO, "Calorias", f"Por enquanto tenho {n.days_logged} "
+                       f"{'dia' if n.days_logged == 1 else 'dias'} fechado"
+                       f"{'' if n.days_logged == 1 else 's'} pra ler (mediana de "
+                       f"{round(n.avg_kcal_logged)} kcal/dia). Com uns 5 dias eu já consigo comparar com a "
+                       "sua meta com segurança.", chart="calorias")
     diff = round(n.avg_kcal_logged - n.goal_kcal)
     if abs(diff) <= n.goal_kcal * 0.05:
         return Insight("calorias", SEV_INFO, "Calorias na meta", f"Média de {n.avg_kcal_logged} kcal/dia, "
@@ -389,7 +398,7 @@ def _insights(
         planned=planned_deload,
         active_deload=active_deload,
     )
-    return [
+    insights = [
         _peso_insight(m),
         _calorias_insight(m),
         _macros_insight(m),
@@ -397,6 +406,32 @@ def _insights(
         _carga_insight(m, active_deload, periodization, offer, planned_deload),
         _treino_insight(m, active_deload, offer, period, session_length, weak_points, applied_technique_ex_ids),
     ]
+    pendentes = _dias_incompletos_insight(m)
+    if pendentes is not None:
+        insights.insert(0, pendentes)
+    return insights
+
+
+def _dias_incompletos_insight(m: Metrics) -> Insight | None:
+    """Dias encerrados cujo registro parece ter ficado pela metade (spec §10.2).
+
+    O sistema NÃO decide sozinho que aquilo foi a ingestão real da pessoa — ele
+    pergunta. Enquanto não houver resposta, o dia fica fora das médias. Sem
+    tom de cobrança: registrar é chato e esquecer é normal."""
+    dias = m.nutrition.days_needing_attention
+    if not dias:
+        return None
+    n = len(dias)
+    quantos = "um dia" if n == 1 else f"{n} dias"
+    return Insight(
+        "registro_incompleto",
+        SEV_ATTENTION,
+        "Confere esses dias pra mim?",
+        f"Tem {quantos} com pouca coisa registrada. Não vou chutar que foi isso que você comeu — "
+        f"por enquanto {'ele está' if n == 1 else 'eles estão'} fora das médias. "
+        "Abra o diário na data pra completar, confirmar ou marcar como incompleto.",
+        chart="calorias",
+    )
 
 
 def _protein_target(m: Metrics) -> float | None:

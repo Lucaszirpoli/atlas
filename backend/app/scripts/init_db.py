@@ -44,6 +44,8 @@ def _ensure_profile_columns() -> None:
         ("wants_cardio", "BOOLEAN", "BOOLEAN"),
         ("periodization", "VARCHAR(12) NOT NULL DEFAULT 'auto'", "VARCHAR(12) NOT NULL DEFAULT 'auto'"),
         ("training_days_per_week", "INTEGER", "INTEGER"),
+        # Fuso do aparelho — define o dia de calendário de cada registro.
+        ("timezone", "VARCHAR(64)", "VARCHAR(64)"),
     ]
     pg = engine.dialect.name == "postgresql"
     with engine.begin() as conn:

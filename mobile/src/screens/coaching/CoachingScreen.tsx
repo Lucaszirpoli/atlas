@@ -126,6 +126,9 @@ export function CoachingScreen() {
   // Trava o scroll do ScrollView externo enquanto a pessoa arrasta um bloco
   // pra reordenar a home — senão os dois gestos (scroll e arrastar) brigam.
   const [homeDragging, setHomeDragging] = useState(false);
+  // As alcinhas de arrastar só aparecem depois que a pessoa toca em
+  // "Reordenar" — do contrário elas ficam poluindo a Home o tempo todo.
+  const [modoReordenar, setModoReordenar] = useState(false);
 
   // Navegação do hub: null = o mapa; senão a seção aberta. O gráfico não é mais
   // um modal — vira a seção "progresso", com a métrica pré-selecionada.
@@ -220,23 +223,55 @@ export function CoachingScreen() {
         </Card>
       ) : analysis ? (
         section == null ? (
-          <CoachingHub
-            order={homeLayout.order}
-            onReorder={homeLayout.reorder}
-            onDragStateChange={setHomeDragging}
-            analysis={analysis}
-            checkin={checkin}
-            changes={changes}
-            consistency={consistency}
-            onApplied={onApplied}
-            onOpenChart={openChart}
-            onOpenSection={setSection}
-            onOpenTrainingModule={() => navigation.navigate("TrainingModule")}
-            onOpenDietModule={() => navigation.navigate("NutritionModule")}
-            onOpenWeight={() => navigation.navigate("Weight")}
-            onOpenSleep={() => navigation.navigate("Sleep")}
-            onAskCoach={() => navigation.navigate("CoachChat")}
-          />
+          <>
+            <View style={{ flexDirection: "row", justifyContent: "flex-end", marginBottom: spacing.sm }}>
+              <TouchableOpacity
+                onPress={() => setModoReordenar((v) => !v)}
+                activeOpacity={0.8}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 5,
+                  backgroundColor: modoReordenar ? colors.primary : colors.surfaceAlt,
+                  borderRadius: 999,
+                  paddingVertical: 6,
+                  paddingHorizontal: 12,
+                }}
+              >
+                <Ionicons
+                  name={modoReordenar ? "checkmark" : "reorder-three"}
+                  size={14}
+                  color={modoReordenar ? colors.textOnPrimary : colors.textSecondary}
+                />
+                <Text
+                  style={[
+                    type.caption,
+                    { color: modoReordenar ? colors.textOnPrimary : colors.textSecondary, fontWeight: "700" },
+                  ]}
+                >
+                  {modoReordenar ? "Pronto" : "Reordenar"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <CoachingHub
+              order={homeLayout.order}
+              onReorder={homeLayout.reorder}
+              onDragStateChange={setHomeDragging}
+              editMode={modoReordenar}
+              analysis={analysis}
+              checkin={checkin}
+              changes={changes}
+              consistency={consistency}
+              onApplied={onApplied}
+              onOpenChart={openChart}
+              onOpenSection={setSection}
+              onOpenTrainingModule={() => navigation.navigate("TrainingModule")}
+              onOpenDietModule={() => navigation.navigate("NutritionModule")}
+              onOpenWeight={() => navigation.navigate("Weight")}
+              onOpenSleep={() => navigation.navigate("Sleep")}
+              onAskCoach={() => navigation.navigate("CoachChat")}
+            />
+          </>
         ) : (
           <CoachingSectionView
             section={section}
@@ -447,6 +482,7 @@ function CoachingHub({
   order,
   onReorder,
   onDragStateChange,
+  editMode,
   analysis,
   checkin,
   changes,
@@ -463,6 +499,7 @@ function CoachingHub({
   order: HomeBlockId[];
   onReorder: (order: HomeBlockId[]) => void;
   onDragStateChange: (dragging: boolean) => void;
+  editMode: boolean;
   analysis: CoachingAnalysis;
   checkin: CoachingCheckin | null;
   changes: CoachingChange[];
@@ -550,11 +587,38 @@ function CoachingHub({
               </View>
               {/* Nível de constância + barra */}
               <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                  <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "800" }]}>
+                {/* "Nível X · Rótulo" e "recorde N" ficam em LINHAS separadas.
+                    Na mesma linha os dois disputavam a largura e, em tela
+                    estreita ou com fonte ampliada, "recorde" grudava/cortava o
+                    nome do nível. O recorde agora tem espaço próprio (badge). */}
+                <View style={{ marginBottom: 4 }}>
+                  <Text
+                    style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "800" }]}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
                     Nível {nv.level} · {nv.label}
                   </Text>
-                  <Text style={[type.caption, { color: colors.textSecondary }]}>recorde {best}</Text>
+                  {best > 0 ? (
+                    <View
+                      style={{
+                        alignSelf: "flex-start",
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 4,
+                        marginTop: 4,
+                        backgroundColor: colors.surfaceAlt,
+                        borderRadius: radius.pill,
+                        paddingVertical: 2,
+                        paddingHorizontal: 8,
+                      }}
+                    >
+                      <Ionicons name="trophy" size={10} color={colors.textSecondary} />
+                      <Text style={[type.caption, { color: colors.textSecondary, fontWeight: "700" }]}>
+                        recorde {best} {best === 1 ? "dia" : "dias"}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
                 <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.surfaceAlt, overflow: "hidden" }}>
                   <View style={{ width: `${inLevel * 100}%`, height: "100%", backgroundColor: colors.primary }} />
@@ -713,6 +777,7 @@ function CoachingHub({
       items={visiveis.map((id) => ({ id, node: blocks[id] }))}
       onReorder={handleReorder}
       onDragStateChange={onDragStateChange}
+      editMode={editMode}
     />
   );
 }

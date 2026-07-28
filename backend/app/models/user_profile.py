@@ -123,6 +123,12 @@ class UserProfile(Base):
     # infere dos dias do onboarding). É o que define quantos treinos o coach monta.
     training_days_per_week: Mapped[int | None] = mapped_column(nullable=True)
 
+    # Fuso IANA do aparelho ("America/Sao_Paulo"). É o que define QUE DIA é cada
+    # registro pra esta pessoa — sem isso o backend fatiava o dia em UTC e tudo
+    # que ela registrava depois das 21h caía no dia seguinte. O app manda o fuso
+    # do aparelho ao entrar; None = usa o padrão (ver core/usertime.py).
+    timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
     trains_with_partner: Mapped[bool] = mapped_column(default=False)
     partner_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True

@@ -16,10 +16,15 @@ export function DraggableList<T extends string>({
   items,
   onReorder,
   onDragStateChange,
+  editMode = true,
 }: {
   items: { id: T; node: React.ReactNode }[];
   onReorder: (newOrder: T[]) => void;
   onDragStateChange?: (dragging: boolean) => void;
+  /** Só mostra a alcinha de arrastar (e permite arrastar) quando true — fora
+   * disso os blocos são só uma lista normal, sem nada de reordenar poluindo
+   * a tela. */
+  editMode?: boolean;
 }) {
   const order = items.map((i) => i.id);
   const [heights, setHeights] = useState<Record<string, number>>({});
@@ -96,6 +101,7 @@ export function DraggableList<T extends string>({
         return (
           <DraggableRow
             key={item.id}
+            editMode={editMode}
             onLayout={(h) => handleLayout(item.id, h)}
             liveTranslateY={isDragging ? dragY : undefined}
             shift={shift}
@@ -121,6 +127,7 @@ function DraggableRow({
   onDragStart,
   onDragMove,
   onDragEnd,
+  editMode,
 }: {
   children: React.ReactNode;
   onLayout: (height: number) => void;
@@ -130,6 +137,7 @@ function DraggableRow({
   onDragStart: () => void;
   onDragMove: (dy: number) => void;
   onDragEnd: () => void;
+  editMode: boolean;
 }) {
   const { colors } = useTheme();
   const localShift = useRef(new Animated.Value(0)).current;
@@ -183,22 +191,25 @@ function DraggableRow({
         opacity: isDragging ? 0.96 : 1,
       }}
     >
-      {/* Alcinha: segurar e arrastar aqui reordena. Toque simples não faz
-          nada — assim não conflita com os toques normais dentro do bloco. */}
-      <View {...pan.panHandlers} style={{ alignItems: "center", paddingVertical: 6 }} hitSlop={{ top: 4, bottom: 4 }}>
-        <View
-          style={{
-            width: 40,
-            height: 20,
-            borderRadius: 10,
-            backgroundColor: isDragging ? colors.primary + "26" : colors.surfaceAlt,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Ionicons name="reorder-three" size={16} color={isDragging ? colors.primary : colors.textSecondary} />
+      {/* Alcinha: só existe em modo reordenar. Segurar e arrastar aqui
+          reordena — toque simples não faz nada, então não conflita com os
+          toques normais dentro do bloco. */}
+      {editMode ? (
+        <View {...pan.panHandlers} style={{ alignItems: "center", paddingVertical: 6 }} hitSlop={{ top: 4, bottom: 4 }}>
+          <View
+            style={{
+              width: 40,
+              height: 20,
+              borderRadius: 10,
+              backgroundColor: isDragging ? colors.primary + "26" : colors.surfaceAlt,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons name="reorder-three" size={16} color={isDragging ? colors.primary : colors.textSecondary} />
+          </View>
         </View>
-      </View>
+      ) : null}
       {children}
     </Animated.View>
   );

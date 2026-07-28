@@ -17,10 +17,13 @@ import {
   deleteMealLog,
   listMealCategories,
   listMealsForDay,
+  listNutritionDays,
+  markNutritionDay,
   updateMealItem,
   type MealCategory,
   type MealLog,
   type MealLogItem,
+  type NutritionDay,
 } from "../../api/meals";
 import { getTodayWaterSummary, logWater, type WaterSummary } from "../../api/water";
 import { Button } from "../../components/Button";
@@ -85,20 +88,43 @@ export function DiaryScreen() {
   // modelo reutilizável (um SavedMeal), que reaparece em "Suas receitas".
   const [savingDay, setSavingDay] = useState(false);
   const [dayAviso, setDayAviso] = useState<{ title: string; message: string } | null>(null);
+  // Veredito de completude do dia visto (spec §10.2). null = dia sem registro
+  // nenhum, ou a chamada falhou — nos dois casos a faixa não aparece.
+  const [diaInfo, setDiaInfo] = useState<NutritionDay | null>(null);
+  const [marcandoDia, setMarcandoDia] = useState(false);
 
   async function loadAll() {
-    const [cats, mealsForDay, currentGoal, waterToday] = await Promise.all([
+    const [cats, mealsForDay, currentGoal, waterToday, dias] = await Promise.all([
       listMealCategories(),
       listMealsForDay(selectedDate),
       getCurrentGoal(),
       // Água só existe pra HOJE no backend (não dá pra editar água de dias
       // passados ainda) — em dias passados nem busca.
       isToday ? getTodayWaterSummary() : Promise.resolve(null),
+      // Qualidade do registro: um dia com pouca coisa lançada não vira média
+      // sem a pessoa dizer o que fazer com ele. Secundário — não derruba a tela.
+      listNutritionDays(35).catch(() => [] as NutritionDay[]),
     ]);
     setCategories(cats);
     setMeals(mealsForDay);
     setGoal(currentGoal);
     setWater(waterToday);
+    setDiaInfo(dias.find((d) => d.day === selectedDate) ?? null);
+  }
+
+  /** "Aceitar como está" / "Marcar como incompleto" — a decisão da pessoa sobre
+   * um dia que ficou pela metade. Nada é apagado: muda só se o dia alimenta as
+   * médias do coach. */
+  async function marcarDia(status: "confirmed" | "incomplete") {
+    setMarcandoDia(true);
+    try {
+      await markNutritionDay(selectedDate, status);
+      await loadAll();
+    } catch (err: any) {
+      setDayAviso({ title: "Não consegui salvar", message: mensagemDeErro(err, "Tente novamente.") });
+    } finally {
+      setMarcandoDia(false);
+    }
   }
 
   function toggleCat(id: number) {
@@ -231,6 +257,16 @@ export function DiaryScreen() {
           <Ionicons name="chevron-forward" size={18} color={colors.textPrimary} />
         </TouchableOpacity>
       </View>
+
+      {/* Dia encerrado com registro pela metade: o coach NÃO assume que aquilo
+          foi a ingestão real — pergunta. Enquanto não houver resposta, o dia
+          fica fora das médias (spec §10.2). Sem tom de cobrança. */}
+      <DayQualityBanner
+        dia={diaInfo}
+        isToday={isToday}
+        saving={marcandoDia}
+        onMarcar={marcarDia}
+      />
 
       {/* RESUMO COMPACTO — "restantes" em destaque + barra + macros. Toque abre a
           meta. Sem o anel grande de antes: as refeições são o foco. */}
@@ -596,6 +632,107 @@ export function DiaryScreen() {
 }
 
 /** Uma barra de macro compacta (usada em coluna dentro do resumo). */
+/** Faixa de qualidade do registro do dia (spec §10.2).
+ *
+ * Só aparece quando há algo a resolver ou a comunicar: dia encerrado com
+ * registro que parece incompleto, ou dia que a pessoa já classificou. O dia de
+ * hoje nunca vira pendência — ele ainda vai ser preenchido. */
+function DayQualityBanner({
+  dia,
+  isToday,
+  saving,
+  onMarcar,
+}: {
+  dia: NutritionDay | null;
+  isToday: boolean;
+  saving: boolean;
+  onMarcar: (status: "confirmed" | "incomplete") => void;
+}) {
+  const { colors, type, spacing, radius } = useTheme();
+  if (!dia || isToday) return null;
+
+  // Já decidido: uma linha discreta dizendo em que pé está (e dá pra trocar).
+  if (dia.mark) {
+    const confirmado = dia.mark === "confirmed";
+    return (
+      <TouchableOpacity
+        activeOpacity={0.75}
+        disabled={saving}
+        onPress={() => onMarcar(confirmado ? "incomplete" : "confirmed")}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 7,
+          marginBottom: spacing.md,
+          paddingVertical: 7,
+          paddingHorizontal: spacing.sm,
+          borderRadius: radius.card,
+          backgroundColor: colors.surfaceAlt,
+        }}
+      >
+        <Ionicons
+          name={confirmado ? "checkmark-circle" : "remove-circle"}
+          size={15}
+          color={confirmado ? colors.success : colors.textSecondary}
+        />
+        <Text style={[type.caption, { color: colors.textSecondary, flex: 1, lineHeight: 17 }]}>
+          {confirmado
+            ? "Você confirmou este dia — ele conta nas suas médias."
+            : "Marcado como incompleto — fica fora das médias, mas os registros continuam aqui."}
+        </Text>
+        <Text style={[type.caption, { color: colors.primary, fontWeight: "700" }]}>Trocar</Text>
+      </TouchableOpacity>
+    );
+  }
+
+  if (!dia.needs_attention) return null;
+
+  return (
+    <Card accent={colors.warning} style={{ marginBottom: spacing.md }}>
+      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+        <Ionicons name="help-circle" size={18} color={colors.warning} style={{ marginTop: 1 }} />
+        <View style={{ flex: 1 }}>
+          <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>
+            Parece que você não terminou de registrar
+          </Text>
+          <Text style={[type.bodySmall, { color: colors.textSecondary, marginTop: 3, lineHeight: 19 }]}>
+            {dia.meals === 0
+              ? "Não tem nada lançado neste dia."
+              : `Tem ${Math.round(dia.kcal)} kcal em ${dia.meals} ${
+                  dia.meals === 1 ? "refeição" : "refeições"
+                } aqui.`}{" "}
+            Prefiro perguntar a chutar que foi isso que você comeu — por enquanto este dia está fora das suas
+            médias.
+          </Text>
+        </View>
+      </View>
+      <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.md }}>
+        <View style={{ flex: 1 }}>
+          <Button
+            title="Foi isso mesmo"
+            variant="secondary"
+            compact
+            loading={saving}
+            onPress={() => onMarcar("confirmed")}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Button
+            title="Marcar incompleto"
+            variant="ghost"
+            compact
+            disabled={saving}
+            onPress={() => onMarcar("incomplete")}
+          />
+        </View>
+      </View>
+      <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.xs, textAlign: "center" }]}>
+        Ou complete o dia agora — é só adicionar o que faltou abaixo.
+      </Text>
+    </Card>
+  );
+}
+
 function MacroBar({ label, value, goal, color }: { label: string; value: number; goal: number; color: string }) {
   const { colors, type } = useTheme();
   const progress = goal > 0 ? Math.min(value / goal, 1) : 0;

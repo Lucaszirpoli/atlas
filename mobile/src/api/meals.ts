@@ -115,6 +115,37 @@ export async function deleteMealLog(id: number): Promise<void> {
   await api.delete(`/meals/${id}`);
 }
 
+/** Veredito do sistema sobre um dia alimentar: dá pra usar nas médias ou o
+ * registro ficou pela metade? (spec §10.2/§10.3) */
+export type NutritionDay = {
+  day: string;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  meals: number;
+  quality: "completo" | "confirmar" | "provavelmente_incompleto";
+  /** Decisão da pessoa; null = ainda no automático. */
+  mark: "confirmed" | "incomplete" | null;
+  valid_for_average: boolean;
+  needs_attention: boolean;
+};
+
+export async function listNutritionDays(days = 30): Promise<NutritionDay[]> {
+  const { data } = await api.get<NutritionDay[]>("/meals/days", { params: { days } });
+  return data;
+}
+
+/** "Aceitar como está" (confirmed), "marcar como incompleto" (incomplete) ou
+ * voltar pro automático (null). Nunca apaga registro — só muda se o dia entra
+ * nas médias. */
+export async function markNutritionDay(
+  isoDate: string,
+  status: "confirmed" | "incomplete" | null
+): Promise<void> {
+  await api.put(`/meals/days/${isoDate}/mark`, { status });
+}
+
 export async function listSavedMeals(): Promise<SavedMeal[]> {
   const { data } = await api.get<SavedMeal[]>("/meals/saved");
   return data;

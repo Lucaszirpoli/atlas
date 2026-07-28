@@ -1,4 +1,4 @@
-from datetime import date, datetime, time, timezone
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.db import get_db
 from app.core.security import get_current_user
+from app.core.usertime import day_bounds_utc, profile_tz, window_start_utc
+from app.models.day_quality import DayMarkStatus
 from app.models.food import Food
 from app.models.meal import MealCategory, MealLog, MealLogItem
 from app.models.saved_meal import SavedMeal, SavedMealItem
@@ -19,11 +21,13 @@ from app.schemas.meal import (
     MealLogItemUpdate,
     MealLogRead,
     MealParseRequest,
+    NutritionDayMarkUpdate,
+    NutritionDayRead,
     ParsedMealItem,
     SavedMealCreate,
     SavedMealRead,
 )
-from app.services import meal_parser, meal_service
+from app.services import day_quality, meal_parser, meal_service
 
 router = APIRouter(prefix="/meals", tags=["meals"])
 
@@ -126,8 +130,10 @@ def list_meals_for_day(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[MealLog]:
-    start = datetime.combine(day, time.min, tzinfo=timezone.utc)
-    end = datetime.combine(day, time.max, tzinfo=timezone.utc)
+    # A fatia do dia é o dia de CALENDÁRIO da pessoa, no fuso dela — não o dia
+    # UTC. Com o corte em UTC, tudo que ela registrava depois das 21h (BRT)
+    # caía no dia seguinte e sumia do diário do dia certo.
+    start, end = day_bounds_utc(day, profile_tz(current_user.profile))
     stmt = (
         select(MealLog)
         .options(selectinload(MealLog.items).selectinload(MealLogItem.food))
@@ -139,6 +145,51 @@ def list_meals_for_day(
         .order_by(MealLog.logged_at)
     )
     return list(db.execute(stmt).scalars())
+
+
+@router.get("/days", response_model=list[NutritionDayRead])
+def list_nutrition_days(
+    days: int = 30,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[NutritionDayRead]:
+    """Os dias alimentares recentes com o veredito de completude (spec §10).
+    Inclui o dia de hoje pra UI poder mostrá-lo — mas ele vem sempre com
+    `valid_for_average=False`, porque está em andamento."""
+    tz = profile_tz(current_user.profile)
+    dias = day_quality.nutrition_days(
+        db, current_user.id, tz, window_start_utc(days, tz), include_today=True
+    )
+    return [
+        NutritionDayRead(
+            day=d.day,
+            kcal=d.kcal,
+            protein_g=d.protein_g,
+            carbs_g=d.carbs_g,
+            fat_g=d.fat_g,
+            meals=d.meals,
+            quality=d.quality,
+            mark=d.mark.value if d.mark else None,
+            valid_for_average=d.valid_for_average,
+            needs_attention=d.needs_attention,
+        )
+        for d in dias
+    ]
+
+
+@router.put("/days/{day}/mark", status_code=status.HTTP_204_NO_CONTENT)
+def mark_nutrition_day(
+    day: date,
+    payload: NutritionDayMarkUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """A pessoa decide o que fazer com um dia de registro incompleto:
+    "aceitar como está" (entra nas médias) ou "marcar como incompleto" (sai
+    das médias, mas os registros continuam intactos — nada é apagado)."""
+    novo = DayMarkStatus(payload.status) if payload.status else None
+    day_quality.set_mark(db, current_user.id, day, novo)
+    db.commit()
 
 
 @router.get("/saved", response_model=list[SavedMealRead])

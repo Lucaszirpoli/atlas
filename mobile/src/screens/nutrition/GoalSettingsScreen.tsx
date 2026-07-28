@@ -37,6 +37,73 @@ const GOAL_OPTIONS: [Goal, string][] = [
 
 const GOAL_LABEL: Record<string, string> = Object.fromEntries(GOAL_OPTIONS);
 
+// Densidade energética de cada macro — a conversão de % pra gramas.
+const KCAL_PER_G = { protein: 4, carbs: 4, fat: 9 } as const;
+
+type MacroSplit = {
+  kcal: number;
+  pProt: number;
+  pCarb: number;
+  pFat: number;
+  soma: number;
+  /** Distância pra 100: positivo = falta, negativo = excede, 0 = fecha. */
+  restante: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  kcalValida: boolean;
+  fecha100: boolean;
+  podeSalvar: boolean;
+};
+
+/** Divisão em % da meta vigente, derivada dos gramas. Arredondar cada macro
+ * separadamente às vezes fecha em 99 ou 101 — nesse caso a sobra vai pro maior
+ * macro, pra tela não abrir já acusando "faltam 1%" numa meta que está certa. */
+function percentuaisDaMeta(g: CalorieGoal): [number, number, number] {
+  const pct = (gramas: number, kcalPorG: number) => Math.round(((gramas * kcalPorG) / g.kcal) * 100);
+  const vals: [number, number, number] = [
+    pct(g.protein_g, KCAL_PER_G.protein),
+    pct(g.carbs_g, KCAL_PER_G.carbs),
+    pct(g.fat_g, KCAL_PER_G.fat),
+  ];
+  const sobra = 100 - (vals[0] + vals[1] + vals[2]);
+  if (sobra !== 0 && Math.abs(sobra) <= 2) {
+    const maior = vals.indexOf(Math.max(...vals));
+    vals[maior] += sobra;
+  }
+  return vals;
+}
+
+/** Converte "calorias + divisão em %" nos gramas de cada macro e diz se a
+ * configuração é válida. Regra da spec §9.2: só salva quando P+C+G = 100%. */
+function calcularSplit(kcalTxt: string, pProtTxt: string, pCarbTxt: string, pFatTxt: string): MacroSplit {
+  const num = (t: string) => {
+    const n = Number(String(t).replace(",", "."));
+    return Number.isFinite(n) ? n : 0;
+  };
+  const kcal = Math.round(num(kcalTxt));
+  const pProt = num(pProtTxt);
+  const pCarb = num(pCarbTxt);
+  const pFat = num(pFatTxt);
+  const soma = Math.round((pProt + pCarb + pFat) * 10) / 10;
+  const kcalValida = kcal >= 800 && kcal <= 8000;
+  const fecha100 = soma === 100;
+  return {
+    kcal,
+    pProt,
+    pCarb,
+    pFat,
+    soma,
+    restante: Math.round((100 - soma) * 10) / 10,
+    proteinG: Math.round((kcal * pProt) / 100 / KCAL_PER_G.protein),
+    carbsG: Math.round((kcal * pCarb) / 100 / KCAL_PER_G.carbs),
+    fatG: Math.round((kcal * pFat) / 100 / KCAL_PER_G.fat),
+    kcalValida,
+    fecha100,
+    podeSalvar: kcalValida && fecha100,
+  };
+}
+
 const ACTIVITY_OPTIONS: [ActivityLevel, string][] = [
   ["sedentary", "Sedentário"],
   ["light", "Leve"],
@@ -67,10 +134,14 @@ export function GoalSettingsScreen() {
   const [goal, setGoal] = useState<Goal>("hipertrofia");
   const [activity, setActivity] = useState<ActivityLevel>("moderate");
 
+  // Meta manual: a pessoa define as CALORIAS e a divisão dos macros em
+  // PORCENTAGEM (não em gramas). Porcentagem é como todo mundo pensa a dieta
+  // ("40/30/30") e é auto-verificável: se não fecha 100%, está errado. Os
+  // gramas saem daí sozinhos (4 kcal/g proteína e carbo, 9 kcal/g gordura).
   const [manualKcal, setManualKcal] = useState("");
-  const [manualProtein, setManualProtein] = useState("");
-  const [manualCarbs, setManualCarbs] = useState("");
-  const [manualFat, setManualFat] = useState("");
+  const [pctProtein, setPctProtein] = useState("30");
+  const [pctCarbs, setPctCarbs] = useState("45");
+  const [pctFat, setPctFat] = useState("25");
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   // "Considerar como primeiro objetivo": vai direto pra meta nova (sem transição
@@ -78,6 +149,7 @@ export function GoalSettingsScreen() {
   // (ex: encerrar o cutting e começar o bulking do zero).
   const [asFirstObjective, setAsFirstObjective] = useState(false);
   const mudouObjetivo = !!profile && profile.goal !== goal;
+  const macroSplit = calcularSplit(manualKcal, pctProtein, pctCarbs, pctFat);
 
   async function load() {
     setIsLoading(true);
@@ -89,6 +161,16 @@ export function GoalSettingsScreen() {
       ]);
       setCurrentGoal(goalNow);
       setPace(paceNow);
+      // Abre o bloco manual já com a divisão ATUAL da pessoa (derivada dos
+      // gramas da meta vigente), não com um padrão genérico — assim ela ajusta
+      // o que tem em vez de recomeçar do zero.
+      if (goalNow?.kcal) {
+        setManualKcal(String(Math.round(goalNow.kcal)));
+        const [p, c, g] = percentuaisDaMeta(goalNow);
+        setPctProtein(String(p));
+        setPctCarbs(String(c));
+        setPctFat(String(g));
+      }
       if (prof) {
         setProfile(prof);
         setSex(prof.biological_sex);
@@ -180,18 +262,20 @@ export function GoalSettingsScreen() {
   }
 
   async function handleApplyManual() {
-    const kcal = Number(manualKcal);
-    const protein = Number(manualProtein);
-    const carbs = Number(manualCarbs);
-    const fat = Number(manualFat);
-    if (!kcal || !protein || !carbs || !fat) {
-      Alert.alert("Preencha todos os campos", "Calorias, proteína, carboidrato e gordura são obrigatórios.");
-      return;
-    }
+    if (!macroSplit.podeSalvar) return;
     setIsSubmitting(true);
     try {
-      setCurrentGoal(await applyManualGoal({ kcal, protein_g: protein, carbs_g: carbs, fat_g: fat }));
+      setCurrentGoal(
+        await applyManualGoal({
+          kcal: macroSplit.kcal,
+          protein_g: macroSplit.proteinG,
+          carbs_g: macroSplit.carbsG,
+          fat_g: macroSplit.fatG,
+        })
+      );
       Alert.alert("Meta salva", "Sua meta manual foi definida.");
+    } catch (err: any) {
+      Alert.alert("Não foi possível salvar", mensagemDeErro(err, "Tente novamente."));
     } finally {
       setIsSubmitting(false);
     }
@@ -339,14 +423,95 @@ export function GoalSettingsScreen() {
         Ou defina manualmente
       </Text>
       <Card>
-        <View style={{ flexDirection: "row", gap: spacing.sm }}>
-          <ManualInput label="kcal" value={manualKcal} onChangeText={setManualKcal} flex={1.2} />
-          <ManualInput label="Prot (g)" value={manualProtein} onChangeText={setManualProtein} />
-          <ManualInput label="Carb (g)" value={manualCarbs} onChangeText={setManualCarbs} />
-          <ManualInput label="Gord (g)" value={manualFat} onChangeText={setManualFat} />
+        <FieldLabel text="Calorias por dia" />
+        <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md }}>
+          <ManualInput label="kcal" value={manualKcal} onChangeText={setManualKcal} />
+          <View style={{ flex: 2, justifyContent: "flex-end", paddingBottom: 4 }}>
+            <Text style={[type.caption, { color: colors.textSecondary, lineHeight: 16 }]}>
+              Você define as calorias; a divisão dos macros vai em porcentagem abaixo.
+            </Text>
+          </View>
         </View>
+
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: spacing.xs }}>
+          <FieldLabel text="Divisão dos macros (%)" />
+          <HelpDot
+            title="Por que porcentagem?"
+            text={
+              "É como as dietas são descritas ('40/30/30') e dá pra conferir na hora: se não soma 100%, tem algo " +
+              "errado. Os gramas saem sozinhos das calorias — proteína e carboidrato rendem 4 kcal por grama, " +
+              "gordura rende 9."
+            }
+          />
+        </View>
+        <View style={{ flexDirection: "row", gap: spacing.sm }}>
+          <PercentInput label="Proteína" value={pctProtein} onChangeText={setPctProtein} grams={macroSplit.proteinG} tint={colors.moduleTraining} />
+          <PercentInput label="Carbo" value={pctCarbs} onChangeText={setPctCarbs} grams={macroSplit.carbsG} tint={colors.info} />
+          <PercentInput label="Gordura" value={pctFat} onChangeText={setPctFat} grams={macroSplit.fatG} tint={colors.warning} />
+        </View>
+
+        {/* Aviso PERMANENTE da regra + quanto falta/excede em tempo real. */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "flex-start",
+            gap: 8,
+            marginTop: spacing.md,
+            backgroundColor: macroSplit.fecha100 ? colors.success + "14" : colors.warning + "14",
+            borderRadius: radius.card,
+            padding: spacing.sm,
+          }}
+        >
+          <Ionicons
+            name={macroSplit.fecha100 ? "checkmark-circle" : "alert-circle"}
+            size={16}
+            color={macroSplit.fecha100 ? colors.success : colors.warning}
+            style={{ marginTop: 1 }}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={[type.caption, { color: colors.textSecondary, lineHeight: 17 }]}>
+              A soma de proteína, carboidratos e gorduras deve totalizar 100%.
+            </Text>
+            <Text
+              style={[
+                type.bodySmall,
+                {
+                  color: macroSplit.fecha100 ? colors.success : colors.warning,
+                  fontWeight: "800",
+                  marginTop: 3,
+                },
+              ]}
+            >
+              {macroSplit.fecha100
+                ? `${macroSplit.soma}% — configuração válida.`
+                : macroSplit.restante > 0
+                ? `Somando ${macroSplit.soma}% — faltam ${macroSplit.restante}%.`
+                : `Somando ${macroSplit.soma}% — excede em ${Math.abs(macroSplit.restante)}%.`}
+            </Text>
+          </View>
+        </View>
+
+        {macroSplit.fecha100 && !macroSplit.kcalValida ? (
+          <Text style={[type.caption, { color: colors.warning, marginTop: spacing.xs }]}>
+            Informe as calorias do dia (entre 800 e 8000 kcal).
+          </Text>
+        ) : null}
+
+        {macroSplit.podeSalvar ? (
+          <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm, textAlign: "center" }]}>
+            Vai ficar: {macroSplit.kcal} kcal · P {macroSplit.proteinG}g · C {macroSplit.carbsG}g · G{" "}
+            {macroSplit.fatG}g
+          </Text>
+        ) : null}
+
         <View style={{ marginTop: spacing.md }}>
-          <Button title="Salvar meta manual" variant="ghost" onPress={handleApplyManual} loading={isSubmitting} />
+          <Button
+            title="Salvar meta manual"
+            variant="ghost"
+            onPress={handleApplyManual}
+            loading={isSubmitting}
+            disabled={!macroSplit.podeSalvar}
+          />
         </View>
       </Card>
 
@@ -458,6 +623,60 @@ function MacroChip({ label, value, color }: { label: string; value: number; colo
     >
       <Text style={[type.caption, { color, fontWeight: "800" }]}>{label}</Text>
       <Text style={[type.caption, { color, fontWeight: "600" }]}>{Math.round(value)}g</Text>
+    </View>
+  );
+}
+
+/** Campo de porcentagem de um macro, com os gramas resultantes logo abaixo —
+ * a pessoa vê na hora o que a porcentagem vira no prato. */
+function PercentInput({
+  label,
+  value,
+  onChangeText,
+  grams,
+  tint,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (v: string) => void;
+  grams: number;
+  tint: string;
+}) {
+  const { colors, type, spacing, radius } = useTheme();
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: spacing.xs }}>
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: tint }} />
+        <Text style={[type.caption, { color: colors.textSecondary }]} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: colors.surfaceAlt,
+          borderRadius: radius.button,
+          height: 48,
+          paddingHorizontal: spacing.xs,
+        }}
+      >
+        <TextInput
+          value={value}
+          onChangeText={(v) => onChangeText(v.replace(/,/g, ".").replace(/[^0-9.]/g, "").slice(0, 5))}
+          keyboardType="decimal-pad"
+          selectTextOnFocus
+          style={[
+            type.body,
+            { color: colors.textPrimary, fontWeight: "700", textAlign: "right", minWidth: 34, padding: 0 },
+          ]}
+        />
+        <Text style={[type.bodySmall, { color: colors.textSecondary, fontWeight: "700" }]}>%</Text>
+      </View>
+      <Text style={[type.caption, { color: colors.textSecondary, textAlign: "center", marginTop: 3 }]}>
+        {grams}g
+      </Text>
     </View>
   );
 }

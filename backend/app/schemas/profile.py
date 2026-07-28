@@ -28,3 +28,10 @@ class ProfileCalcUpdate(BaseModel):
     activity_level: ActivityLevel | None = None
     goal: Goal | None = None
     current_weight_kg: float | None = Field(default=None, ge=30, le=300)
+
+
+class TimezoneUpdate(BaseModel):
+    """Fuso IANA do aparelho ("America/Sao_Paulo"), enviado pelo app ao entrar.
+    Um nome desconhecido não é erro — o backend cai no padrão do produto."""
+
+    timezone: str = Field(min_length=1, max_length=64)

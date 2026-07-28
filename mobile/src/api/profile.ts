@@ -24,3 +24,17 @@ export async function updateProfileCalc(payload: ProfileCalcUpdate): Promise<Pro
   const { data } = await api.patch<ProfileCalc>("/users/profile/calc", payload);
   return data;
 }
+
+/** Fuso do aparelho ("America/Sao_Paulo"). É o que diz ao backend QUE DIA de
+ * calendário é cada registro — sem isso ele fatiava o dia em UTC e tudo que
+ * era registrado depois das 21h caía no dia seguinte. Silencioso de propósito:
+ * é um detalhe de infraestrutura, nunca deve atrapalhar quem está usando. */
+export async function reportDeviceTimezone(): Promise<void> {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (!tz) return;
+    await api.put("/users/timezone", { timezone: tz });
+  } catch {
+    // sem rede / fuso desconhecido: o backend usa o padrão do produto
+  }
+}

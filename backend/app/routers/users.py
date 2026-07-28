@@ -5,12 +5,13 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.security import get_current_user
+from app.core.usertime import resolve_tz
 from app.models.consent import ConsentRecord, ConsentType
 from app.models.user import User
 from app.models.user_profile import UserProfile
 from app.models.weight_log import WeightLog
 from app.schemas.onboarding import OnboardingRequest, OnboardingResponse
-from app.schemas.profile import ProfileCalcRead, ProfileCalcUpdate
+from app.schemas.profile import ProfileCalcRead, ProfileCalcUpdate, TimezoneUpdate
 from app.schemas.user import HandleAvailabilityResponse, UserRead
 from app.services import goal_service, user_service
 
@@ -97,6 +98,27 @@ def update_profile_calc(
         goal=profile.goal,
         current_weight_kg=goal_service.get_latest_weight_kg(db, current_user.id),
     )
+
+
+@router.put("/timezone", status_code=status.HTTP_204_NO_CONTENT)
+def set_timezone(
+    payload: TimezoneUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """O app informa o fuso do aparelho ao entrar. É o que define QUE DIA de
+    calendário é cada registro pra esta pessoa (ver core/usertime.py) — sem
+    isso o backend fatiava tudo em UTC e o que era registrado à noite caía no
+    dia seguinte. Silencioso: se o perfil ainda não existe (pré-onboarding),
+    não é erro — o padrão do produto cobre até lá."""
+    profile = current_user.profile
+    if profile is None:
+        return
+    tz = str(resolve_tz(payload.timezone).key)
+    if profile.timezone != tz:
+        profile.timezone = tz
+        db.add(profile)
+        db.commit()
 
 
 @router.post("/onboarding", response_model=OnboardingResponse)

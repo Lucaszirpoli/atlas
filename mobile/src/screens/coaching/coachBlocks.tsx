@@ -51,47 +51,6 @@ export function MacroChip({
   );
 }
 
-// Card "Sua meta atual" da dieta — kcal/dia + macros. Usado no cabeçalho do
-// coach na tela de Dieta.
-export function DietMetaCard({ metrics }: { metrics: CoachingAnalysis["metrics"] }) {
-  const { colors, type, spacing } = useTheme();
-  const m = metrics;
-  return (
-    <Card style={{ marginBottom: spacing.md }}>
-      <Text
-        style={[
-          type.caption,
-          { color: colors.primary, fontWeight: "800", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: spacing.sm },
-        ]}
-      >
-        Sua meta atual
-      </Text>
-      {m.goal_kcal ? (
-        <>
-          <View style={{ flexDirection: "row", alignItems: "baseline", gap: 5, marginBottom: spacing.sm }}>
-            <Text style={[type.display, { color: colors.textPrimary, fontSize: 30 }]}>{Math.round(m.goal_kcal)}</Text>
-            <Text style={[type.body, { color: colors.textSecondary }]}>kcal / dia</Text>
-          </View>
-          <View style={{ flexDirection: "row", gap: spacing.md }}>
-            <MacroChip label="Proteína" goal={m.protein_target_g} avg={m.avg_protein_g} color={colors.moduleTraining} />
-            <MacroChip label="Carbo" goal={m.goal_carbs_g} avg={m.avg_carbs_g} color={colors.info} />
-            <MacroChip label="Gordura" goal={m.goal_fat_g} avg={m.avg_fat_g} color={colors.warning} />
-          </View>
-          {m.avg_kcal != null ? (
-            <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm }]}>
-              Média recente: {Math.round(m.avg_kcal)} kcal/dia.
-            </Text>
-          ) : null}
-        </>
-      ) : (
-        <Text style={[type.bodySmall, { color: colors.textSecondary }]}>
-          Você ainda não tem meta calórica. Defina uma pra o coach acompanhar sua dieta.
-        </Text>
-      )}
-    </Card>
-  );
-}
-
 // Setinha de expandir/recolher.
 export function ExpandToggle({ expanded, onPress }: { expanded: boolean; onPress: () => void }) {
   const { colors } = useTheme();
@@ -260,14 +219,22 @@ type PrefSheetField = "weak_point" | "session_length" | "training_days" | "cardi
 
 export function TrainingPrefsCard({
   prefs,
+  workout,
   onChanged,
 }: {
   prefs: TrainingPrefs;
+  // Quando passado, mostra "montar/refazer treino" no fim do card expandido —
+  // fundido aqui porque as rotinas já aparecem na lista logo abaixo na tela de
+  // Treino; um card "Seu treino" à parte só duplicava essa lista.
+  workout?: CoachingAnalysis["metrics"]["workout"];
   onChanged: (title: string, message: string) => void;
 }) {
   const { colors, type, spacing, radius } = useTheme();
   const [sheet, setSheet] = useState<PrefSheetField | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [building, setBuilding] = useState(false);
+  const [erroMontar, setErroMontar] = useState<string | null>(null);
+  const built = !!workout?.built;
 
   async function salvar(update: Parameters<typeof setTrainingPrefs>[0], titulo: string) {
     setSheet(null);
@@ -276,6 +243,22 @@ export function TrainingPrefsCard({
       onChanged(titulo, r.message);
     } catch {
       // silencioso — recarrega no próximo foco
+    }
+  }
+
+  async function montar() {
+    setErroMontar(null);
+    setBuilding(true);
+    try {
+      const r = await buildCoachWorkout();
+      const extra = r.cardio_note ? `\n\n${r.cardio_note}` : "";
+      const tecnica = r.technique_note ? `\n\n${r.technique_note}` : "";
+      const foco = r.weak_point_label ? ` Priorizei ${r.weak_point_label}.` : "";
+      onChanged("Treino montado", `${r.message}${foco}${extra}${tecnica}`);
+    } catch (e: any) {
+      setErroMontar(mensagemDeErro(e, "Não consegui montar agora."));
+    } finally {
+      setBuilding(false);
     }
   }
 
@@ -380,6 +363,36 @@ export function TrainingPrefsCard({
             <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: spacing.sm, backgroundColor: colors.warning + "14", borderRadius: radius.card, padding: spacing.sm }}>
               <Ionicons name="alert-circle" size={15} color={colors.warning} style={{ marginTop: 1 }} />
               <Text style={[type.caption, { color: colors.textSecondary, flex: 1, lineHeight: 18 }]}>{prefs.cardio_warning}</Text>
+            </View>
+          ) : null}
+
+          {workout ? (
+            <View style={{ marginTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md }}>
+              {built ? (
+                <>
+                  <Button
+                    title={building ? "Montando..." : "Refazer com base nas minhas preferências"}
+                    variant="secondary"
+                    compact
+                    loading={building}
+                    onPress={montar}
+                  />
+                  <Text style={[type.caption, { color: colors.textSecondary, marginTop: 4, textAlign: "center" }]}>
+                    Arquiva o treino atual e monta um novo. Seu histórico continua intacto.
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.md, lineHeight: 17 }]}>
+                    Deixa que eu monto seu treino completo com base no que você definiu acima. Fica salvo nas suas
+                    rotinas, pronto pra treinar.
+                  </Text>
+                  <Button title={building ? "Montando..." : "Montar meu treino"} loading={building} onPress={montar} />
+                </>
+              )}
+              {erroMontar ? (
+                <Text style={[type.caption, { color: colors.warning, marginTop: 6, textAlign: "center" }]}>{erroMontar}</Text>
+              ) : null}
             </View>
           ) : null}
         </View>

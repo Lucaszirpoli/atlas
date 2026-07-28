@@ -150,6 +150,7 @@ export function RoutineListScreen() {
       </View>
 
       <FlatList
+        style={{ flex: 1 }}
         data={routines}
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={{ paddingBottom: spacing.lg }}
@@ -237,58 +238,61 @@ export function RoutineListScreen() {
         }
       />
 
-      <Button title="Nova rotina" icon="+" onPress={() => navigation.navigate("RoutineBuilder", {})} />
+      {/* Rodapé FIXO — não rola junto com a lista de rotinas (FlatList acima
+          tem flex:1 e é a única área que rola; isto aqui é um irmão dela, fica
+          sempre visível no rodapé da tela). */}
+      <View style={{ paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border }}>
+        <Button title="Nova rotina" icon="+" onPress={() => navigation.navigate("RoutineBuilder", {})} />
 
-      {/* 10 métodos consagrados (grátis) — fica abaixo da última rotina, igual
-          "Dietas prontas" na aba de Dieta (discovery, não atrapalha quem já
-          tem rotina montada). A geração por IA saiu daqui — o acompanhamento
-          personalizado vive agora só no Coaching (Pro). */}
-      <TouchableOpacity
-        activeOpacity={0.85}
-        onPress={() => navigation.navigate("AiHub")}
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          backgroundColor: colors.moduleTraining,
-          borderRadius: radius.card,
-          padding: spacing.md,
-          marginTop: spacing.md,
-        }}
-      >
-        <View
+        {/* 10 métodos consagrados (grátis) — igual "Dietas prontas" na aba de
+            Dieta (discovery, não atrapalha quem já tem rotina montada). */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate("AiHub")}
           style={{
-            width: 46,
-            height: 46,
-            borderRadius: 15,
-            backgroundColor: "rgba(255,255,255,0.22)",
+            flexDirection: "row",
             alignItems: "center",
-            justifyContent: "center",
-            marginRight: spacing.md,
+            backgroundColor: colors.moduleTraining,
+            borderRadius: radius.card,
+            padding: spacing.md,
+            marginTop: spacing.md,
           }}
         >
-          <Ionicons name="barbell" size={24} color="#FFFFFF" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={[type.h2, { color: "#FFFFFF", fontSize: 16 }]}>Métodos de treino</Text>
-          <Text style={[type.caption, { color: "rgba(255,255,255,0.9)" }]} numberOfLines={2}>
-            10 metodologias consagradas, prontas pra montar sua rotina
-          </Text>
-        </View>
-        <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
-      </TouchableOpacity>
+          <View
+            style={{
+              width: 46,
+              height: 46,
+              borderRadius: 15,
+              backgroundColor: "rgba(255,255,255,0.22)",
+              alignItems: "center",
+              justifyContent: "center",
+              marginRight: spacing.md,
+            }}
+          >
+            <Ionicons name="barbell" size={24} color="#FFFFFF" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[type.h2, { color: "#FFFFFF", fontSize: 16 }]}>Métodos de treino</Text>
+            <Text style={[type.caption, { color: "rgba(255,255,255,0.9)" }]} numberOfLines={2}>
+              10 metodologias consagradas, prontas pra montar sua rotina
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
+        </TouchableOpacity>
 
-      {/* Importar fica por último: é aqui que quem chegou de outro app
-          procura, e redigitar tudo é o motivo nº1 de desistir de trocar.
-          Discreto de propósito — serve uma vez na vida do usuário. */}
-      <Pressable
-        onPress={() => navigation.navigate("ImportRoutines")}
-        style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingTop: spacing.md }}
-      >
-        <Ionicons name="download-outline" size={17} color={colors.textSecondary} />
-        <Text style={[type.bodySmall, { color: colors.textSecondary, marginLeft: 6 }]}>
-          Já treina no Hevy ou Strong? Importar treinos
-        </Text>
-      </Pressable>
+        {/* Importar fica por último: é aqui que quem chegou de outro app
+            procura, e redigitar tudo é o motivo nº1 de desistir de trocar.
+            Discreto de propósito — serve uma vez na vida do usuário. */}
+        <Pressable
+          onPress={() => navigation.navigate("ImportRoutines")}
+          style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingTop: spacing.md }}
+        >
+          <Ionicons name="download-outline" size={17} color={colors.textSecondary} />
+          <Text style={[type.bodySmall, { color: colors.textSecondary, marginLeft: 6 }]}>
+            Já treina no Hevy ou Strong? Importar treinos
+          </Text>
+        </Pressable>
+      </View>
 
       <ActionSheet
         visible={optionsRoutine != null}

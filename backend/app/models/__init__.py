@@ -10,6 +10,7 @@ from app.models.coaching_technique_cue import CoachingTechniqueCue
 from app.models.coaching_transition import CoachingTransition
 from app.models.consent import ConsentRecord
 from app.models.content_report import ContentReport
+from app.models.day_quality import DayMarkStatus, NutritionDayMark
 from app.models.exercise import Exercise
 from app.models.feed import FeedComment, FeedPost, FeedReaction
 from app.models.food import Food
@@ -65,4 +66,6 @@ __all__ = [
     "Challenge",
     "ChallengeParticipant",
     "SleepLog",
+    "NutritionDayMark",
+    "DayMarkStatus",
 ]
