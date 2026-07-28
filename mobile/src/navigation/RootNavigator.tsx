@@ -13,6 +13,7 @@ import { CoachChatScreen } from "../screens/coaching/CoachChatScreen";
 import { CoachingScreen } from "../screens/coaching/CoachingScreen";
 import { EvolutionScreen } from "../screens/evolution/EvolutionScreen";
 import { PaywallScreen } from "../screens/main/PaywallScreen";
+import { PersonalDietScreen } from "../screens/objective/PersonalDietScreen";
 import { ProfileScreen } from "../screens/main/ProfileScreen";
 import { HomeLayoutScreen } from "../screens/settings/HomeLayoutScreen";
 import { SleepScreen } from "../screens/sleep/SleepScreen";
@@ -59,6 +60,7 @@ function AppStack() {
         options={{ headerShown: true, title: "Layout da tela inicial" }}
       />
       <Stack.Screen name="Paywall" component={PaywallScreen} options={{ headerShown: true, title: "ATLAS Pro" }} />
+      <Stack.Screen name="PersonalDiet" component={PersonalDietScreen} />
       <Stack.Screen name="CoachChat" component={CoachChatScreen} options={{ headerShown: true, title: "Pergunte ao coach" }} />
       <Stack.Screen name="Evolution" component={EvolutionScreen} options={{ headerShown: true, title: "Evolução" }} />
       <Stack.Screen name="AiHub" component={AiHubScreen} options={{ headerShown: true, title: "Treino com IA" }} />

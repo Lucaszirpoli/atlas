@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai.diet_engine import MacroTarget, build_diet_plan
+from app.ai.diet_engine import build_diet_plan
 from app.coaching import workout_builder
 from app.core.text import normalize_search_text
 from app.models.coaching_action import CoachingAction
@@ -28,7 +28,6 @@ from app.models.routine import Routine, RoutineExercise
 from app.models.user import User
 from app.schemas.meal import MealLogCreate, MealLogItemCreate
 from app.services import food_service, goal_service, meal_service
-from app.services.nutrition_calc import compute_auto_goal
 
 # Esquemas das ferramentas (formato tool-use da Anthropic).
 TOOLS = [
@@ -127,21 +126,6 @@ TOOLS = [
         },
     },
 ]
-
-
-def _resolve_macro_target(db: Session, user: User) -> MacroTarget | None:
-    goal = goal_service.get_current_goal(db, user.id)
-    if goal is not None:
-        return MacroTarget(goal.kcal, goal.protein_g, goal.carbs_g, goal.fat_g)
-    profile = getattr(user, "profile", None)
-    weight = goal_service.get_latest_weight_kg(db, user.id)
-    if profile is not None and weight is not None:
-        auto = compute_auto_goal(
-            biological_sex=profile.biological_sex, weight_kg=weight, height_cm=profile.height_cm,
-            age=profile.age, activity_level=profile.activity_level, goal=profile.goal,
-        )
-        return MacroTarget(auto["kcal"], auto["protein_g"], auto["carbs_g"], auto["fat_g"])
-    return None
 
 
 def _find_user_exercise(db: Session, user_id: int, name: str) -> Exercise | None:
@@ -393,7 +377,7 @@ def run_tool(db: Session, user: User, name: str, tool_input: dict) -> dict:
         }
 
     if name == "gerar_dieta":
-        target = _resolve_macro_target(db, user)
+        target = goal_service.resolve_macro_target(db, user)
         if target is None:
             return {"for_model": {"erro": "A pessoa ainda não tem meta de calorias/peso pra basear a dieta."}}
         try:

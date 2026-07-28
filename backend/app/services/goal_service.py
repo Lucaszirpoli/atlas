@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai.diet_engine import MacroTarget
 from app.models.calorie_goal import CalorieGoal, GoalMode
 from app.models.coaching_transition import CoachingTransition
 from app.models.user_profile import GoalPace, UserProfile
@@ -41,6 +42,24 @@ def get_latest_weight_kg(db: Session, user_id: int) -> float | None:
         .limit(1)
     ).scalar_one_or_none()
     return log.weight_kg if log else None
+
+
+def resolve_macro_target(db: Session, user) -> MacroTarget | None:
+    """Meta de macros pra basear a montagem de uma dieta: a meta vigente
+    (auto ou manual, tanto faz — quem gerou já resolveu isso) ou, sem
+    nenhuma ainda, uma estimativa a partir do perfil + peso mais recente."""
+    goal = get_current_goal(db, user.id)
+    if goal is not None:
+        return MacroTarget(goal.kcal, goal.protein_g, goal.carbs_g, goal.fat_g)
+    profile = getattr(user, "profile", None)
+    weight = get_latest_weight_kg(db, user.id)
+    if profile is not None and weight is not None:
+        auto = compute_auto_goal(
+            biological_sex=profile.biological_sex, weight_kg=weight, height_cm=profile.height_cm,
+            age=profile.age, activity_level=profile.activity_level, goal=profile.goal,
+        )
+        return MacroTarget(auto["kcal"], auto["protein_g"], auto["carbs_g"], auto["fat_g"])
+    return None
 
 
 def compute_suggestion(db: Session, user_id: int, profile: UserProfile) -> dict:

@@ -42,15 +42,11 @@ import { mensagemDeErro } from "../../utils/errorMessage";
 type Modo = "resumo" | "questionario" | "atualizado";
 
 export function ObjectiveScreen({
-  onOpenTraining,
   onOpenDietPdf,
-  onOpenAnalysis,
   onScrollTop,
   onPlanActivated,
 }: {
-  onOpenTraining: () => void;
   onOpenDietPdf: () => void;
-  onOpenAnalysis: () => void;
   /** Avisa a tela do Coaching que o plano mudou, pra ela recarregar a análise.
    * Sem isto, logo depois de "Seu plano foi atualizado" o card do coach acima
    * continuava mostrando o objetivo ANTIGO — duas versões da verdade na mesma
@@ -436,18 +432,15 @@ export function ObjectiveScreen({
         </Card>
 
         <View style={{ gap: spacing.sm, marginTop: spacing.md, marginBottom: spacing.xl }}>
-          <Button title="Ver novo treino" onPress={onOpenTraining} />
           <Button
             title="Ver novas metas"
-            variant="secondary"
             onPress={() => {
               setModo("resumo");
               setVerMetas(true);
               getCurrentGoal().then(setMetaAtual).catch(() => {});
             }}
           />
-          <Button title="Ver dieta em PDF" variant="ghost" onPress={onOpenDietPdf} />
-          <Button title="Ver análise do Coaching" variant="ghost" onPress={onOpenAnalysis} />
+          <Button title="Ver dieta em PDF" variant="secondary" onPress={onOpenDietPdf} />
           <TouchableOpacity onPress={() => setModo("resumo")} style={{ alignItems: "center", paddingVertical: spacing.sm }}>
             <Text style={[type.bodySmall, { color: colors.textSecondary, fontWeight: "700" }]}>
               Voltar pro meu objetivo
@@ -549,12 +542,11 @@ export function ObjectiveScreen({
         ) : null}
       </Card>
 
-      {/* Atalhos — treino redireciona pra aba Treino (§ ajuste pós-v36 item 1),
-          metas nutricionais ficam por CONSULTA aqui mesmo, sem editar. */}
+      {/* Atalhos — só a dieta personalizada mora aqui (a do Coaching, não uma
+          pronta). "Ver meu treino" e "Ver análise" saíram: quem quiser essas
+          informações vai direto nas abas Treino e Coaching. */}
       <View style={{ gap: spacing.xs, marginBottom: spacing.md }}>
-        <Atalho icon="barbell" tint={colors.moduleTraining} title="Ver meu treino" onPress={onOpenTraining} />
         <Atalho icon="document-text" tint={colors.info} title="Ver dieta em PDF" onPress={onOpenDietPdf} />
-        <Atalho icon="analytics" tint={colors.primary} title="Ver análise do Coaching" onPress={onOpenAnalysis} />
       </View>
 
       {/* Metas nutricionais — só consulta. Editar é só pelo questionário
@@ -893,17 +885,7 @@ function FieldEditor({
             paddingHorizontal: spacing.sm, height: 48,
           }}
         >
-          <TextInput
-            value={value != null ? String(value) : ""}
-            onChangeText={(v) => {
-              const limpo = v.replace(",", ".").replace(field.decimal ? /[^0-9.]/g : /[^0-9]/g, "");
-              onChange(limpo === "" ? null : Number(limpo));
-            }}
-            keyboardType={field.decimal ? "decimal-pad" : "number-pad"}
-            placeholder="—"
-            placeholderTextColor={colors.textSecondary}
-            style={[type.body, { flex: 1, color: colors.textPrimary, fontWeight: "600" }]}
-          />
+          <NumberInput field={field} value={value} onChange={onChange} colors={colors} type={type} />
           {field.suffix ? (
             <Text style={[type.caption, { color: colors.textSecondary }]}>{field.suffix}</Text>
           ) : null}
@@ -996,5 +978,48 @@ function FieldEditor({
         </View>
       )}
     </View>
+  );
+}
+
+/** Campo numérico com estado local de texto — sem isto, re-derivar o texto a
+ * partir do número a cada tecla ("78." -> Number -> 78 -> "78") apaga o ponto
+ * decimal assim que ele é digitado, e "78.4" nunca consegue ser completado
+ * (o "4" gruda em "78" virando "784"). O texto digitado manda; o número sai
+ * só quando fecha um valor válido. */
+function NumberInput({
+  field,
+  value,
+  onChange,
+  colors,
+  type,
+}: {
+  field: QuestionField;
+  value: any;
+  onChange: (v: any) => void;
+  colors: any;
+  type: any;
+}) {
+  const [texto, setTexto] = useState(value != null ? String(value) : "");
+
+  function handleChange(v: string) {
+    const limpo = v.replace(",", ".").replace(field.decimal ? /[^0-9.]/g : /[^0-9]/g, "");
+    setTexto(limpo);
+    if (limpo === "" || limpo === ".") {
+      onChange(null);
+      return;
+    }
+    const n = Number(limpo);
+    if (!Number.isNaN(n)) onChange(n);
+  }
+
+  return (
+    <TextInput
+      value={texto}
+      onChangeText={handleChange}
+      keyboardType={field.decimal ? "decimal-pad" : "number-pad"}
+      placeholder="—"
+      placeholderTextColor={colors.textSecondary}
+      style={[type.body, { flex: 1, color: colors.textPrimary, fontWeight: "600" }]}
+    />
   );
 }

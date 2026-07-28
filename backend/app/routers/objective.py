@@ -11,19 +11,24 @@ ele preenche manualmente o que já preenchia (regra de escopo §2).
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.ai.diet_engine import build_diet_plan
 from app.coaching import plan_service, questionnaire
 from app.core.db import get_db
 from app.core.security import get_current_user
 from app.models.user import User
+from app.schemas.meal import MealLogCreate, MealLogItemCreate
 from app.schemas.objective import (
     ObjectiveState,
     PlanSummary,
     QuestionnaireDraftUpdate,
     QuestionnaireSchema,
 )
+from app.services import goal_service, meal_service
 
 router = APIRouter(prefix="/objective", tags=["objective"])
 
@@ -169,3 +174,87 @@ def activate_plan(
             ),
         ) from exc
     return get_state(current_user, db)
+
+
+def _build_personal_diet(current_user: User, db: Session):
+    """A dieta que o Coaching monta PRA ESSA PESSOA: meta de macros da meta
+    vigente + restrições/refeições do questionário ativo — nunca as dietas
+    prontas genéricas (essas continuam só na aba Dieta). Ajuste pós-v36."""
+    plano = plan_service.active_plan(db, current_user.id)
+    if plano is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Você ainda não tem um plano — responda o questionário primeiro.",
+        )
+    target = goal_service.resolve_macro_target(db, current_user)
+    if target is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Preciso da sua meta de calorias pra montar sua dieta.",
+        )
+    respostas = plano.answers or {}
+    restricoes = [str(x) for x in (respostas.get("dietary_restrictions") or [])]
+    try:
+        refeicoes = int(respostas.get("meals_per_day") or 4)
+    except (TypeError, ValueError):
+        refeicoes = 4
+    return build_diet_plan(db, target, restricoes, meals_per_day=refeicoes)
+
+
+@router.get("/diet")
+def get_personal_diet(
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> dict:
+    """A dieta personalizada da aba Objetivo — montada a partir da meta e do
+    questionário, não uma dieta pronta. Só consulta, não registra nada."""
+    _require_pro(current_user)
+    plan = _build_personal_diet(current_user, db)
+    d = plan.to_dict()
+    return {
+        "name": "Minha dieta",
+        "tagline": "Montada pelo Coaching com base no seu questionário",
+        "meals": d["meals"],
+        "totals": d["totals"],
+        "restrictions": d["restrictions"],
+    }
+
+
+@router.post("/diet/apply")
+def apply_personal_diet(
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> dict:
+    """Registra a dieta personalizada no diário de HOJE — mesmo padrão de
+    /diet-templates/{id}/apply, mas a partir do plano montado pra ESSA
+    pessoa, não de um molde genérico."""
+    _require_pro(current_user)
+    plan = _build_personal_diet(current_user, db)
+    d = plan.to_dict()
+    categories = {c.name: c for c in meal_service.ensure_default_categories(db, current_user.id)}
+    db.flush()
+
+    logged_meals = 0
+    logged_items = 0
+    now = datetime.now(timezone.utc)
+    for meal in d["meals"]:
+        cat = categories.get(meal["category"])
+        if cat is None or not meal["items"]:
+            continue
+        meal_service.log_meal(
+            db,
+            current_user.id,
+            MealLogCreate(
+                meal_category_id=cat.id,
+                logged_at=now,
+                items=[MealLogItemCreate(food_id=i["food_id"], quantity_g=i["quantity_g"]) for i in meal["items"]],
+            ),
+        )
+        logged_meals += 1
+        logged_items += len(meal["items"])
+    db.commit()
+
+    return {
+        "template_name": "Minha dieta",
+        "meals_logged": logged_meals,
+        "items_logged": logged_items,
+        "totals": d["totals"],
+    }

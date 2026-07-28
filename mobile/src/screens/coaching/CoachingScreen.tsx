@@ -873,12 +873,11 @@ function CoachingSectionView({
           das respostas, alterações pendentes e histórico de planos (spec §3).
           Ajuste pós-v36 (item 1/2): sem card duplicado por cima — ela já traz
           seu próprio "Seu objetivo atual", sem repetir a mesma informação em
-          dois lugares. */}
+          dois lugares. "Ver dieta em PDF" abre a dieta PERSONALIZADA (montada
+          do questionário) — nunca as dietas prontas, que ficam só na aba Dieta. */}
       {section === "objetivo" ? (
         <ObjectiveScreen
-          onOpenTraining={onOpenTraining}
-          onOpenDietPdf={onOpenTemplates}
-          onOpenAnalysis={onAskCoach}
+          onOpenDietPdf={() => navigation.navigate("PersonalDiet")}
           onScrollTop={onScrollTop}
           onPlanActivated={onReload}
         />

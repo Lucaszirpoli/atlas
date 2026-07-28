@@ -110,6 +110,42 @@ export async function activateObjectivePlan(): Promise<ObjectiveState> {
   return data;
 }
 
+export type PersonalDietItem = {
+  food_id: number;
+  food_name: string;
+  quantity_g: number;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+};
+
+export type PersonalDiet = {
+  name: string;
+  tagline: string;
+  meals: { category: string; items: PersonalDietItem[] }[];
+  totals: { kcal: number; protein_g: number; carbs_g: number; fat_g: number };
+  restrictions: string[];
+};
+
+/** A dieta que o Coaching montou PRA ESSA PESSOA — meta de macros + restrições
+ * do questionário. Não é uma dieta pronta (essas ficam só na aba Dieta). */
+export async function getPersonalDiet(): Promise<PersonalDiet> {
+  const { data } = await api.get<PersonalDiet>("/objective/diet");
+  return data;
+}
+
+/** Registra a dieta personalizada no diário de hoje. */
+export async function applyPersonalDiet(): Promise<{
+  template_name: string;
+  meals_logged: number;
+  items_logged: number;
+  totals: { kcal: number; protein_g: number; carbs_g: number; fat_g: number };
+}> {
+  const { data } = await api.post("/objective/diet/apply", {});
+  return data;
+}
+
 /** Rótulo humano de um componente do plano, pro aviso de pendências. */
 export const COMPONENT_LABEL: Record<string, string> = {
   treino: "seu treino",
