@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
 import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -112,6 +113,39 @@ const ACTIVITY_OPTIONS: [ActivityLevel, string][] = [
   ["very_active", "Muito ativo"],
 ];
 
+/** Ajuste pós-v36 (item 1): a meta calórica do Pro passou a morar só no
+ * questionário da aba Objetivo — esta tela continua sendo o único jeito de
+ * ajustar meta pro Free (que não tem aba Objetivo), mas o Pro vem parar aqui
+ * de vários lugares antigos (histórico de navegação, favoritos) e precisa ver
+ * pra onde foi, não um formulário duplicado. */
+function ProRedirectCard() {
+  const { colors, type, spacing } = useTheme();
+  const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.lg, paddingTop: spacing.xl + insets.top, alignItems: "center" }}>
+      <View
+        style={{
+          width: 56, height: 56, borderRadius: 18, backgroundColor: colors.primary + "1F",
+          alignItems: "center", justifyContent: "center", marginBottom: spacing.md,
+        }}
+      >
+        <Ionicons name="compass" size={28} color={colors.primary} />
+      </View>
+      <Text style={[type.h2, { color: colors.textPrimary, textAlign: "center" }]}>
+        Isso agora fica na aba Objetivo
+      </Text>
+      <Text style={[type.bodySmall, { color: colors.textSecondary, textAlign: "center", marginTop: spacing.sm, lineHeight: 20 }]}>
+        Automática ou manual, sua meta calórica se define junto do resto do seu questionário — pra tudo ficar
+        num lugar só.
+      </Text>
+      <View style={{ marginTop: spacing.lg, alignSelf: "stretch" }}>
+        <Button title="Ir pra aba Objetivo" onPress={() => navigation.navigate("Home", { section: "objetivo" })} />
+      </View>
+    </View>
+  );
+}
+
 export function GoalSettingsScreen() {
   const { colors, type, spacing, radius } = useTheme();
   const insets = useSafeAreaInsets();
@@ -197,7 +231,8 @@ export function GoalSettingsScreen() {
   }
 
   useEffect(() => {
-    load();
+    if (!isPro) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleApplyAuto() {
@@ -279,6 +314,10 @@ export function GoalSettingsScreen() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  if (isPro) {
+    return <ProRedirectCard />;
   }
 
   if (isLoading) {

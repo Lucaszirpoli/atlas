@@ -1,11 +1,21 @@
+from datetime import datetime, timezone
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.coaching import cycle_state, training_brain
+from app.models.coaching_action import CoachingAction
 from app.models.exercise import Exercise
 from app.models.routine import Routine
 from app.models.user import User
 from app.models.workout_session import WorkoutSession, WorkoutSetLog
+
+
+def _aware(dt: datetime | None) -> datetime | None:
+    """SQLite (dev) devolve datetime naive; Postgres aware. Normaliza pra UTC."""
+    if dt is not None and dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 def _inherited_source(db: Session, user_id: int, exercise_id: int) -> int | None:
@@ -67,6 +77,53 @@ def _last_performance_raw(db: Session, user_id: int, exercise_id: int) -> dict |
     }
 
 
+def _active_progression(db: Session, user_id: int, exercise_id: int) -> CoachingAction | None:
+    return db.execute(
+        select(CoachingAction).where(
+            CoachingAction.user_id == user_id,
+            CoachingAction.kind == "progression",
+            CoachingAction.exercise_id == exercise_id,
+            CoachingAction.reverted_at.is_(None),
+        )
+    ).scalar_one_or_none()
+
+
+def _com_progressao_aplicada(db: Session, user_id: int, exercise_id: int, base: dict | None) -> dict | None:
+    """"Aplicar mudança" precisa valer de verdade na próxima vez — não só
+    lembrar (ajuste pós-v36, item 9). Como a rotina-molde não guarda peso (regra
+    3: quem tem os números reais é a sessão), o jeito é a carga sugerida virar o
+    PRÉ-PREENCHIDO enquanto a ação estiver ativa. Assim que a pessoa registra de
+    verdade um treino nesse exercício DEPOIS da sugestão, o log real passa a
+    valer sozinho e a ação se consome (reverted_at), sem precisar de botão."""
+    acao = _active_progression(db, user_id, exercise_id)
+    if acao is None:
+        return base
+
+    cumprida = (
+        base is not None
+        and base.get("last_performed_at") is not None
+        and _aware(base["last_performed_at"]) is not None
+        and _aware(acao.created_at) is not None
+        and _aware(base["last_performed_at"]) >= _aware(acao.created_at)
+    )
+    if cumprida:
+        acao.reverted_at = datetime.now(timezone.utc)
+        db.commit()
+        return base
+
+    novo_peso = (acao.payload or {}).get("new_weight")
+    if novo_peso is None:
+        return base
+
+    sets = base["sets"] if base and base.get("sets") else [{"set_number": 1, "reps": acao.payload.get("top_reps")}]
+    return {
+        **(base or {"exercise_id": exercise_id, "last_performed_at": None}),
+        "exercise_id": exercise_id,
+        "sets": [{**s, "weight_kg": novo_peso} for s in sets],
+        "suggested_by_coach": True,
+    }
+
+
 def get_last_performance(db: Session, user_id: int, exercise_id: int) -> dict | None:
     """Última vez que o usuário executou esse exercício, em qualquer rotina —
     usado para pré-preencher peso/reps na tela de execução.
@@ -76,21 +133,26 @@ def get_last_performance(db: Session, user_id: int, exercise_id: int) -> dict | 
     de trocar de exercício, com a origem identificada."""
     proprio = _last_performance_raw(db, user_id, exercise_id)
     if proprio is not None:
-        return proprio
+        return _com_progressao_aplicada(db, user_id, exercise_id, proprio)
 
     origem_id = _inherited_source(db, user_id, exercise_id)
     if origem_id is None:
-        return None
+        return _com_progressao_aplicada(db, user_id, exercise_id, None)
     herdado = _last_performance_raw(db, user_id, origem_id)
     if herdado is None:
-        return None
+        return _com_progressao_aplicada(db, user_id, exercise_id, None)
     origem = db.get(Exercise, origem_id)
-    return {
-        **herdado,
-        "exercise_id": exercise_id,
-        # A UI mostra de onde veio — "carga herdada" sem dizer de quê confunde.
-        "inherited_from_name": origem.name if origem else None,
-    }
+    return _com_progressao_aplicada(
+        db,
+        user_id,
+        exercise_id,
+        {
+            **herdado,
+            "exercise_id": exercise_id,
+            # A UI mostra de onde veio — "carga herdada" sem dizer de quê confunde.
+            "inherited_from_name": origem.name if origem else None,
+        },
+    )
 
 
 def build_prefill(db: Session, user: User, routine: Routine) -> list[dict]:

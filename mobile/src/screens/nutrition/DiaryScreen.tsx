@@ -35,7 +35,6 @@ import { useTheme } from "../../theme/ThemeProvider";
 import { mensagemDeErro } from "../../utils/errorMessage";
 import { formatQuantity } from "../../utils/portion";
 import { addDaysIso, diaLabel, isoToday } from "../../utils/date";
-import { DietCoachHeader } from "../coaching/CoachModuleHeader";
 
 const CATEGORY_ICONS: [RegExp, keyof typeof Ionicons.glyphMap][] = [
   [/café|cafe/i, "cafe"],
@@ -231,9 +230,6 @@ export function DiaryScreen() {
       refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />}
       showsVerticalScrollIndicator={false}
     >
-      {/* Cabeçalho do coach (Pro): meta calórica + macros + leitura. Some no Free. */}
-      <DietCoachHeader />
-
       {/* Navegação por dia: dá pra ver e EDITAR dias anteriores (mesmas ações
           de hoje — corrigir quantidade, remover, adicionar). Só não avança
           pro futuro. */}

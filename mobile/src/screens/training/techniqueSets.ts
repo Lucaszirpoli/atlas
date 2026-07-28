@@ -222,3 +222,36 @@ export function nextBlockStatus(current: BlockStatus | undefined): BlockStatus |
   const i = BLOCK_STATUS_CYCLE.indexOf(current);
   return BLOCK_STATUS_CYCLE[(i + 1) % BLOCK_STATUS_CYCLE.length];
 }
+
+/** Como a tela de execução organiza as linhas pra desenhar: séries normais
+ * ficam soltas ("single"), mas ativação + blocos/quedas de UMA técnica viram
+ * UM item só ("technique") — é o que permite desenhar um cartão compacto com
+ * chips B1/B2/B3 em vez de um cartão cheio por bloco (ajuste pós-v36, item 3:
+ * "muita coisa na tela" era a queixa central). */
+export type DisplayItem =
+  | { kind: "single"; idx: number; row: SetRow }
+  | { kind: "technique"; activationIdx: number; activation: SetRow; blocks: { idx: number; row: SetRow }[] };
+
+export function buildDisplayItems(sets: SetRow[]): DisplayItem[] {
+  const items: DisplayItem[] = [];
+  let i = 0;
+  while (i < sets.length) {
+    const row = sets[i];
+    if (row.role === "activation" && row.groupStart) {
+      const blocks: { idx: number; row: SetRow }[] = [];
+      let j = i + 1;
+      while (j < sets.length && (sets[j].role === "block" || sets[j].role === "drop")) {
+        blocks.push({ idx: j, row: sets[j] });
+        const fechou = sets[j].groupEnd;
+        j++;
+        if (fechou) break;
+      }
+      items.push({ kind: "technique", activationIdx: i, activation: row, blocks });
+      i = j;
+    } else {
+      items.push({ kind: "single", idx: i, row });
+      i++;
+    }
+  }
+  return items;
+}

@@ -42,6 +42,9 @@ export type ExercisePrefill = {
   /** Nome do exercício de ORIGEM quando os números vieram de uma troca com
    * "manter registros" — a pessoa precisa saber de onde saiu a carga. */
   inherited_from_name?: string | null;
+  /** Peso veio de "Aplicar mudança" do coach (progressão), ainda sem um
+   * registro real — some sozinho assim que a pessoa registra de verdade. */
+  suggested_by_coach?: boolean;
   /** RIR sugerido pra série de trabalho reta (a até-a-falha já é sempre RIR 0). */
   suggested_rir: number;
   /** Aquecimento + feeder — sempre as duas séries; sem histórico, weight_kg vem null. */

@@ -19,6 +19,10 @@ export type QuestionField = {
   min?: number;
   max?: number;
   decimal?: boolean;
+  /** Só aparece/entra na conta de obrigatório quando outro campo tem um
+   * certo valor (ex.: os campos da meta manual só valem com calorie_goal_mode
+   * = "manual"). Sem isto, o campo sempre vale. */
+  shows_if?: { field: string; equals: string };
 };
 
 export type QuestionStep = {

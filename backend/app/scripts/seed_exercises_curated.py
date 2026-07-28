@@ -79,6 +79,12 @@ EXERCISES: list[tuple[str, MuscleGroup, list[MuscleGroup], Equipment, Difficulty
     ("Remada com peito apoiado", M.BACK, [M.BICEPS], E.MACHINE, D.BEGINNER, "1350_remada_com_peito_apoiado.gif"),
     ("Remada com peito apoiado e halteres", M.BACK, [M.BICEPS], E.DUMBBELL, D.BEGINNER, "0327_remada_com_peito_apoiado_e_halteres.gif"),
     ("Remada alta na máquina", M.BACK, [M.SHOULDERS, M.BICEPS], E.MACHINE, D.BEGINNER, "0581_remada_alta_na_maquina.gif"),
+    # Mesma família da "Remada alta na máquina" acima — precisa do mesmo grupo
+    # primário (BACK). Estava em Ombros com M.SHOULDERS: duas variações do
+    # mesmo exercício com músculo primário diferente fazia o aquecimento
+    # achar que "remada alta" e "remada cavalinho" trabalhavam grupos
+    # diferentes e aquecer os dois à toa (ajuste pós-v36, item 5).
+    ("Remada alta com barra", M.BACK, [M.SHOULDERS, M.TRAPS], E.BARBELL, D.INTERMEDIATE, "0120_remada_alta_com_barra.gif"),
     ("Remada Hammer", M.BACK, [M.BICEPS], E.MACHINE, D.BEGINNER, "1350_remada_hammer.gif"),
     ("Pulldown com braços estendidos", M.BACK, [], E.CABLE, D.BEGINNER, "0237_pulldown_com_bracos_estendidos.gif"),
     ("Pullover na máquina", M.BACK, [M.CHEST], E.MACHINE, D.BEGINNER, "2285_pullover_na_maquina.gif"),
@@ -97,7 +103,6 @@ EXERCISES: list[tuple[str, MuscleGroup, list[MuscleGroup], Equipment, Difficulty
     ("Crucifixo inverso com halteres", M.SHOULDERS, [], E.DUMBBELL, D.BEGINNER, "0383_crucifixo_inverso_com_halteres.gif"),
     ("Crucifixo inverso na máquina", M.SHOULDERS, [], E.MACHINE, D.BEGINNER, "0602_crucifixo_inverso_na_maquina.gif"),
     ("Face pull", M.SHOULDERS, [M.TRAPS], E.CABLE, D.BEGINNER, "0203_face_pull.gif"),
-    ("Remada alta com barra", M.SHOULDERS, [M.TRAPS], E.BARBELL, D.INTERMEDIATE, "0120_remada_alta_com_barra.gif"),
     # --- Bíceps ------------------------------------------------------------
     ("Rosca direta com barra reta", M.BICEPS, [M.FOREARMS], E.BARBELL, D.BEGINNER, "0031_rosca_direta_com_barra_reta.gif"),
     ("Rosca direta com barra W", M.BICEPS, [M.FOREARMS], E.BARBELL, D.BEGINNER, "0447_rosca_direta_com_barra_w.gif"),

@@ -17,6 +17,7 @@ import {
   type QuestionField,
   type Questionnaire,
 } from "../../api/objective";
+import { getCurrentGoal, type CalorieGoal } from "../../api/goals";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
@@ -42,14 +43,12 @@ type Modo = "resumo" | "questionario" | "atualizado";
 
 export function ObjectiveScreen({
   onOpenTraining,
-  onOpenDiet,
   onOpenDietPdf,
   onOpenAnalysis,
   onScrollTop,
   onPlanActivated,
 }: {
   onOpenTraining: () => void;
-  onOpenDiet: () => void;
   onOpenDietPdf: () => void;
   onOpenAnalysis: () => void;
   /** Avisa a tela do Coaching que o plano mudou, pra ela recarregar a análise.
@@ -75,6 +74,8 @@ export function ObjectiveScreen({
   const [confirmarDescarte, setConfirmarDescarte] = useState(false);
   const [verRespostas, setVerRespostas] = useState(false);
   const [verHistorico, setVerHistorico] = useState(false);
+  const [verMetas, setVerMetas] = useState(false);
+  const [metaAtual, setMetaAtual] = useState<CalorieGoal | null>(null);
   const [planoNovo, setPlanoNovo] = useState<PlanSummary | null>(null);
 
   const carregar = useCallback(async () => {
@@ -85,6 +86,7 @@ export function ObjectiveScreen({
       setState(s);
       setRespostas(s.draft_answers ?? {});
       setEtapa(Math.min(s.draft_step ?? 0, Math.max(q.steps.length - 1, 0)));
+      if (s.has_plan) getCurrentGoal().then(setMetaAtual).catch(() => {});
     } catch (e: any) {
       setErro(mensagemDeErro(e, "Não consegui carregar seu objetivo agora."));
     } finally {
@@ -118,16 +120,36 @@ export function ObjectiveScreen({
   const passos = quest?.steps ?? [];
   const passoAtual = passos[etapa];
 
+  /** Campo condicional (ex.: meta manual só aparece com calorie_goal_mode =
+   * "manual"). Sem shows_if, o campo sempre vale. */
+  function visivel(f: QuestionField, respostasAtuais: Answers): boolean {
+    if (!f.shows_if) return true;
+    return String(respostasAtuais[f.shows_if.field] ?? "") === f.shows_if.equals;
+  }
+
   /** Obrigatórios em branco NESTA etapa — bloqueiam o avanço (spec §3.1). */
   function faltandoNaEtapa(): string[] {
     if (!passoAtual) return [];
     return passoAtual.fields
-      .filter((f) => f.required)
+      .filter((f) => f.required && visivel(f, respostas))
       .filter((f) => {
         const v = respostas[f.key];
         return v === null || v === undefined || v === "" || (Array.isArray(v) && v.length === 0);
       })
       .map((f) => f.label);
+  }
+
+  /** Meta manual (calorie_goal_mode = "manual"): proteína + carbo + gordura
+   * precisa fechar 100% (spec §9.2) — mesma regra que a antiga tela de meta. */
+  function macroSplitErro(): string | null {
+    if (respostas.calorie_goal_mode !== "manual") return null;
+    const soma =
+      (Number(respostas.manual_pct_protein) || 0) +
+      (Number(respostas.manual_pct_carbs) || 0) +
+      (Number(respostas.manual_pct_fat) || 0);
+    const arred = Math.round(soma * 10) / 10;
+    if (arred === 100) return null;
+    return arred > 100 ? `Somando ${arred}% — excede em ${(arred - 100).toFixed(1)}%.` : `Somando ${arred}% — faltam ${(100 - arred).toFixed(1)}%.`;
   }
 
   async function avancar() {
@@ -156,6 +178,7 @@ export function ObjectiveScreen({
       setModo("atualizado");
       onPlanActivated?.();
       onScrollTop?.();
+      getCurrentGoal().then(setMetaAtual).catch(() => {});
     } catch (e: any) {
       setErro(mensagemDeErro(e, "Não consegui gerar seu plano agora. Seu plano atual continua valendo."));
     } finally {
@@ -275,6 +298,7 @@ export function ObjectiveScreen({
   if (modo === "questionario" && passoAtual) {
     const ultima = etapa === passos.length - 1;
     const faltando = faltandoNaEtapa();
+    const erroMacros = macroSplitErro();
     return (
       <View>
         {/* Indicador de progresso */}
@@ -305,9 +329,33 @@ export function ObjectiveScreen({
           {passoAtual.subtitle}
         </Text>
 
-        {passoAtual.fields.map((f) => (
-          <FieldEditor key={f.key} field={f} value={respostas[f.key]} onChange={(v) => setCampo(f.key, v)} />
-        ))}
+        {passoAtual.fields
+          .filter((f) => visivel(f, respostas))
+          .map((f) => (
+            <FieldEditor key={f.key} field={f} value={respostas[f.key]} onChange={(v) => setCampo(f.key, v)} />
+          ))}
+
+        {/* Meta manual: soma de macros em tempo real — mesma regra da antiga
+            tela de meta (§9.2), agora só aqui no questionário. */}
+        {respostas.calorie_goal_mode === "manual" ? (
+          <View
+            style={{
+              flexDirection: "row", alignItems: "flex-start", gap: 7,
+              backgroundColor: erroMacros ? colors.warning + "14" : colors.success + "14",
+              borderRadius: radius.card, padding: spacing.sm, marginBottom: spacing.md,
+            }}
+          >
+            <Ionicons
+              name={erroMacros ? "alert-circle" : "checkmark-circle"}
+              size={15}
+              color={erroMacros ? colors.warning : colors.success}
+              style={{ marginTop: 1 }}
+            />
+            <Text style={[type.caption, { color: colors.textSecondary, flex: 1, lineHeight: 17 }]}>
+              {erroMacros ?? "100% — divisão de macros válida."}
+            </Text>
+          </View>
+        ) : null}
 
         {faltando.length > 0 ? (
           <View
@@ -341,7 +389,7 @@ export function ObjectiveScreen({
               title={ultima ? "Finalizar e gerar meu plano" : "Continuar"}
               onPress={ultima ? finalizar : avancar}
               loading={gerando}
-              disabled={faltando.length > 0}
+              disabled={faltando.length > 0 || !!erroMacros}
             />
           </View>
         </View>
@@ -389,7 +437,15 @@ export function ObjectiveScreen({
 
         <View style={{ gap: spacing.sm, marginTop: spacing.md, marginBottom: spacing.xl }}>
           <Button title="Ver novo treino" onPress={onOpenTraining} />
-          <Button title="Ver novas metas" variant="secondary" onPress={onOpenDiet} />
+          <Button
+            title="Ver novas metas"
+            variant="secondary"
+            onPress={() => {
+              setModo("resumo");
+              setVerMetas(true);
+              getCurrentGoal().then(setMetaAtual).catch(() => {});
+            }}
+          />
           <Button title="Ver dieta em PDF" variant="ghost" onPress={onOpenDietPdf} />
           <Button title="Ver análise do Coaching" variant="ghost" onPress={onOpenAnalysis} />
           <TouchableOpacity onPress={() => setModo("resumo")} style={{ alignItems: "center", paddingVertical: spacing.sm }}>
@@ -493,13 +549,57 @@ export function ObjectiveScreen({
         ) : null}
       </Card>
 
-      {/* Atalhos */}
+      {/* Atalhos — treino redireciona pra aba Treino (§ ajuste pós-v36 item 1),
+          metas nutricionais ficam por CONSULTA aqui mesmo, sem editar. */}
       <View style={{ gap: spacing.xs, marginBottom: spacing.md }}>
         <Atalho icon="barbell" tint={colors.moduleTraining} title="Ver meu treino" onPress={onOpenTraining} />
-        <Atalho icon="restaurant" tint={colors.moduleNutrition} title="Ver metas nutricionais" onPress={onOpenDiet} />
         <Atalho icon="document-text" tint={colors.info} title="Ver dieta em PDF" onPress={onOpenDietPdf} />
         <Atalho icon="analytics" tint={colors.primary} title="Ver análise do Coaching" onPress={onOpenAnalysis} />
       </View>
+
+      {/* Metas nutricionais — só consulta. Editar é só pelo questionário
+          ("Alterar respostas" abaixo), não existe mais uma tela separada. */}
+      <Card style={{ marginBottom: spacing.md }}>
+        <TouchableOpacity
+          onPress={() => setVerMetas((v) => !v)}
+          activeOpacity={0.7}
+          style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+        >
+          <Ionicons name="restaurant" size={16} color={colors.primary} />
+          <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "700", flex: 1 }]}>
+            Ver metas nutricionais
+          </Text>
+          <Ionicons name={verMetas ? "chevron-up" : "chevron-down"} size={18} color={colors.textSecondary} />
+        </TouchableOpacity>
+
+        {verMetas ? (
+          metaAtual ? (
+            <View style={{ marginTop: spacing.sm }}>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Text style={[type.caption, { color: colors.textSecondary, flex: 1 }]}>
+                  {metaAtual.mode === "auto" ? "AUTOMÁTICA" : "MANUAL"}
+                </Text>
+                <Text style={[type.h2, { color: colors.textPrimary }]}>
+                  {Math.round(metaAtual.kcal)}
+                  <Text style={[type.caption, { color: colors.textSecondary }]}> kcal</Text>
+                </Text>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.sm }}>
+                <Pill icon="flag" text={`P ${Math.round(metaAtual.protein_g)}g`} />
+                <Pill icon="flag" text={`C ${Math.round(metaAtual.carbs_g)}g`} />
+                <Pill icon="flag" text={`G ${Math.round(metaAtual.fat_g)}g`} />
+              </View>
+              <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm, lineHeight: 17 }]}>
+                Pra mudar entre automática e manual, ou ajustar os números, use "Alterar respostas" abaixo.
+              </Text>
+            </View>
+          ) : (
+            <Text style={[type.bodySmall, { color: colors.textSecondary, marginTop: spacing.sm }]}>
+              Você ainda não tem meta calórica.
+            </Text>
+          )
+        ) : null}
+      </Card>
 
       {/* Respostas do questionário — recolhido por padrão (§3.4), só consulta. */}
       <Card style={{ marginBottom: spacing.md }}>

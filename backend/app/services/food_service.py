@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.text import normalize_search_text
 from app.models.food import Food, FoodSource
-from app.services import open_food_facts
+from app.services import fatsecret, open_food_facts
 
 
 def _stem(term: str) -> str:
@@ -114,6 +114,40 @@ def search_brands_live(db: Session, query: str, limit: int = 30) -> list[Food]:
     return out
 
 
+def search_fatsecret_live(db: Session, query: str, limit: int = 30) -> list[Food]:
+    """Consulta o FatSecret ao vivo e cacheia os produtos novos — marcas com
+    prioridade pro catálogo do Brasil (region=BR, ver services/fatsecret.py).
+    Mesmo padrão do Open Food Facts: busca em separado, o app encaixa quando
+    isto retorna. Sem credenciais configuradas, devolve vazio sem erro."""
+    try:
+        remote_products = fatsecret.search_by_name(query, page_size=limit)
+    except Exception:
+        return []
+
+    existing_ids = {
+        f.external_id
+        for f in db.execute(select(Food).where(Food.source == FoodSource.FATSECRET)).scalars()
+        if f.external_id
+    }
+    out: list[Food] = []
+    seen: set[str] = set()
+    for product in remote_products:
+        ext = product.get("external_id")
+        if not ext or ext in seen:
+            continue
+        seen.add(ext)
+        if ext in existing_ids:
+            existing = db.execute(
+                select(Food).where(Food.source == FoodSource.FATSECRET, Food.external_id == ext)
+            ).scalar_one_or_none()
+            if existing is not None:
+                out.append(existing)
+            continue
+        out.append(_upsert_product(db, FoodSource.FATSECRET, product))
+    db.commit()
+    return out
+
+
 def get_by_barcode(db: Session, barcode: str) -> Food | None:
     cached = db.execute(select(Food).where(Food.barcode == barcode)).scalar_one_or_none()
     if cached is not None:
@@ -123,21 +157,23 @@ def get_by_barcode(db: Session, barcode: str) -> Food | None:
     if product is None:
         return None
 
-    food = _upsert_open_food_facts_product(db, product)
+    food = _upsert_product(db, FoodSource.OPEN_FOOD_FACTS, product)
     db.commit()
     return food
 
 
 def _upsert_open_food_facts_product(db: Session, product: dict) -> Food:
+    return _upsert_product(db, FoodSource.OPEN_FOOD_FACTS, product)
+
+
+def _upsert_product(db: Session, source: FoodSource, product: dict) -> Food:
     existing = db.execute(
-        select(Food).where(
-            Food.source == FoodSource.OPEN_FOOD_FACTS, Food.external_id == product["external_id"]
-        )
+        select(Food).where(Food.source == source, Food.external_id == product["external_id"])
     ).scalar_one_or_none()
     if existing is not None:
         return existing
 
-    food = Food(source=FoodSource.OPEN_FOOD_FACTS, **product)
+    food = Food(source=source, **product)
     db.add(food)
     db.flush()
     return food

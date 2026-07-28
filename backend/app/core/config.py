@@ -50,6 +50,14 @@ class Settings(BaseSettings):
     def pro_comp_email_list(self) -> list[str]:
         return [e.strip().lower() for e in self.pro_comp_emails.split(",") if e.strip()]
 
+    # FatSecret Platform (busca de alimentos de marca, com prioridade pro
+    # catálogo do Brasil — region=BR). OAuth2 client-credentials: sem estas
+    # duas, a busca FatSecret fica desligada e o app continua funcionando só
+    # com TACO + Open Food Facts (nunca hardcoded no código — sempre via .env
+    # local ou variável de ambiente no Railway).
+    fatsecret_client_id: str = ""
+    fatsecret_client_secret: str = ""
+
     # ExerciseDB (RapidAPI) — fonte de GIF/imagem demonstrativa por exercício.
     # Cache permanente em Exercise.video_url após a primeira busca (ver
     # scripts/backfill_exercise_images.py) pra não estourar a cota do plano.

@@ -37,6 +37,16 @@ def search_food_brands(q: str, db: Session = Depends(get_db)) -> list[Food]:
     return food_service.search_brands_live(db, q.strip())
 
 
+@router.get("/search/fatsecret", response_model=list[FoodRead])
+def search_food_fatsecret(q: str, db: Session = Depends(get_db)) -> list[Food]:
+    """Busca ao vivo de marcas no FatSecret, priorizando o catálogo do Brasil.
+    Mesmo padrão de /search/brands: mais lenta, chamada em separado. Devolve
+    vazio (sem erro) quando as credenciais não estão configuradas."""
+    if len(q.strip()) < 2:
+        return []
+    return food_service.search_fatsecret_live(db, q.strip())
+
+
 @router.get("/barcode/{barcode}", response_model=FoodRead)
 def get_food_by_barcode(barcode: str, db: Session = Depends(get_db)) -> Food:
     food = food_service.get_by_barcode(db, barcode)

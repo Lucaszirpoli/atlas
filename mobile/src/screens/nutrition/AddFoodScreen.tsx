@@ -20,6 +20,7 @@ import {
   listFavoriteFoods,
   removeFavoriteFood,
   searchFoodBrands,
+  searchFoodFatSecret,
   searchFoods,
   type Food,
 } from "../../api/foods";
@@ -281,9 +282,10 @@ export function AddFoodScreen() {
   }, [barcodeResult]);
 
   // Busca em duas fases: (1) local sem acento, instantânea, aparece na hora;
-  // (2) marcas do Open Food Facts (mais lenta, rede) encaixadas ao chegar,
-  // sem duplicar o que já veio no local. `cancelled` evita que uma busca
-  // antiga sobrescreva uma mais nova (race ao digitar rápido).
+  // (2) marcas ao vivo — Open Food Facts + FatSecret (priorizando o catálogo
+  // do Brasil) em paralelo, encaixadas ao chegar, sem duplicar o que já veio
+  // no local. `cancelled` evita que uma busca antiga sobrescreva uma mais
+  // nova (race ao digitar rápido).
   useEffect(() => {
     const q = query.trim();
     if (q.length < 2) {
@@ -305,11 +307,15 @@ export function AddFoodScreen() {
       // Fase 2: marcas ao vivo, encaixadas depois (sem bloquear a fase 1).
       setIsSearchingBrands(true);
       try {
-        const brands = await searchFoodBrands(q);
+        const [brands, fatsecret] = await Promise.all([
+          searchFoodBrands(q).catch(() => [] as Food[]),
+          searchFoodFatSecret(q).catch(() => [] as Food[]),
+        ]);
         if (cancelled) return;
         setResults((prev) => {
           const seen = new Set(prev.map((f) => f.id));
-          return [...prev, ...brands.filter((b) => !seen.has(b.id))];
+          const novos = [...brands, ...fatsecret].filter((f) => !seen.has(f.id));
+          return [...prev, ...novos];
         });
       } catch {
         // silencioso — se as marcas falharem, o local já está na tela

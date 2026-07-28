@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
 import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Modal, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -35,7 +35,7 @@ import { useHomeLayout, type HomeBlockId } from "../../utils/homeLayout";
 import { useProfilePhoto } from "../../utils/profilePhoto";
 import { ObjectiveScreen } from "../objective/ObjectiveScreen";
 import { OnboardingScreen } from "../onboarding/OnboardingScreen";
-import { ExpandToggle, MacroChip, WorkoutCard } from "./coachBlocks";
+import { WorkoutCard } from "./coachBlocks";
 import { CoachingProgress } from "./CoachingProgress";
 
 // Seções do "mapa" do hub — cada uma abre uma tela de detalhe com o conteúdo
@@ -86,15 +86,6 @@ const KEY_LABEL: Record<string, string> = {
   treino: "Treino",
 };
 
-// "há quanto tempo no objetivo" a partir do marco (baseline). Null = sem marco.
-function faseTexto(iso: string | null): string | null {
-  if (!iso) return null;
-  const dias = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
-  if (dias < 7) return dias <= 0 ? "começou hoje" : `há ${dias} dia${dias === 1 ? "" : "s"}`;
-  const sem = Math.round(dias / 7);
-  return `há ${sem} semana${sem === 1 ? "" : "s"}`;
-}
-
 /**
  * Coaching — a área-diferencial do plano Pro. Reúne objetivo, metas, medidas,
  * evolução, dieta, treino e sono num acompanhamento contínuo.
@@ -108,6 +99,7 @@ function faseTexto(iso: string | null): string | null {
 export function CoachingScreen() {
   const { colors, type, spacing } = useTheme();
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const isPro = user?.plan === "pro";
@@ -128,7 +120,14 @@ export function CoachingScreen() {
 
   // Navegação do hub: null = o mapa; senão a seção aberta. O gráfico não é mais
   // um modal — vira a seção "progresso", com a métrica pré-selecionada.
-  const [section, setSection] = useState<CoachingSectionId | null>(null);
+  const [section, setSection] = useState<CoachingSectionId | null>(route.params?.section ?? null);
+  // Outras telas mandam direto pra uma seção (ex.: "Isso agora fica na aba
+  // Objetivo" de GoalSettingsScreen) via navigate("Home", { section: "..." }).
+  useFocusEffect(
+    useCallback(() => {
+      if (route.params?.section) setSection(route.params.section);
+    }, [route.params?.section])
+  );
   const [progressMetric, setProgressMetric] = useState<CoachingChart>("peso");
   // Quem rola esta tela é este ScrollView. A aba Objetivo vive dentro dele
   // (dois ScrollViews aninhados brigariam pelo gesto), então ela pede a
@@ -284,7 +283,6 @@ export function CoachingScreen() {
             progressMetric={progressMetric}
             onProgressMetric={setProgressMetric}
             onReload={load}
-            onOpenObjective={() => navigation.navigate("NutritionModule", { screen: "GoalSettings" })}
             onOpenTraining={() => navigation.navigate("TrainingModule")}
             onOpenDiary={() => navigation.navigate("NutritionModule")}
             onOpenTemplates={() => navigation.navigate("NutritionModule", { screen: "DietTemplates" })}
@@ -823,7 +821,6 @@ function CoachingSectionView({
   progressMetric,
   onProgressMetric,
   onReload,
-  onOpenObjective,
   onOpenTraining,
   onOpenDiary,
   onOpenTemplates,
@@ -839,7 +836,6 @@ function CoachingSectionView({
   progressMetric: CoachingChart;
   onProgressMetric: (m: CoachingChart) => void;
   onReload: () => void;
-  onOpenObjective: () => void;
   onOpenTraining: () => void;
   onOpenDiary: () => void;
   onOpenTemplates: () => void;
@@ -848,10 +844,7 @@ function CoachingSectionView({
   onScrollTop: () => void;
 }) {
   const { colors, type, spacing, radius } = useTheme();
-  const meta = GOAL_META[analysis.goal ?? ""] ?? { label: "Seu objetivo", icon: "compass" as const };
-  const fase = faseTexto(analysis.metrics.baseline_at);
   const m = analysis.metrics;
-  const [expObj, setExpObj] = useState(true);
 
   const titulo =
     section === "objetivo"
@@ -876,31 +869,19 @@ function CoachingSectionView({
         <Text style={[type.h1, { color: colors.textPrimary, fontSize: 22 }]}>{titulo}</Text>
       </View>
 
-      {/* A aba Objetivo é agora o centro do Coaching: questionário, resumo,
-          edição das respostas, alterações pendentes e histórico de planos
-          (spec §3). O card antigo de "objetivo & fase" virou o cabeçalho da
-          leitura do coach, mostrado acima do painel. */}
+      {/* A aba Objetivo é o centro do Coaching: questionário, resumo, edição
+          das respostas, alterações pendentes e histórico de planos (spec §3).
+          Ajuste pós-v36 (item 1/2): sem card duplicado por cima — ela já traz
+          seu próprio "Seu objetivo atual", sem repetir a mesma informação em
+          dois lugares. */}
       {section === "objetivo" ? (
-        <>
-          <ObjetivoCard
-            analysis={analysis}
-            meta={meta}
-            fase={fase}
-            transition={m.transition}
-            expanded={expObj}
-            onToggle={() => setExpObj((v) => !v)}
-            onOpenObjective={onOpenObjective}
-          />
-          <View style={{ height: spacing.md }} />
-          <ObjectiveScreen
-            onOpenTraining={onOpenTraining}
-            onOpenDiet={onOpenObjective}
-            onOpenDietPdf={onOpenTemplates}
-            onOpenAnalysis={onAskCoach}
-            onScrollTop={onScrollTop}
-            onPlanActivated={onReload}
-          />
-        </>
+        <ObjectiveScreen
+          onOpenTraining={onOpenTraining}
+          onOpenDietPdf={onOpenTemplates}
+          onOpenAnalysis={onAskCoach}
+          onScrollTop={onScrollTop}
+          onPlanActivated={onReload}
+        />
       ) : null}
 
       {/* "Como eu monto seu treino" saiu daqui também (spec §5.1): a coleta
@@ -911,42 +892,14 @@ function CoachingSectionView({
         <WorkoutCard workout={m.workout} onApplied={onApplied} onOpenTraining={onOpenTraining} />
       ) : null}
 
+      {/* "Sua meta atual" saiu daqui (ajuste pós-v36, item 2): quem quiser ver
+          ou mudar a meta vai na aba Objetivo — evita duas fontes da mesma
+          informação. */}
       {section === "dieta" ? (
         <>
-          <Card style={{ marginBottom: spacing.md }}>
-            <Text style={[type.caption, { color: colors.primary, fontWeight: "800", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: spacing.sm }]}>
-              Sua meta atual
-            </Text>
-            {m.goal_kcal ? (
-              <>
-                <View style={{ flexDirection: "row", alignItems: "baseline", gap: 5, marginBottom: spacing.sm }}>
-                  <Text style={[type.display, { color: colors.textPrimary, fontSize: 30 }]}>{Math.round(m.goal_kcal)}</Text>
-                  <Text style={[type.body, { color: colors.textSecondary }]}>kcal / dia</Text>
-                </View>
-                <View style={{ flexDirection: "row", gap: spacing.md }}>
-                  <MacroChip label="Proteína" goal={m.protein_target_g} avg={m.avg_protein_g} color={colors.moduleTraining} />
-                  <MacroChip label="Carbo" goal={m.goal_carbs_g} avg={m.avg_carbs_g} color={colors.info} />
-                  <MacroChip label="Gordura" goal={m.goal_fat_g} avg={m.avg_fat_g} color={colors.warning} />
-                </View>
-                {m.avg_kcal != null ? (
-                  <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm }]}>
-                    Média recente: {Math.round(m.avg_kcal)} kcal/dia.
-                  </Text>
-                ) : null}
-              </>
-            ) : (
-              <Text style={[type.bodySmall, { color: colors.textSecondary }]}>
-                Você ainda não tem meta calórica. Defina uma pra o coach acompanhar sua dieta.
-              </Text>
-            )}
-          </Card>
-
           <CoachRow icon="book" tint={colors.moduleNutrition} title="Abrir meu diário" subtitle="Registrar refeições e água de hoje" onPress={onOpenDiary} />
           <CoachRow icon="sparkles" tint={colors.primary} title="Gerar dieta com o coach" subtitle="Um cardápio na sua meta, em segundos" onPress={onAskCoach} />
           <CoachRow icon="restaurant" tint={colors.moduleTraining} title="Dietas prontas" subtitle="Cardápios prontos pra adaptar" onPress={onOpenTemplates} />
-          <View style={{ marginTop: spacing.xs }}>
-            <Button title="Ajustar meta calórica" variant="secondary" compact onPress={onOpenObjective} />
-          </View>
         </>
       ) : null}
 
@@ -971,108 +924,6 @@ function CoachingSectionView({
   );
 }
 
-// (MacroChip agora vem de ./coachBlocks — reutilizado no cabeçalho da Dieta.)
-
-// OBJETIVO & FASE — o quadro geral: o que você está buscando, há quanto tempo,
-// e o balanço do período. Tocar o topo (ou o botão) abre "Objetivo e metas".
-function ObjetivoCard({
-  analysis,
-  meta,
-  fase,
-  transition,
-  expanded,
-  onToggle,
-  onOpenObjective,
-}: {
-  analysis: CoachingAnalysis;
-  meta: { label: string; icon: keyof typeof Ionicons.glyphMap };
-  fase: string | null;
-  transition: CoachingAnalysis["metrics"]["transition"];
-  expanded: boolean;
-  onToggle: () => void;
-  onOpenObjective: () => void;
-}) {
-  const { colors, type, spacing, radius } = useTheme();
-  return (
-    <Card accent={colors.primary}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: spacing.sm }}>
-          <TouchableOpacity
-            onPress={onOpenObjective}
-            activeOpacity={0.7}
-            style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}
-          >
-            <View
-              style={{
-                width: 40, height: 40, borderRadius: 12,
-                backgroundColor: colors.primary + "1F",
-                alignItems: "center", justifyContent: "center",
-              }}
-            >
-              <Ionicons name={meta.icon} size={20} color={colors.primary} />
-            </View>
-            {/* Coluna própria pra título + selo "há N semanas" — o selo NÃO
-                fica na mesma linha do título (ficava disputando largura com
-                o nome do objetivo e cortava em telas estreitas de celular). */}
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={[type.caption, { color: colors.textSecondary, letterSpacing: 0.5, textTransform: "uppercase" }]}>
-                Seu objetivo
-              </Text>
-              <Text style={[type.h2, { color: colors.textPrimary }]}>{meta.label}</Text>
-              {fase ? (
-                <View
-                  style={{
-                    alignSelf: "flex-start", marginTop: 4,
-                    backgroundColor: colors.surfaceAlt, borderRadius: radius.pill,
-                    paddingVertical: 4, paddingHorizontal: 10,
-                  }}
-                >
-                  <Text style={[type.caption, { color: colors.textSecondary, fontWeight: "700" }]}>{fase}</Text>
-                </View>
-              ) : null}
-            </View>
-          </TouchableOpacity>
-          <ExpandToggle expanded={expanded} onPress={onToggle} />
-        </View>
-        <Text style={[type.body, { color: colors.textPrimary, lineHeight: 22 }]}>{analysis.headline}</Text>
-        {expanded ? (
-          <>
-            <Text style={[type.caption, { color: colors.textSecondary, marginTop: 6 }]}>
-              Leitura do seu período no objetivo — confiança {analysis.confidence}.
-            </Text>
-            {transition?.active ? (
-              <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: 10, backgroundColor: colors.surfaceAlt, borderRadius: radius.card, padding: spacing.sm }}>
-                <Ionicons name="swap-vertical" size={14} color={colors.primary} style={{ marginTop: 1 }} />
-                <Text style={[type.caption, { color: colors.textSecondary, flex: 1, lineHeight: 18 }]}>
-                  Transição de objetivo em andamento: levando sua meta de {Math.round(transition.current_kcal)} pra{" "}
-                  ~{Math.round(transition.target_kcal)} kcal aos poucos ({transition.remaining_kcal > 0 ? "+" : ""}
-                  {Math.round(transition.remaining_kcal)} restantes). Mudar devagar protege o resultado.
-                </Text>
-              </View>
-            ) : null}
-            {/* Principais informações — o que registrar pra afinar a leitura (antes
-                era um card separado; é a mesma informação do headline, detalhada). */}
-            {analysis.data_gaps.length > 0 ? (
-              <View style={{ marginTop: spacing.sm }}>
-                <Text style={[type.caption, { color: colors.textSecondary, fontWeight: "700", marginBottom: 2 }]}>
-                  {analysis.has_enough_data ? "Pra afinar a leitura" : "Me dê um pouco mais pra trabalhar"}
-                </Text>
-                {analysis.data_gaps.map((g, i) => (
-                  <View key={i} style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
-                    <Ionicons name="ellipse" size={7} color={colors.primary} style={{ marginTop: 7 }} />
-                    <Text style={[type.bodySmall, { color: colors.textSecondary, flex: 1, lineHeight: 19 }]}>{g}</Text>
-                  </View>
-                ))}
-              </View>
-            ) : null}
-            {/* Alterar objetivo — abre a tela de objetivo (o ritmo mora lá agora). */}
-            <View style={{ marginTop: spacing.md }}>
-              <Button title="Alterar objetivo e ritmo" variant="secondary" compact onPress={onOpenObjective} />
-            </View>
-          </>
-        ) : null}
-    </Card>
-  );
-}
 
 // (TrainingPrefsCard, WorkoutCard, ExpandToggle, PrefRow e OptionSheet foram
 // movidos para ./coachBlocks e são importados no topo deste arquivo.)
@@ -1304,7 +1155,7 @@ function InsightBar({
               <Text style={[type.caption, { color: colors.textSecondary, marginTop: 4, textAlign: "center" }]}>
                 {kind === "deload"
                   ? "Vira um lembrete no topo dos treinos por 7 dias. Dá pra desfazer."
-                  : "Vira um lembrete no exercício, no treino. Dá pra desfazer."}
+                  : "A carga já vem pré-preenchida na próxima vez que você treinar esse exercício. Dá pra desfazer."}
               </Text>
             </>
           )}

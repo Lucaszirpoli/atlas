@@ -93,6 +93,28 @@ def steps() -> list[dict]:
                  "suffix": "kg", "min": 30, "max": 300, "decimal": True},
                 {"key": "activity_level", "label": "Nível de atividade fora do treino", "type": SINGLE,
                  "required": True, "options": _enum_opts(ActivityLevel, ACTIVITY_LABELS)},
+                {"key": "calorie_goal_mode", "label": "Como definir sua meta calórica", "type": SINGLE,
+                 "required": True,
+                 "options": [
+                     {"value": "auto", "label": "Automática",
+                      "desc": "O Coaching calcula pra você a partir do seu objetivo, ritmo e dados acima."},
+                     {"value": "manual", "label": "Manual",
+                      "desc": "Você define as calorias e a divisão dos macros em porcentagem."},
+                 ],
+                 "help": "Isto substitui a tela de ajuste de meta — a partir de agora ela mora só aqui."},
+                {"key": "manual_kcal", "label": "Calorias por dia", "type": NUMBER, "required": True,
+                 "suffix": "kcal", "min": 800, "max": 8000,
+                 "shows_if": {"field": "calorie_goal_mode", "equals": "manual"}},
+                {"key": "manual_pct_protein", "label": "Proteína (%)", "type": NUMBER, "required": True,
+                 "suffix": "%", "min": 0, "max": 100, "decimal": True,
+                 "shows_if": {"field": "calorie_goal_mode", "equals": "manual"}},
+                {"key": "manual_pct_carbs", "label": "Carboidratos (%)", "type": NUMBER, "required": True,
+                 "suffix": "%", "min": 0, "max": 100, "decimal": True,
+                 "shows_if": {"field": "calorie_goal_mode", "equals": "manual"}},
+                {"key": "manual_pct_fat", "label": "Gordura (%)", "type": NUMBER, "required": True,
+                 "suffix": "%", "min": 0, "max": 100, "decimal": True,
+                 "shows_if": {"field": "calorie_goal_mode", "equals": "manual"},
+                 "help": "A soma de proteína, carboidratos e gordura precisa fechar 100%."},
             ],
         },
         {
@@ -184,14 +206,46 @@ def required_keys() -> list[str]:
     return [f["key"] for s in steps() for f in s["fields"] if f.get("required")]
 
 
+def _visivel(field: dict, answers: dict[str, Any]) -> bool:
+    """Campo condicional (ex.: os de meta manual só valem quando a pessoa
+    escolheu "manual"). Sem `shows_if`, o campo sempre vale."""
+    cond = field.get("shows_if")
+    if not cond:
+        return True
+    return str(answers.get(cond["field"])) == str(cond["equals"])
+
+
+def macro_split_error(answers: dict[str, Any]) -> str | None:
+    """Só quando a meta é manual: proteína + carbo + gordura precisa fechar
+    100% (spec §9.2) — sem isso os gramas não batem com as calorias informadas."""
+    if answers.get("calorie_goal_mode") != "manual":
+        return None
+    try:
+        soma = round(
+            float(answers.get("manual_pct_protein") or 0)
+            + float(answers.get("manual_pct_carbs") or 0)
+            + float(answers.get("manual_pct_fat") or 0),
+            1,
+        )
+    except (TypeError, ValueError):
+        return "A divisão de macros da meta manual está inválida."
+    if soma != 100:
+        return f"A divisão de macros da meta manual precisa somar 100% (está em {soma}%)."
+    return None
+
+
 def missing_required(answers: dict[str, Any]) -> list[str]:
     """Campos obrigatórios ainda em branco — o app usa pra impedir a conclusão
-    (spec §3.1) e o backend recusa a ativação sem eles."""
+    (spec §3.1) e o backend recusa a ativação sem eles. Campos condicionais
+    (`shows_if`) só entram na conta quando estão visíveis pras respostas atuais."""
     faltando = []
-    for key in required_keys():
-        v = answers.get(key)
-        if v is None or (isinstance(v, str) and not v.strip()) or (isinstance(v, list) and not v):
-            faltando.append(key)
+    for s in steps():
+        for f in s["fields"]:
+            if not f.get("required") or not _visivel(f, answers):
+                continue
+            v = answers.get(f["key"])
+            if v is None or (isinstance(v, str) and not v.strip()) or (isinstance(v, list) and not v):
+                faltando.append(f["key"])
     return faltando
 
 

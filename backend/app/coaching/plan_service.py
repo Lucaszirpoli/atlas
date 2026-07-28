@@ -27,6 +27,10 @@ from sqlalchemy.orm import Session
 
 from app.coaching import questionnaire, training_brain, workout_builder
 from app.models.calorie_goal import CalorieGoal, GoalMode
+
+# Densidade energética de cada macro — igual à conversão usada na tela antiga
+# de meta manual (agora só no questionário).
+_KCAL_PER_G = {"protein": 4, "carbs": 4, "fat": 9}
 from app.models.coaching_plan import CoachingPlan, PlanStatus, QuestionnaireDraft
 from app.models.user import User
 from app.models.user_profile import (
@@ -53,6 +57,11 @@ _IMPACTO: dict[str, tuple[str, ...]] = {
     "weight_kg": ("metas", "dieta"),
     "target_weight_kg": ("metas",),
     "activity_level": ("metas", "dieta"),
+    "calorie_goal_mode": ("metas", "dieta"),
+    "manual_kcal": ("metas", "dieta"),
+    "manual_pct_protein": ("metas", "dieta"),
+    "manual_pct_carbs": ("metas", "dieta"),
+    "manual_pct_fat": ("metas", "dieta"),
     # Treino.
     "experience_level": ("treino", "periodizacao"),
     "training_location": ("treino",),
@@ -132,6 +141,13 @@ def answers_from_profile(db: Session, user: User) -> dict[str, Any]:
         .order_by(WeightLog.recorded_at.desc())
         .limit(1)
     ).scalar_one_or_none()
+    goal = db.execute(
+        select(CalorieGoal)
+        .where(CalorieGoal.user_id == user.id)
+        .order_by(CalorieGoal.created_at.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    meta_atual = _goal_answers(goal)
     return {
         "goal": p.goal.value if p.goal else None,
         "goal_pace": p.goal_pace.value if p.goal_pace else None,
@@ -151,6 +167,36 @@ def answers_from_profile(db: Session, user: User) -> dict[str, Any]:
         "injuries_limitations": p.injuries_limitations,
         "wants_cardio": p.wants_cardio,
         "periodization": p.periodization or "auto",
+        **meta_atual,
+    }
+
+
+def _goal_answers(goal: CalorieGoal | None) -> dict[str, Any]:
+    """Meta vigente convertida pros campos do questionário — pra editar a
+    meta manual mostrar a divisão ATUAL (derivada dos gramas), não um padrão
+    genérico. Mesmo arredondamento "a sobra vai pro maior macro" que a antiga
+    tela de meta usava, pra não abrir já acusando '99%' numa meta que fecha."""
+    if goal is None:
+        return {"calorie_goal_mode": "auto"}
+    modo = goal.mode.value if hasattr(goal.mode, "value") else str(goal.mode)
+    if modo != "manual" or not goal.kcal:
+        return {"calorie_goal_mode": modo}
+    pct = lambda gramas, kcal_por_g: round((gramas * kcal_por_g) / goal.kcal * 100)  # noqa: E731
+    vals = {
+        "protein": pct(goal.protein_g, _KCAL_PER_G["protein"]),
+        "carbs": pct(goal.carbs_g, _KCAL_PER_G["carbs"]),
+        "fat": pct(goal.fat_g, _KCAL_PER_G["fat"]),
+    }
+    sobra = 100 - sum(vals.values())
+    if sobra != 0 and abs(sobra) <= 2:
+        maior = max(vals, key=vals.get)
+        vals[maior] += sobra
+    return {
+        "calorie_goal_mode": "manual",
+        "manual_kcal": round(goal.kcal),
+        "manual_pct_protein": vals["protein"],
+        "manual_pct_carbs": vals["carbs"],
+        "manual_pct_fat": vals["fat"],
     }
 
 
@@ -260,8 +306,29 @@ def apply_answers_to_profile(db: Session, user: User, answers: dict) -> None:
     db.add(p)
 
 
-def _rebuild_goals(db: Session, user: User) -> int:
-    """Recalcula e aplica as metas de calorias/macros. Devolve o id da meta."""
+def _rebuild_goals(db: Session, user: User, answers: dict[str, Any]) -> int:
+    """Recalcula e aplica as metas de calorias/macros. Devolve o id da meta.
+
+    A escolha auto/manual agora mora no questionário (ajuste pós-v36, item 1) —
+    não existe mais uma tela separada de "ajustar meta calórica"."""
+    if answers.get("calorie_goal_mode") == "manual":
+        erro = questionnaire.macro_split_error(answers)
+        if erro:
+            raise ValueError(erro)
+        kcal = float(answers["manual_kcal"])
+        pp = float(answers["manual_pct_protein"])
+        pc = float(answers["manual_pct_carbs"])
+        pf = float(answers["manual_pct_fat"])
+        goal = CalorieGoal(
+            user_id=user.id, mode=GoalMode.MANUAL, kcal=kcal,
+            protein_g=round(kcal * pp / 100 / _KCAL_PER_G["protein"]),
+            carbs_g=round(kcal * pc / 100 / _KCAL_PER_G["carbs"]),
+            fat_g=round(kcal * pf / 100 / _KCAL_PER_G["fat"]),
+        )
+        db.add(goal)
+        db.flush()
+        return goal.id
+
     p = user.profile
     peso = db.execute(
         select(WeightLog.weight_kg)
@@ -298,6 +365,9 @@ def activate(db: Session, user: User, answers: dict, *, reason: str = "atualizac
     if faltando:
         rotulos = ", ".join(questionnaire.FIELD_LABELS.get(k, k) for k in faltando)
         raise ValueError(f"Faltam informações essenciais: {rotulos}.")
+    erro_macros = questionnaire.macro_split_error(answers)
+    if erro_macros:
+        raise ValueError(erro_macros)
 
     anterior = active_plan(db, user.id)
     respostas_antigas = dict(anterior.answers or {}) if anterior else {}
@@ -318,7 +388,7 @@ def activate(db: Session, user: User, answers: dict, *, reason: str = "atualizac
 
         # 2) Metas nutricionais (base da dieta em PDF e dos gráficos da aba Dieta).
         if "metas" in componentes_alvo:
-            componentes["calorie_goal_id"] = _rebuild_goals(db, user)
+            componentes["calorie_goal_id"] = _rebuild_goals(db, user, answers)
 
         # 3) Treino. Reaproveita o montador existente — não recria a
         #    inteligência do coach, só a chama na hora certa.

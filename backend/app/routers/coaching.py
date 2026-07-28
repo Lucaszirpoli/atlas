@@ -702,8 +702,8 @@ def apply_action(
         db.commit()
         alvo = f"pra {novo:g} kg " if novo is not None else ""
         return ApplyActionResult(applied=True, kind="progression", title=title,
-                                 message=f"Feito — o coach vai te lembrar de subir {alvo}no {p['name']} "
-                                 "na próxima vez. Aparece no treino.")
+                                 message=f"Feito — já ajustei a carga {alvo}no {p['name']}. Na próxima vez que você "
+                                 "abrir esse treino, ela já vem pré-preenchida.")
 
     if fk == "deload":
         # A periodização manda: linear nunca desloada; ondulatória aceita o deload

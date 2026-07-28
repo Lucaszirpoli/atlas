@@ -32,6 +32,10 @@ class ExercisePrefill(BaseModel):
     # Quando os números vieram de OUTRO exercício (troca com "manter registros"),
     # o nome de origem vai junto — a pessoa precisa saber de onde saiu a carga.
     inherited_from_name: str | None = None
+    # Peso veio de um "Aplicar mudança" do coach (progressão), não de um
+    # registro real ainda — some sozinho assim que a pessoa registra de
+    # verdade (ver workout_service._com_progressao_aplicada).
+    suggested_by_coach: bool = False
     # RIR sugerido pra série de trabalho reta (a até-a-falha é sempre RIR 0,
     # já sabida por set_intents — isso aqui só vale pras séries sem intenção).
     suggested_rir: int = 2

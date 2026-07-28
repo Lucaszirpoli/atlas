@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import React, { useCallback, useState } from "react";
-import { Alert, FlatList, Pressable, RefreshControl, Text, TouchableOpacity, View } from "react-native";
+import { Alert, FlatList, RefreshControl, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -19,7 +19,6 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { useActiveWorkout } from "../../context/ActiveWorkoutContext";
 import { useTheme } from "../../theme/ThemeProvider";
 import { mensagemDeErro } from "../../utils/errorMessage";
-import { TrainingCoachHeader } from "../coaching/CoachModuleHeader";
 
 export function RoutineListScreen() {
   const { colors, type, spacing, radius } = useTheme();
@@ -166,11 +165,6 @@ export function RoutineListScreen() {
         contentContainerStyle={{ paddingBottom: spacing.lg }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
-        ListHeaderComponent={
-          // Cabeçalho do coach (Pro): como o coach monta seu treino + seu
-          // treino atual. Some no Free — que vê só as rotinas manuais.
-          <TrainingCoachHeader />
-        }
         renderItem={({ item }) => {
           const totalSets = item.exercises.reduce((s, e) => s + e.target_sets, 0);
           return (
@@ -248,14 +242,11 @@ export function RoutineListScreen() {
         }
       />
 
-      {/* BARRA FIXA das três ações (spec §5.2). Não rola junto com as rotinas:
-          a FlatList acima tem flex:1 e é a única área que rola; isto é um irmão
-          dela, sempre visível no rodapé.
-
-          Compacta de propósito — as três ações empilhadas em cards grandes
-          comiam ~180px de tela e cobriam a lista em celular pequeno. O respiro
-          de baixo vem do insets.bottom do container, então a barra encosta na
-          área segura sem saltar quando um modal ou menu abre. */}
+      {/* BARRA FIXA das duas ações (spec §5.2, ajuste pós-v36: só Nova rotina +
+          Importar — a área de metodologias saiu daqui). Não rola junto com as
+          rotinas: a FlatList acima tem flex:1 e é a única área que rola; isto
+          é um irmão dela, sempre visível no rodapé — mesmo comportamento e
+          visual do card "Dietas prontas" fixo na aba Dieta. */}
       <View
         style={{
           paddingTop: spacing.md,
@@ -266,30 +257,41 @@ export function RoutineListScreen() {
       >
         <Button title="Nova rotina" icon="+" onPress={() => navigation.navigate("RoutineBuilder", {})} />
 
-        <View style={{ flexDirection: "row", gap: spacing.sm }}>
-          {/* 10 métodos consagrados (grátis) — discovery, não atrapalha quem
-              já tem rotina montada. */}
-          {/* Rótulos curtos de propósito: "Métodos de treino" e "Importar
-              treino do Hevy ou Strong" não cabem lado a lado num celular
-              estreito e saíam truncados ("Métodos de tr..."). O complemento
-              vai na segunda linha, onde há espaço. */}
-          <FooterAction
-            icon="barbell"
-            label="Métodos"
-            hint="10 metodologias"
-            tint={colors.moduleTraining}
-            onPress={() => navigation.navigate("AiHub")}
-          />
-          {/* Importar: é aqui que quem chegou de outro app procura, e redigitar
-              tudo é o motivo nº1 de desistir de trocar. */}
-          <FooterAction
-            icon="download-outline"
-            label="Importar"
-            hint="Hevy ou Strong"
-            tint={colors.info}
-            onPress={() => navigation.navigate("ImportRoutines")}
-          />
-        </View>
+        {/* Importar: é aqui que quem chegou de outro app procura, e redigitar
+            tudo é o motivo nº1 de desistir de trocar. Mesmo cartão colorido de
+            "Dietas prontas" na aba Dieta — layout e fixação idênticos. */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate("ImportRoutines")}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            backgroundColor: colors.moduleTraining,
+            borderRadius: radius.card,
+            padding: spacing.md,
+          }}
+        >
+          <View
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 13,
+              backgroundColor: "rgba(255,255,255,0.22)",
+              alignItems: "center",
+              justifyContent: "center",
+              marginRight: spacing.md,
+            }}
+          >
+            <Ionicons name="download-outline" size={20} color="#FFFFFF" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[type.bodySmall, { color: "#FFFFFF", fontWeight: "700" }]}>Importar treino</Text>
+            <Text style={[type.caption, { color: "rgba(255,255,255,0.9)" }]} numberOfLines={2}>
+              Traga sua rotina do Hevy ou do Strong
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
+        </TouchableOpacity>
       </View>
 
       <ActionSheet
@@ -308,63 +310,6 @@ export function RoutineListScreen() {
         onConfirm={confirmDelete}
       />
     </View>
-  );
-}
-
-/** Uma das ações fixas do rodapé. Compacta pra as três caberem sem roubar a
- * área da lista de rotinas. */
-function FooterAction({
-  icon,
-  label,
-  hint,
-  tint,
-  onPress,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  hint: string;
-  tint: string;
-  onPress: () => void;
-}) {
-  const { colors, type, spacing, radius } = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => ({
-        flex: 1,
-        flexDirection: "row",
-        alignItems: "center",
-        gap: spacing.sm,
-        backgroundColor: colors.surface,
-        borderWidth: 1,
-        borderColor: colors.border,
-        borderRadius: radius.card,
-        paddingVertical: spacing.sm,
-        paddingHorizontal: spacing.sm,
-        opacity: pressed ? 0.75 : 1,
-      })}
-    >
-      <View
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: 11,
-          backgroundColor: tint + "1F",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Ionicons name={icon} size={17} color={tint} />
-      </View>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={[type.caption, { color: colors.textPrimary, fontWeight: "800" }]} numberOfLines={1}>
-          {label}
-        </Text>
-        <Text style={[type.caption, { color: colors.textSecondary, fontSize: 10 }]} numberOfLines={1}>
-          {hint}
-        </Text>
-      </View>
-    </Pressable>
   );
 }
 

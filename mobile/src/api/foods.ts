@@ -2,7 +2,7 @@ import { api } from "./client";
 
 export type Food = {
   id: number;
-  source: "taco" | "open_food_facts" | "custom";
+  source: "taco" | "open_food_facts" | "custom" | "fatsecret";
   barcode: string | null;
   name: string;
   brand: string | null;
@@ -26,6 +26,14 @@ export async function searchFoods(query: string): Promise<Food[]> {
  * pra não travar a digitação. O app mostra o local na hora e encaixa isto. */
 export async function searchFoodBrands(query: string): Promise<Food[]> {
   const { data } = await api.get<Food[]>("/foods/search/brands", { params: { q: query } });
+  return data;
+}
+
+/** Busca de marcas ao vivo no FatSecret, priorizando o catálogo do Brasil.
+ * Mesmo padrão de searchFoodBrands — chamada em separado, encaixada quando
+ * chega. Devolve vazio (sem erro) se a integração não estiver configurada. */
+export async function searchFoodFatSecret(query: string): Promise<Food[]> {
+  const { data } = await api.get<Food[]>("/foods/search/fatsecret", { params: { q: query } });
   return data;
 }
 

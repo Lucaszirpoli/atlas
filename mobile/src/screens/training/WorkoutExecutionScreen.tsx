@@ -30,8 +30,8 @@ import { fmtKg } from "../../utils/format";
 import { mensagemDeErro } from "../../utils/errorMessage";
 import {
   BLOCK_STATUS_LABEL,
+  buildDisplayItems,
   expandTechnique,
-  nextBlockStatus,
   prescriptionFor,
   type SetRow,
 } from "./techniqueSets";
@@ -126,6 +126,13 @@ export function WorkoutExecutionScreen() {
   // Séries em gravação, por "exercício:série". Enquanto está aqui, o ✓ ignora
   // novos toques — é o que impede o toque duplo de registrar a série 2 vezes.
   const [salvando, setSalvando] = useState<Set<string>>(new Set());
+  // Qual bloco está aberto por grupo de técnica ("exercício:índice-da-ativação"
+  // -> índice do bloco aberto). Compacto de propósito (ajuste pós-v36, item 3):
+  // em vez de abrir B1, B2 e B3 juntos, só o bloco tocado mostra os campos.
+  const [openBlock, setOpenBlock] = useState<Record<string, number | null>>({});
+  function toggleBlock(groupKey: string, blockIdx: number) {
+    setOpenBlock((prev) => ({ ...prev, [groupKey]: prev[groupKey] === blockIdx ? null : blockIdx }));
+  }
 
   // Monta a tela: rotina + overlays do coach juntos, porque a TÉCNICA prescrita
   // muda a estrutura das séries — montar primeiro e corrigir depois faria as
@@ -441,6 +448,18 @@ export function WorkoutExecutionScreen() {
                 </View>
               ) : null}
 
+              {/* Progressão aplicada pelo coach (ajuste pós-v36, item 9): o peso
+                  abaixo já É o novo, sugerido — não é só um lembrete. Assim que
+                  esta série for registrada de verdade, vira o novo "anterior". */}
+              {prefill.find((p) => p.exercise_id === routineExercise.exercise_id)?.suggested_by_coach ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: spacing.sm }}>
+                  <Ionicons name="trending-up" size={13} color={colors.primary} />
+                  <Text style={[type.caption, { color: colors.primary, fontWeight: "700", flex: 1 }]} numberOfLines={2}>
+                    Carga já ajustada pelo coach — pré-preenchida abaixo.
+                  </Text>
+                </View>
+              ) : null}
+
               {/* Overlays do coach neste exercício (técnica / subir carga /
                   troca). Só leitura aqui — desfazer é no Coaching ou na prévia. */}
               {overlaysFor(routineExercise.exercise_id).map((o) => (
@@ -462,311 +481,256 @@ export function WorkoutExecutionScreen() {
                 <View style={{ width: 44, marginLeft: spacing.xs }} />
               </View>
 
-              {sets.map((row, idx) => {
-                const letter = QUICK_TYPE_LETTER[row.setType];
-                const emTecnica = row.role === "activation" || row.role === "block" || row.role === "drop";
-                // Numeração só conta séries de TRABALHO (sem letra e fora da
-                // técnica) — nem a rampa de aquecimento/feeder na frente nem os
-                // mini-sets deslocam "Série 1, 2, 3...".
-                const workNumber =
-                  sets
-                    .slice(0, idx)
-                    .filter(
-                      (r) =>
-                        !QUICK_TYPE_LETTER[r.setType] &&
-                        r.role !== "block" &&
-                        r.role !== "drop"
-                    ).length + 1;
-                const badgeColor = row.setType === "to_failure" ? colors.danger : letter ? colors.warning : undefined;
-                return (
-                  <React.Fragment key={idx}>
-                  {/* Cabeçalho da técnica prescrita — abre o grupo de linhas
-                      que o método gerou, pra ficar claro que dali pra baixo a
-                      série mudou de forma. */}
-                  {row.groupStart ? (
-                    <TechniqueHeader
-                      label={
-                        prescriptionFor(overlays, routineExercise.exercise_id)?.label ?? "Técnica avançada"
-                      }
-                      cue={prescriptionFor(overlays, routineExercise.exercise_id)?.cue ?? ""}
-                    />
-                  ) : null}
-                  <Card
-                    padded={false}
-                    style={{
-                      marginBottom: spacing.sm,
-                      marginLeft: row.role === "block" || row.role === "drop" ? spacing.md : 0,
-                      borderWidth: 1.5,
-                      borderColor: row.completed
-                        ? colors.secondary
-                        : emTecnica
-                        ? colors.primary + "3A"
-                        : "transparent",
-                    }}
-                  >
-                    <View style={{ padding: spacing.sm }}>
-                      <View style={{ flexDirection: "row", alignItems: "center" }}>
-                        {/* Badge da série — toque cicla normal → A (aquecimento) →
-                            P (preparatória) → F (falha) → normal. Dentro de uma
-                            técnica o badge não cicla: o tipo é o do método. */}
-                        <TouchableOpacity
-                          onPress={() =>
-                            emTecnica
-                              ? undefined
-                              : updateSet(exerciseIndex, idx, { setType: nextQuickType(row.setType) })
-                          }
-                          disabled={emTecnica}
-                          hitSlop={8}
-                          style={{
-                            width: 30,
-                            height: 30,
-                            borderRadius: 15,
-                            backgroundColor: emTecnica
-                              ? colors.primary + "22"
-                              : badgeColor
-                              ? badgeColor + "26"
-                              : colors.surfaceAlt,
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
-                        >
-                          {row.role === "block" || row.role === "drop" ? (
-                            <Text style={[type.caption, { color: colors.primary, fontWeight: "800", fontSize: 11 }]}>
-                              {row.blockIndex}
-                            </Text>
-                          ) : (
-                            <Text
-                              style={[
-                                type.caption,
-                                { color: emTecnica ? colors.primary : badgeColor ?? colors.textSecondary, fontWeight: "800" },
-                              ]}
-                            >
-                              {letter ?? workNumber}
-                            </Text>
-                          )}
-                        </TouchableOpacity>
-
-                        <View style={{ flex: 1, marginLeft: spacing.sm }}>
-                          {/* Numa linha de técnica o rótulo do método vale mais
-                              que "o que você fez da última vez". */}
-                          {row.blockLabel ? (
-                            <Text
-                              style={[type.caption, { color: colors.primary, fontWeight: "700" }]}
-                              numberOfLines={1}
-                            >
-                              {row.blockLabel}
-                            </Text>
-                          ) : row.previous ? (
-                            <Text style={[type.caption, { color: colors.textSecondary }]} numberOfLines={1}>
-                              {fmtKg(row.previous.weight_kg)}kg × {row.previous.reps}
-                            </Text>
-                          ) : (
-                            <Text style={[type.caption, { color: colors.textSecondary }]}>primeira vez</Text>
-                          )}
-                        </View>
-
-                        <SetInput compact value={row.weight} onChangeText={(v) => updateSet(exerciseIndex, idx, { weight: v })} />
-                        <Text style={[type.body, { color: colors.textSecondary, marginHorizontal: 4 }]}>×</Text>
-                        {/* Reps travadas pelo método (myo-reps: 6 na ativação) —
-                            mostra o número sem input, porque mudar ali
-                            descaracterizaria a técnica. */}
-                        {row.repsLocked ? (
-                          <View
+              {buildDisplayItems(sets).map((item) => {
+                if (item.kind === "single") {
+                  const { idx, row } = item;
+                  const letter = QUICK_TYPE_LETTER[row.setType];
+                  // Numeração só conta séries de TRABALHO (sem letra) — a
+                  // rampa de aquecimento/feeder na frente não desloca "1, 2, 3...".
+                  const workNumber =
+                    sets.slice(0, idx).filter((r) => !QUICK_TYPE_LETTER[r.setType] && r.role === "work").length + 1;
+                  const badgeColor = row.setType === "to_failure" ? colors.danger : letter ? colors.warning : undefined;
+                  const chave = `${exerciseIndex}:${idx}`;
+                  return (
+                    <Card
+                      key={idx}
+                      padded={false}
+                      style={{
+                        marginBottom: spacing.sm,
+                        borderWidth: 1.5,
+                        borderColor: row.completed ? colors.secondary : "transparent",
+                      }}
+                    >
+                      <View style={{ padding: spacing.sm }}>
+                        <View style={{ flexDirection: "row", alignItems: "center" }}>
+                          {/* Badge da série — toque cicla normal → A (aquecimento) →
+                              P (preparatória) → F (falha) → normal. */}
+                          <TouchableOpacity
+                            onPress={() => updateSet(exerciseIndex, idx, { setType: nextQuickType(row.setType) })}
+                            hitSlop={8}
                             style={{
-                              width: 56,
-                              height: 44,
-                              borderRadius: radius.button,
-                              backgroundColor: colors.primary + "18",
+                              width: 30,
+                              height: 30,
+                              borderRadius: 15,
+                              backgroundColor: badgeColor ? badgeColor + "26" : colors.surfaceAlt,
                               alignItems: "center",
                               justifyContent: "center",
                             }}
                           >
-                            <Text style={[type.body, { color: colors.primary, fontWeight: "800" }]}>{row.reps}</Text>
+                            <Text style={[type.caption, { color: badgeColor ?? colors.textSecondary, fontWeight: "800" }]}>
+                              {letter ?? workNumber}
+                            </Text>
+                          </TouchableOpacity>
+
+                          <View style={{ flex: 1, marginLeft: spacing.sm }}>
+                            {row.previous ? (
+                              <Text style={[type.caption, { color: colors.textSecondary }]} numberOfLines={1}>
+                                {fmtKg(row.previous.weight_kg)}kg × {row.previous.reps}
+                              </Text>
+                            ) : (
+                              <Text style={[type.caption, { color: colors.textSecondary }]}>primeira vez</Text>
+                            )}
                           </View>
-                        ) : (
+
+                          <SetInput compact value={row.weight} onChangeText={(v) => updateSet(exerciseIndex, idx, { weight: v })} />
+                          <Text style={[type.body, { color: colors.textSecondary, marginHorizontal: 4 }]}>×</Text>
                           <SetInput compact value={row.reps} onChangeText={(v) => updateSet(exerciseIndex, idx, { reps: v })} />
-                        )}
+                          <ConfirmCheck
+                            completed={row.completed}
+                            saving={salvando.has(chave)}
+                            onPress={() => handleConfirmSet(exerciseIndex, idx)}
+                          />
+                        </View>
+
+                        {/* RIR — sempre visível, quick-select. Não se aplica a
+                            aquecimento/feeder (séries submáximas de preparação). */}
+                        {row.setType !== "warmup" && row.setType !== "feeder" ? (
+                          <RirRow value={row.rir} onSelect={(v) => updateSet(exerciseIndex, idx, { rir: v })} />
+                        ) : null}
 
                         <TouchableOpacity
-                          onPress={() => handleConfirmSet(exerciseIndex, idx)}
-                          activeOpacity={0.8}
-                          hitSlop={6}
-                          // Bloqueia o toque enquanto grava e depois de gravada:
-                          // é a outra metade da guarda de clique duplo (§8.3).
-                          disabled={row.completed || salvando.has(`${exerciseIndex}:${idx}`)}
-                          style={{
-                            width: 40,
-                            height: 40,
-                            borderRadius: 20,
-                            alignItems: "center",
-                            justifyContent: "center",
-                            backgroundColor: row.completed ? colors.secondary : colors.surfaceAlt,
-                            borderWidth: row.completed ? 0 : 1.5,
-                            borderColor: colors.border,
-                            marginLeft: spacing.xs,
-                          }}
+                          onPress={() => updateSet(exerciseIndex, idx, { showMore: !row.showMore })}
+                          style={{ flexDirection: "row", alignItems: "center", marginTop: spacing.xs, marginLeft: 38 }}
                         >
-                          {salvando.has(`${exerciseIndex}:${idx}`) ? (
-                            <ActivityIndicator size="small" color={colors.textSecondary} />
-                          ) : (
-                            <Ionicons name="checkmark" size={22} color={row.completed ? colors.textOnPrimary : colors.textSecondary} />
-                          )}
+                          <Text style={[type.caption, { color: colors.primary, fontWeight: "600" }]}>
+                            {row.showMore ? "Menos opções" : "Mais opções"}
+                          </Text>
+                          <Ionicons
+                            name={row.showMore ? "chevron-up" : "chevron-down"}
+                            size={13}
+                            color={colors.primary}
+                            style={{ marginLeft: 3 }}
+                          />
                         </TouchableOpacity>
-                      </View>
 
-                      {/* BLOCO — nos mini-sets este campo SUBSTITUI o RIR
-                          (spec §7.1). RIR de um bloco de 2 reps não diz nada;
-                          o que importa é se o bloco fechou. Um toque resolve. */}
-                      {row.role === "block" || row.role === "drop" ? (
-                        // Sem o recuo de 38px das outras linhas e com quebra:
-                        // "BLOCO" + as três opções não cabem na largura de um
-                        // celular estreito quando o bloco já está indentado
-                        // como grupo — o "Não saiu" saía cortado na borda.
-                        <View
-                          style={{
-                            flexDirection: "row",
-                            alignItems: "center",
-                            flexWrap: "wrap",
-                            marginTop: spacing.xs,
-                            gap: 6,
-                          }}
-                        >
-                          <Text style={[type.caption, { color: colors.textSecondary, marginRight: 2 }]}>BLOCO</Text>
-                          {(["completo", "parcial", "nao_concluido"] as BlockStatus[]).map((s) => {
-                            const on = row.blockStatus === s;
-                            const cor =
-                              s === "completo" ? colors.success : s === "parcial" ? colors.warning : colors.danger;
-                            return (
-                              <TouchableOpacity
-                                key={s}
-                                onPress={() =>
-                                  updateSet(exerciseIndex, idx, { blockStatus: on ? undefined : s })
+                        {row.showMore ? (
+                          <View style={{ marginTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm }}>
+                            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.xs }}>
+                              <Text style={[type.caption, { color: colors.textSecondary }]}>Técnica avançada</Text>
+                              <HelpDot
+                                title="Técnica avançada"
+                                text={
+                                  "Deixe em 'Válida' se for uma série normal. As demais são técnicas avançadas: " +
+                                  "Drop-set (reduzir o peso e continuar sem descanso), Rest-pause (pausas curtas dentro da série), " +
+                                  "Myo-reps, Superset, etc. Não é obrigatório marcar nada — o tipo básico (normal/aquecimento/" +
+                                  "preparatória/falha) já fica no número da série, ali em cima."
                                 }
-                                hitSlop={4}
-                                style={{
-                                  flexDirection: "row",
-                                  alignItems: "center",
-                                  gap: 4,
-                                  borderRadius: radius.pill,
-                                  paddingVertical: 5,
-                                  paddingHorizontal: 9,
-                                  backgroundColor: on ? cor + "24" : colors.surfaceAlt,
-                                  borderWidth: 1,
-                                  borderColor: on ? cor : "transparent",
-                                }}
-                              >
-                                <Ionicons
-                                  name={BLOCK_STATUS_ICON[s]}
-                                  size={12}
-                                  color={on ? cor : colors.textSecondary}
-                                />
-                                <Text
-                                  style={[
-                                    type.caption,
-                                    { color: on ? cor : colors.textSecondary, fontWeight: "700", fontSize: 10 },
-                                  ]}
-                                >
-                                  {BLOCK_STATUS_LABEL[s]}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
-                      ) : null}
-
-                      {/* RIR — sempre visível, quick-select (espec.: exceção à
-                          regra de "esconder atrás de mais opções", decidida
-                          com o usuário). Não se aplica a aquecimento/feeder
-                          (séries submáximas de preparação) nem a mini-set de
-                          técnica (ali quem conta a história é o BLOCO). */}
-                      {row.setType !== "warmup" &&
-                      row.setType !== "feeder" &&
-                      row.role !== "block" &&
-                      row.role !== "drop" ? (
-                        <View style={{ flexDirection: "row", alignItems: "center", marginTop: spacing.xs, marginLeft: 38 }}>
-                          <Text style={[type.caption, { color: colors.textSecondary, marginRight: 6 }]}>RIR</Text>
-                          {RIR_OPTIONS.map((n) => {
-                            const selected = row.rir === String(n);
-                            return (
-                              <TouchableOpacity
-                                key={n}
-                                onPress={() => updateSet(exerciseIndex, idx, { rir: selected ? "" : String(n) })}
-                                hitSlop={4}
-                                style={{
-                                  width: 32,
-                                  height: 32,
-                                  borderRadius: 16,
-                                  marginRight: 8,
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  backgroundColor: selected ? colors.primary : colors.surfaceAlt,
-                                }}
-                              >
-                                <Text style={[type.caption, { color: selected ? colors.textOnPrimary : colors.textSecondary, fontWeight: "700", fontSize: 11 }]}>
-                                  {n}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
-                      ) : null}
-
-                      <TouchableOpacity
-                        onPress={() => updateSet(exerciseIndex, idx, { showMore: !row.showMore })}
-                        style={{ flexDirection: "row", alignItems: "center", marginTop: spacing.xs, marginLeft: 38 }}
-                      >
-                        <Text style={[type.caption, { color: colors.primary, fontWeight: "600" }]}>
-                          {row.showMore ? "Menos opções" : "Mais opções"}
-                        </Text>
-                        <Ionicons
-                          name={row.showMore ? "chevron-up" : "chevron-down"}
-                          size={13}
-                          color={colors.primary}
-                          style={{ marginLeft: 3 }}
-                        />
-                      </TouchableOpacity>
-
-                      {row.showMore ? (
-                        <View style={{ marginTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm }}>
-                          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.xs }}>
-                            <Text style={[type.caption, { color: colors.textSecondary }]}>Técnica avançada</Text>
-                            <HelpDot
-                              title="Técnica avançada"
-                              text={
-                                "Deixe em 'Válida' se for uma série normal. As demais são técnicas avançadas: " +
-                                "Drop-set (reduzir o peso e continuar sem descanso), Rest-pause (pausas curtas dentro da série), " +
-                                "Myo-reps, Superset, etc. Não é obrigatório marcar nada — o tipo básico (normal/aquecimento/" +
-                                "preparatória/falha) já fica no número da série, ali em cima."
-                              }
-                            />
-                          </View>
-                          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                            <View style={{ flexDirection: "row", gap: spacing.xs }}>
-                              {SET_TYPE_ORDER.map((st) => (
-                                <OptionButton
-                                  key={st}
-                                  compact
-                                  label={SET_TYPE_LABELS[st]}
-                                  selected={row.setType === st}
-                                  onPress={() => updateSet(exerciseIndex, idx, { setType: st })}
-                                />
-                              ))}
+                              />
                             </View>
-                          </ScrollView>
-                          <View style={{ flexDirection: "row", alignItems: "center", marginTop: spacing.sm }}>
-                            <Text style={[type.caption, { color: colors.textSecondary }]}>RPE (opcional)</Text>
-                            <HelpDot
-                              title="RPE"
-                              text="Quão pesada a série foi, de 0 a 10 (10 = esforço máximo). É outra forma de medir o esforço, além do RIR — preencha só se quiser acompanhar isso."
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                              <View style={{ flexDirection: "row", gap: spacing.xs }}>
+                                {SET_TYPE_ORDER.map((st) => (
+                                  <OptionButton
+                                    key={st}
+                                    compact
+                                    label={SET_TYPE_LABELS[st]}
+                                    selected={row.setType === st}
+                                    onPress={() => updateSet(exerciseIndex, idx, { setType: st })}
+                                  />
+                                ))}
+                              </View>
+                            </ScrollView>
+                            <View style={{ flexDirection: "row", alignItems: "center", marginTop: spacing.sm }}>
+                              <Text style={[type.caption, { color: colors.textSecondary }]}>RPE (opcional)</Text>
+                              <HelpDot
+                                title="RPE"
+                                text="Quão pesada a série foi, de 0 a 10 (10 = esforço máximo). É outra forma de medir o esforço, além do RIR — preencha só se quiser acompanhar isso."
+                              />
+                            </View>
+                            <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.xs }}>
+                              <SetInput label="RPE" value={row.rpe} onChangeText={(v) => updateSet(exerciseIndex, idx, { rpe: v })} />
+                            </View>
+                          </View>
+                        ) : null}
+                      </View>
+                    </Card>
+                  );
+                }
+
+                // Técnica avançada: ativação + blocos/quedas viram UM cartão
+                // compacto (ajuste pós-v36, item 3). Sem "Mais opções" — a
+                // técnica já foi prescrita pelo coach, não há o que escolher.
+                const { activationIdx, activation, blocks } = item;
+                const groupKey = `${exerciseIndex}:${activationIdx}`;
+                const abertoIdx = openBlock[groupKey] ?? null;
+                const aberto = blocks.find((b) => b.idx === abertoIdx) ?? null;
+                const prescricao = prescriptionFor(overlays, routineExercise.exercise_id);
+                const chaveAtivacao = `${exerciseIndex}:${activationIdx}`;
+
+                return (
+                  <React.Fragment key={`tec-${activationIdx}`}>
+                    <TechniqueHeader label={prescricao?.label ?? "Técnica avançada"} cue={prescricao?.cue ?? ""} />
+                    <Card
+                      padded={false}
+                      style={{ marginBottom: spacing.sm, borderWidth: 1.5, borderColor: colors.primary + "3A" }}
+                    >
+                      <View style={{ padding: spacing.sm }}>
+                        {/* Ativação / série principal */}
+                        <View style={{ flexDirection: "row", alignItems: "center" }}>
+                          <View
+                            style={{
+                              width: 30, height: 30, borderRadius: 15,
+                              backgroundColor: colors.primary + "22",
+                              alignItems: "center", justifyContent: "center",
+                            }}
+                          >
+                            <Ionicons name="flash" size={15} color={colors.primary} />
+                          </View>
+                          <View style={{ flex: 1, marginLeft: spacing.sm }}>
+                            <Text style={[type.caption, { color: colors.primary, fontWeight: "700" }]} numberOfLines={1}>
+                              {activation.blockLabel}
+                            </Text>
+                          </View>
+                          <SetInput
+                            compact
+                            value={activation.weight}
+                            onChangeText={(v) => updateSet(exerciseIndex, activationIdx, { weight: v })}
+                          />
+                          <Text style={[type.body, { color: colors.textSecondary, marginHorizontal: 4 }]}>×</Text>
+                          {activation.repsLocked ? (
+                            <View
+                              style={{
+                                width: 56, height: 44, borderRadius: radius.button,
+                                backgroundColor: colors.primary + "18",
+                                alignItems: "center", justifyContent: "center",
+                              }}
+                            >
+                              <Text style={[type.body, { color: colors.primary, fontWeight: "800" }]}>{activation.reps}</Text>
+                            </View>
+                          ) : (
+                            <SetInput
+                              compact
+                              value={activation.reps}
+                              onChangeText={(v) => updateSet(exerciseIndex, activationIdx, { reps: v })}
+                            />
+                          )}
+                          <ConfirmCheck
+                            completed={activation.completed}
+                            saving={salvando.has(chaveAtivacao)}
+                            onPress={() => handleConfirmSet(exerciseIndex, activationIdx)}
+                          />
+                        </View>
+
+                        <RirRow
+                          value={activation.rir}
+                          onSelect={(v) => updateSet(exerciseIndex, activationIdx, { rir: v })}
+                        />
+
+                        {/* BLOCOS — chips compactos no lugar de "Mais opções":
+                            um toque abre só a configuração daquele bloco. */}
+                        {blocks.length > 0 ? (
+                          <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", marginTop: spacing.sm, gap: 6 }}>
+                            <Text style={[type.caption, { color: colors.textSecondary, fontWeight: "700", marginRight: 2 }]}>
+                              BLOCOS
+                            </Text>
+                            {blocks.map((b) => (
+                              <BlockChip
+                                key={b.idx}
+                                number={b.row.blockIndex ?? 0}
+                                status={b.row.blockStatus}
+                                completed={b.row.completed}
+                                selected={abertoIdx === b.idx}
+                                onPress={() => toggleBlock(groupKey, b.idx)}
+                              />
+                            ))}
+                          </View>
+                        ) : null}
+
+                        {/* Configuração do bloco tocado — peso, reps e status,
+                            só ele por vez (não os três juntos). */}
+                        {aberto ? (
+                          <View style={{ marginTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm }}>
+                            <View style={{ flexDirection: "row", alignItems: "center" }}>
+                              <Text style={[type.caption, { color: colors.textSecondary, flex: 1 }]} numberOfLines={1}>
+                                {aberto.row.blockLabel}
+                              </Text>
+                              <SetInput
+                                compact
+                                value={aberto.row.weight}
+                                onChangeText={(v) => updateSet(exerciseIndex, aberto.idx, { weight: v })}
+                              />
+                              <Text style={[type.body, { color: colors.textSecondary, marginHorizontal: 4 }]}>×</Text>
+                              <SetInput
+                                compact
+                                value={aberto.row.reps}
+                                onChangeText={(v) => updateSet(exerciseIndex, aberto.idx, { reps: v })}
+                              />
+                              <ConfirmCheck
+                                completed={aberto.row.completed}
+                                saving={salvando.has(`${exerciseIndex}:${aberto.idx}`)}
+                                onPress={() => handleConfirmSet(exerciseIndex, aberto.idx)}
+                              />
+                            </View>
+                            {/* BLOCO — nos mini-sets este campo SUBSTITUI o RIR
+                                (spec §7.1): o que importa é se o bloco fechou. */}
+                            <BlockStatusRow
+                              value={aberto.row.blockStatus}
+                              onSelect={(v) => updateSet(exerciseIndex, aberto.idx, { blockStatus: v })}
                             />
                           </View>
-                          <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.xs }}>
-                            <SetInput label="RPE" value={row.rpe} onChangeText={(v) => updateSet(exerciseIndex, idx, { rpe: v })} />
-                          </View>
-                        </View>
-                      ) : null}
-                    </View>
-                  </Card>
+                        ) : null}
+                      </View>
+                    </Card>
                   </React.Fragment>
                 );
               })}
@@ -847,6 +811,167 @@ function TechniqueHeader({ label, cue }: { label: string; cue: string }) {
       </View>
       <Ionicons name={aberto ? "chevron-up" : "chevron-down"} size={15} color={colors.textSecondary} />
     </TouchableOpacity>
+  );
+}
+
+/** Botão ✓ de confirmar série — o mesmo círculo em qualquer linha (normal,
+ * ativação ou bloco), só muda quem ele confirma. */
+function ConfirmCheck({
+  completed,
+  saving,
+  onPress,
+}: {
+  completed: boolean;
+  saving: boolean;
+  onPress: () => void;
+}) {
+  const { colors, spacing } = useTheme();
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.8}
+      hitSlop={6}
+      // Bloqueia o toque enquanto grava e depois de gravada: é a outra
+      // metade da guarda de clique duplo (§8.3).
+      disabled={completed || saving}
+      style={{
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: completed ? colors.secondary : colors.surfaceAlt,
+        borderWidth: completed ? 0 : 1.5,
+        borderColor: colors.border,
+        marginLeft: spacing.xs,
+      }}
+    >
+      {saving ? (
+        <ActivityIndicator size="small" color={colors.textSecondary} />
+      ) : (
+        <Ionicons name="checkmark" size={22} color={completed ? colors.textOnPrimary : colors.textSecondary} />
+      )}
+    </TouchableOpacity>
+  );
+}
+
+/** Fileira de RIR quick-select — sempre visível (exceção à regra de esconder
+ * atrás de "mais opções", decidida com o usuário). */
+function RirRow({ value, onSelect }: { value: string; onSelect: (v: string) => void }) {
+  const { colors, type } = useTheme();
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", marginTop: 6, marginLeft: 38 }}>
+      <Text style={[type.caption, { color: colors.textSecondary, marginRight: 6 }]}>RIR</Text>
+      {RIR_OPTIONS.map((n) => {
+        const selected = value === String(n);
+        return (
+          <TouchableOpacity
+            key={n}
+            onPress={() => onSelect(selected ? "" : String(n))}
+            hitSlop={4}
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 16,
+              marginRight: 8,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: selected ? colors.primary : colors.surfaceAlt,
+            }}
+          >
+            <Text style={[type.caption, { color: selected ? colors.textOnPrimary : colors.textSecondary, fontWeight: "700", fontSize: 11 }]}>
+              {n}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+/** Chip compacto "B1"/"B2"/"B3" (ajuste pós-v36, item 3): no lugar de um
+ * cartão cheio por bloco, um toque abre só a configuração daquele bloco. */
+function BlockChip({
+  number,
+  status,
+  completed,
+  selected,
+  onPress,
+}: {
+  number: number;
+  status: BlockStatus | undefined;
+  completed: boolean;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const { colors, type } = useTheme();
+  const cor =
+    status === "completo" ? colors.success : status === "parcial" ? colors.warning : status === "nao_concluido" ? colors.danger : colors.textSecondary;
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      hitSlop={6}
+      style={{
+        width: 34,
+        height: 34,
+        borderRadius: 12,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: selected ? colors.primary + "22" : status ? cor + "1F" : colors.surfaceAlt,
+        borderWidth: 1.5,
+        borderColor: selected ? colors.primary : status ? cor : colors.border,
+      }}
+    >
+      {completed ? (
+        <Ionicons name="checkmark" size={16} color={cor} />
+      ) : (
+        <Text style={[type.caption, { color: status ? cor : colors.textSecondary, fontWeight: "800" }]}>B{number}</Text>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+/** BLOCO — nos mini-sets este campo SUBSTITUI o RIR (spec §7.1): RIR de um
+ * bloco de 2 reps não diz nada; o que importa é se o bloco fechou. */
+function BlockStatusRow({
+  value,
+  onSelect,
+}: {
+  value: BlockStatus | undefined;
+  onSelect: (v: BlockStatus | undefined) => void;
+}) {
+  const { colors, type, spacing, radius } = useTheme();
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", marginTop: spacing.xs, gap: 6 }}>
+      <Text style={[type.caption, { color: colors.textSecondary, marginRight: 2 }]}>BLOCO</Text>
+      {(["completo", "parcial", "nao_concluido"] as BlockStatus[]).map((s) => {
+        const on = value === s;
+        const cor = s === "completo" ? colors.success : s === "parcial" ? colors.warning : colors.danger;
+        return (
+          <TouchableOpacity
+            key={s}
+            onPress={() => onSelect(on ? undefined : s)}
+            hitSlop={4}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 4,
+              borderRadius: radius.pill,
+              paddingVertical: 5,
+              paddingHorizontal: 9,
+              backgroundColor: on ? cor + "24" : colors.surfaceAlt,
+              borderWidth: 1,
+              borderColor: on ? cor : "transparent",
+            }}
+          >
+            <Ionicons name={BLOCK_STATUS_ICON[s]} size={12} color={on ? cor : colors.textSecondary} />
+            <Text style={[type.caption, { color: on ? cor : colors.textSecondary, fontWeight: "700", fontSize: 10 }]}>
+              {BLOCK_STATUS_LABEL[s]}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
   );
 }
 

@@ -95,10 +95,28 @@ def _ensure_set_log_columns() -> None:
                 conn.execute(text(f"ALTER TABLE workout_set_logs ADD COLUMN {col} {sqlite_type}"))
 
 
+def _ensure_food_source_enum() -> None:
+    """`foods.source` é um ENUM nativo no Postgres — `create_all` não adiciona
+    valor novo a um tipo que já existe. Sem isto, gravar um Food com
+    source=FATSECRET (a integração nova) derruba com "invalid input value for
+    enum food_source" em produção. SQLite (dev) não tem enum nativo — é só
+    VARCHAR — então não precisa disto."""
+    if engine.dialect.name != "postgresql":
+        return
+    from sqlalchemy import text
+
+    # ALTER TYPE ... ADD VALUE não pode rodar dentro de uma transação que
+    # também vá usar o valor novo — autocommit evita isso.
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        conn.execute(text("ALTER TYPE food_source ADD VALUE IF NOT EXISTS 'fatsecret'"))
+
+
 def run() -> None:
     print(f"Criando schema em {engine.url} ...")
     Base.metadata.create_all(bind=engine)
     print("Schema pronto.")
+
+    _ensure_food_source_enum()
 
     # ANTES de qualquer consulta a Exercise, e logo depois do create_all:
     # create_all não adiciona coluna em tabela que já existe, então num banco

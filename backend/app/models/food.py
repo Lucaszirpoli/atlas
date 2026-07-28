@@ -12,6 +12,7 @@ class FoodSource(str, enum.Enum):
     TACO = "taco"
     OPEN_FOOD_FACTS = "open_food_facts"
     CUSTOM = "custom"
+    FATSECRET = "fatsecret"
 
 
 class Food(Base):
