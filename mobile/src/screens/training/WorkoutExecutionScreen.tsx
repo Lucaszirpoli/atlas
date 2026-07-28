@@ -618,7 +618,19 @@ export function WorkoutExecutionScreen() {
                           (spec §7.1). RIR de um bloco de 2 reps não diz nada;
                           o que importa é se o bloco fechou. Um toque resolve. */}
                       {row.role === "block" || row.role === "drop" ? (
-                        <View style={{ flexDirection: "row", alignItems: "center", marginTop: spacing.xs, marginLeft: 38, gap: 6 }}>
+                        // Sem o recuo de 38px das outras linhas e com quebra:
+                        // "BLOCO" + as três opções não cabem na largura de um
+                        // celular estreito quando o bloco já está indentado
+                        // como grupo — o "Não saiu" saía cortado na borda.
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            flexWrap: "wrap",
+                            marginTop: spacing.xs,
+                            gap: 6,
+                          }}
+                        >
                           <Text style={[type.caption, { color: colors.textSecondary, marginRight: 2 }]}>BLOCO</Text>
                           {(["completo", "parcial", "nao_concluido"] as BlockStatus[]).map((s) => {
                             const on = row.blockStatus === s;

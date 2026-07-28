@@ -46,11 +46,17 @@ export function ObjectiveScreen({
   onOpenDietPdf,
   onOpenAnalysis,
   onScrollTop,
+  onPlanActivated,
 }: {
   onOpenTraining: () => void;
   onOpenDiet: () => void;
   onOpenDietPdf: () => void;
   onOpenAnalysis: () => void;
+  /** Avisa a tela do Coaching que o plano mudou, pra ela recarregar a análise.
+   * Sem isto, logo depois de "Seu plano foi atualizado" o card do coach acima
+   * continuava mostrando o objetivo ANTIGO — duas versões da verdade na mesma
+   * tela, que é justamente o que a ativação atômica existe pra evitar. */
+  onPlanActivated?: () => void;
   /** Sobe a rolagem ao trocar de etapa. Quem rola é a tela do Coaching (esta
    * vive dentro do ScrollView dela) — dois ScrollViews aninhados brigariam. */
   onScrollTop?: () => void;
@@ -148,12 +154,24 @@ export function ObjectiveScreen({
       setState(novo);
       setPlanoNovo(novo.active_plan);
       setModo("atualizado");
+      onPlanActivated?.();
       onScrollTop?.();
     } catch (e: any) {
       setErro(mensagemDeErro(e, "Não consegui gerar seu plano agora. Seu plano atual continua valendo."));
     } finally {
       setGerando(false);
     }
+  }
+
+  /** Sair do questionário SALVA o que foi mexido (spec §3.1: o progresso é
+   * guardado ao avançar, voltar, minimizar ou fechar). Sem isto a pessoa
+   * editava, tocava em "Sair" e a alteração sumia em silêncio — que é o
+   * oposto do que a tela promete. O que foi editado vira pendência, não
+   * substitui nada até ela confirmar. */
+  async function sairDoQuestionario() {
+    await salvarProgresso(respostas, etapa);
+    setModo("resumo");
+    onScrollTop?.();
   }
 
   async function descartar() {
@@ -266,7 +284,7 @@ export function ObjectiveScreen({
               Etapa {etapa + 1} de {passos.length}
             </Text>
             {state.has_plan ? (
-              <TouchableOpacity onPress={() => setModo("resumo")} hitSlop={8}>
+              <TouchableOpacity onPress={sairDoQuestionario} hitSlop={8}>
                 <Text style={[type.caption, { color: colors.textSecondary, fontWeight: "700" }]}>Sair</Text>
               </TouchableOpacity>
             ) : null}

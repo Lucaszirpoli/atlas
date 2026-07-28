@@ -898,6 +898,7 @@ function CoachingSectionView({
             onOpenDietPdf={onOpenTemplates}
             onOpenAnalysis={onAskCoach}
             onScrollTop={onScrollTop}
+            onPlanActivated={onReload}
           />
         </>
       ) : null}
