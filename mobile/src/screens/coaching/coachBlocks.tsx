@@ -215,6 +215,12 @@ function OptionSheet({
 
 // "Como eu monto seu treino": ponto fraco, tempo por sessão, cardio,
 // periodização. O coach usa tudo isto pra montar/ajustar o treino.
+//
+// FORA DE USO desde a reformulação da aba Objetivo (spec §5.1): a coleta do
+// Premium virou o questionário de 6 etapas em screens/objective, que é a fonte
+// única dessas mesmas informações. Mantido aqui, sem estar montado em tela
+// nenhuma, porque as opções e os rótulos ainda descrevem bem o domínio — se um
+// dia voltar a existir um atalho de edição rápida, é daqui que ele sai.
 type PrefSheetField = "weak_point" | "session_length" | "training_days" | "cardio" | "periodization";
 
 export function TrainingPrefsCard({

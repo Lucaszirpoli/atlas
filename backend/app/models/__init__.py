@@ -6,6 +6,7 @@ from app.models.chat_message import ChatMessage
 from app.models.coaching_action import CoachingAction
 from app.models.coaching_adjustment import CoachingAdjustment
 from app.models.coaching_baseline import CoachingBaseline
+from app.models.coaching_plan import CoachingPlan, PlanStatus, QuestionnaireDraft
 from app.models.coaching_technique_cue import CoachingTechniqueCue
 from app.models.coaching_transition import CoachingTransition
 from app.models.consent import ConsentRecord
@@ -70,4 +71,7 @@ __all__ = [
     "NutritionDayMark",
     "DayMarkStatus",
     "ExerciseHistoryLink",
+    "CoachingPlan",
+    "PlanStatus",
+    "QuestionnaireDraft",
 ]

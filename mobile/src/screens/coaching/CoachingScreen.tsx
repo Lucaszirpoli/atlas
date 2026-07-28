@@ -33,13 +33,9 @@ import { useTheme } from "../../theme/ThemeProvider";
 import { mensagemDeErro } from "../../utils/errorMessage";
 import { useHomeLayout, type HomeBlockId } from "../../utils/homeLayout";
 import { useProfilePhoto } from "../../utils/profilePhoto";
+import { ObjectiveScreen } from "../objective/ObjectiveScreen";
 import { OnboardingScreen } from "../onboarding/OnboardingScreen";
-import {
-  ExpandToggle,
-  MacroChip,
-  TrainingPrefsCard,
-  WorkoutCard,
-} from "./coachBlocks";
+import { ExpandToggle, MacroChip, WorkoutCard } from "./coachBlocks";
 import { CoachingProgress } from "./CoachingProgress";
 
 // Seções do "mapa" do hub — cada uma abre uma tela de detalhe com o conteúdo
@@ -134,6 +130,11 @@ export function CoachingScreen() {
   // um modal — vira a seção "progresso", com a métrica pré-selecionada.
   const [section, setSection] = useState<CoachingSectionId | null>(null);
   const [progressMetric, setProgressMetric] = useState<CoachingChart>("peso");
+  // Quem rola esta tela é este ScrollView. A aba Objetivo vive dentro dele
+  // (dois ScrollViews aninhados brigariam pelo gesto), então ela pede a
+  // rolagem pro topo por aqui ao trocar de etapa do questionário.
+  const scrollRef = React.useRef<ScrollView>(null);
+  const scrollTop = useCallback(() => scrollRef.current?.scrollTo({ y: 0, animated: true }), []);
 
   // Ordem dos blocos da home, editável em Configurações > Layout da tela
   // inicial. Recarrega a cada foco pra pegar mudanças feitas lá.
@@ -200,6 +201,7 @@ export function CoachingScreen() {
 
   return (
     <ScrollView
+      ref={scrollRef}
       style={{ flex: 1, backgroundColor: colors.bg }}
       contentContainerStyle={{ padding: spacing.lg, paddingTop: spacing.lg + insets.top, paddingBottom: spacing.xxl }}
       keyboardShouldPersistTaps="handled"
@@ -288,6 +290,7 @@ export function CoachingScreen() {
             onOpenTemplates={() => navigation.navigate("NutritionModule", { screen: "DietTemplates" })}
             onOpenMeasurements={() => navigation.navigate("NutritionModule", { screen: "Measurements" })}
             onAskCoach={() => navigation.navigate("CoachChat")}
+            onScrollTop={scrollTop}
           />
         )
       ) : null}
@@ -826,6 +829,7 @@ function CoachingSectionView({
   onOpenTemplates,
   onOpenMeasurements,
   onAskCoach,
+  onScrollTop,
 }: {
   section: CoachingSectionId;
   analysis: CoachingAnalysis;
@@ -841,6 +845,7 @@ function CoachingSectionView({
   onOpenTemplates: () => void;
   onOpenMeasurements: () => void;
   onAskCoach: () => void;
+  onScrollTop: () => void;
 }) {
   const { colors, type, spacing, radius } = useTheme();
   const meta = GOAL_META[analysis.goal ?? ""] ?? { label: "Seu objetivo", icon: "compass" as const };
@@ -871,23 +876,38 @@ function CoachingSectionView({
         <Text style={[type.h1, { color: colors.textPrimary, fontSize: 22 }]}>{titulo}</Text>
       </View>
 
+      {/* A aba Objetivo é agora o centro do Coaching: questionário, resumo,
+          edição das respostas, alterações pendentes e histórico de planos
+          (spec §3). O card antigo de "objetivo & fase" virou o cabeçalho da
+          leitura do coach, mostrado acima do painel. */}
       {section === "objetivo" ? (
-        <ObjetivoCard
-          analysis={analysis}
-          meta={meta}
-          fase={fase}
-          transition={m.transition}
-          expanded={expObj}
-          onToggle={() => setExpObj((v) => !v)}
-          onOpenObjective={onOpenObjective}
-        />
+        <>
+          <ObjetivoCard
+            analysis={analysis}
+            meta={meta}
+            fase={fase}
+            transition={m.transition}
+            expanded={expObj}
+            onToggle={() => setExpObj((v) => !v)}
+            onOpenObjective={onOpenObjective}
+          />
+          <View style={{ height: spacing.md }} />
+          <ObjectiveScreen
+            onOpenTraining={onOpenTraining}
+            onOpenDiet={onOpenObjective}
+            onOpenDietPdf={onOpenTemplates}
+            onOpenAnalysis={onAskCoach}
+            onScrollTop={onScrollTop}
+          />
+        </>
       ) : null}
 
+      {/* "Como eu monto seu treino" saiu daqui também (spec §5.1): a coleta
+          agora é uma só, na aba Objetivo. Manter uma segunda cópia editável
+          das mesmas preferências era exatamente o problema que a spec resolve
+          — duas fontes da verdade discordando. */}
       {section === "treino" ? (
-        <>
-          {m.training_prefs ? <TrainingPrefsCard prefs={m.training_prefs} onChanged={onApplied} /> : null}
-          <WorkoutCard workout={m.workout} onApplied={onApplied} onOpenTraining={onOpenTraining} />
-        </>
+        <WorkoutCard workout={m.workout} onApplied={onApplied} onOpenTraining={onOpenTraining} />
       ) : null}
 
       {section === "dieta" ? (

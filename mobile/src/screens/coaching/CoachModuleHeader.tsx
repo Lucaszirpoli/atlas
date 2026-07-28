@@ -6,10 +6,9 @@ import { Text, TouchableOpacity, View } from "react-native";
 import { getCoachingAnalysis, type CoachingAnalysis } from "../../api/coaching";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
-import { InfoDialog } from "../../components/InfoDialog";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
-import { MacroChip, TrainingPrefsCard } from "./coachBlocks";
+import { MacroChip } from "./coachBlocks";
 
 /** Etiqueta "SEU COACHING" que abre cada bloco de coach nas telas de módulo. */
 function CoachLabel() {
@@ -46,31 +45,63 @@ function useCoachAnalysis() {
   return { isPro, analysis, reload };
 }
 
-/** Cabeçalho do coach na tela de TREINO (Pro): "como eu monto seu treino" +
- * "seu treino". Some pro Free. */
+/** Cabeçalho do coach na tela de TREINO (Pro).
+ *
+ * O bloco "Como eu monto seu treino" NÃO mora mais aqui (spec §5.1): a coleta
+ * das informações do Premium foi toda pra aba Objetivo, que virou a fonte
+ * única. A aba Treino volta a ser só o que ela faz bem — ver, iniciar,
+ * registrar e acompanhar o treino.
+ *
+ * Fica no lugar uma faixa curta dizendo de onde o treino veio e levando pra lá,
+ * pra ninguém procurar as preferências e não achar. Some pro Free, que continua
+ * com o fluxo manual de sempre. */
 export function TrainingCoachHeader() {
-  const { spacing } = useTheme();
-  const { isPro, analysis, reload } = useCoachAnalysis();
-  const [aviso, setAviso] = useState<{ title: string; message: string } | null>(null);
+  const { colors, type, spacing, radius } = useTheme();
+  const navigation = useNavigation<any>();
+  const { isPro, analysis } = useCoachAnalysis();
 
   if (!isPro || !analysis) return null;
 
-  const onApplied = (title: string, message: string) => {
-    setAviso({ title, message });
-    reload();
-  };
+  const w = analysis.metrics.workout;
+  const resumo = w?.built
+    ? `${w.count} ${w.count === 1 ? "treino montado" : "treinos montados"} pelo coach · ${w.total_exercises} exercícios`
+    : "Responda o questionário na aba Objetivo pra eu montar seu treino.";
 
   return (
     <View style={{ marginBottom: spacing.sm }}>
       <CoachLabel />
-      {analysis.metrics.training_prefs ? (
-        <TrainingPrefsCard
-          prefs={analysis.metrics.training_prefs}
-          workout={analysis.metrics.workout}
-          onChanged={onApplied}
-        />
-      ) : null}
-      <InfoDialog visible={aviso != null} onClose={() => setAviso(null)} title={aviso?.title ?? ""} message={aviso?.message} />
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={() => navigation.navigate("Home")}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.md,
+          backgroundColor: colors.primary + "12",
+          borderWidth: 1,
+          borderColor: colors.primary + "2E",
+          borderRadius: radius.card,
+          padding: spacing.sm,
+          marginBottom: spacing.md,
+        }}
+      >
+        <View
+          style={{
+            width: 36, height: 36, borderRadius: 12,
+            backgroundColor: colors.primary + "1F",
+            alignItems: "center", justifyContent: "center",
+          }}
+        >
+          <Ionicons name="compass" size={18} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "700" }]}>Seu objetivo</Text>
+          <Text style={[type.caption, { color: colors.textSecondary, marginTop: 1, lineHeight: 17 }]} numberOfLines={2}>
+            {resumo}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={17} color={colors.primary} />
+      </TouchableOpacity>
     </View>
   );
 }
