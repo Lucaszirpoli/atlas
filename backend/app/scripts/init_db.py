@@ -13,6 +13,7 @@ from app.models.exercise import Exercise
 from app.models.food import Food
 from app.scripts import (
     backfill_exercise_category,
+    clean_taco_names,
     grant_comp_pro,
     retranslate_exercises,
     seed_exercisedb,
@@ -166,6 +167,11 @@ def run() -> None:
         print(f"Alimentos já carregados ({food_count}) — pulando seed.")
         # idempotente: garante os plant-based mesmo em banco já existente
         seed_plant_based.run()
+
+    # Nomes do TACO oficial vieram no formato bruto de tabela ("Arroz,
+    # integral, cozido") — roda sempre (idempotente, só mexe em nome com
+    # vírgula) pra também corrigir banco já existente, não só banco novo.
+    clean_taco_names.run()
 
     if exercise_count == 0:
         print("Base de exercícios vazia — carregando seeds ...")

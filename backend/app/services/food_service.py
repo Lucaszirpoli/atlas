@@ -54,8 +54,13 @@ def search_local(db: Session, query: str, limit: int = 30) -> list[Food]:
             s += 30
         # Preparo comum de um alimento base (o que a pessoa mais registra:
         # "arroz cozido", "frango grelhado") ganha um empurrão à frente do prato
-        # composto ("arroz carreteiro") que só era curto.
-        if re.search(r"\b(cozid|grelhad|assad|cru|frit)", st):
+        # composto ("arroz carreteiro") que só era curto. "Cru" fica de fora
+        # deste empurrão de propósito: quem registra o que comeu quase sempre
+        # comeu preparado, não o ingrediente cru — dar o mesmo peso fazia
+        # "arroz, tipo 1, cru" competir de igual pra igual com "arroz cozido"
+        # numa busca por "arroz". Cru continua achável (o termo bate igual),
+        # só não fura na frente do que as pessoas realmente comem.
+        if re.search(r"\b(cozid|grelhad|assad|frit)", st):
             s += 25
         s -= len(st) * 0.4  # nomes mais curtos primeiro
         return s

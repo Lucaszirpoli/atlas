@@ -165,6 +165,47 @@ export function RoutineListScreen() {
         contentContainerStyle={{ paddingBottom: spacing.lg }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+        ListFooterComponent={
+          // Nova rotina + Importar rolam JUNTO com a lista (mesmo comportamento
+          // de "Dietas prontas" na aba Dieta — some da tela ao subir o scroll,
+          // não fica grudado no rodapé). Ajuste pós-v36.
+          <View style={{ gap: spacing.sm, marginTop: routines.length > 0 ? spacing.sm : 0 }}>
+            <Button title="Nova rotina" icon="+" onPress={() => navigation.navigate("RoutineBuilder", {})} />
+
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => navigation.navigate("ImportRoutines")}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: colors.moduleTraining,
+                borderRadius: radius.card,
+                padding: spacing.md,
+              }}
+            >
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 13,
+                  backgroundColor: "rgba(255,255,255,0.22)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginRight: spacing.md,
+                }}
+              >
+                <Ionicons name="download-outline" size={20} color="#FFFFFF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[type.bodySmall, { color: "#FFFFFF", fontWeight: "700" }]}>Importar treino</Text>
+                <Text style={[type.caption, { color: "rgba(255,255,255,0.9)" }]} numberOfLines={2}>
+                  Traga sua rotina do Hevy ou do Strong
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        }
         renderItem={({ item }) => {
           const totalSets = item.exercises.reduce((s, e) => s + e.target_sets, 0);
           return (
@@ -241,58 +282,6 @@ export function RoutineListScreen() {
           )
         }
       />
-
-      {/* BARRA FIXA das duas ações (spec §5.2, ajuste pós-v36: só Nova rotina +
-          Importar — a área de metodologias saiu daqui). Não rola junto com as
-          rotinas: a FlatList acima tem flex:1 e é a única área que rola; isto
-          é um irmão dela, sempre visível no rodapé — mesmo comportamento e
-          visual do card "Dietas prontas" fixo na aba Dieta. */}
-      <View
-        style={{
-          paddingTop: spacing.md,
-          borderTopWidth: 1,
-          borderTopColor: colors.border,
-          gap: spacing.sm,
-        }}
-      >
-        <Button title="Nova rotina" icon="+" onPress={() => navigation.navigate("RoutineBuilder", {})} />
-
-        {/* Importar: é aqui que quem chegou de outro app procura, e redigitar
-            tudo é o motivo nº1 de desistir de trocar. Mesmo cartão colorido de
-            "Dietas prontas" na aba Dieta — layout e fixação idênticos. */}
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate("ImportRoutines")}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            backgroundColor: colors.moduleTraining,
-            borderRadius: radius.card,
-            padding: spacing.md,
-          }}
-        >
-          <View
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 13,
-              backgroundColor: "rgba(255,255,255,0.22)",
-              alignItems: "center",
-              justifyContent: "center",
-              marginRight: spacing.md,
-            }}
-          >
-            <Ionicons name="download-outline" size={20} color="#FFFFFF" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[type.bodySmall, { color: "#FFFFFF", fontWeight: "700" }]}>Importar treino</Text>
-            <Text style={[type.caption, { color: "rgba(255,255,255,0.9)" }]} numberOfLines={2}>
-              Traga sua rotina do Hevy ou do Strong
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
-        </TouchableOpacity>
-      </View>
 
       <ActionSheet
         visible={optionsRoutine != null}
