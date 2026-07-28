@@ -268,17 +268,24 @@ def technique_info(key: str) -> TechniqueInfo | None:
 # vez de um aviso decorativo que a pessoa lê e ignora.
 #
 # `form` diz qual interface a execução monta:
-#   "activation_blocks" — 1 série de ativação + N mini-sets clicáveis (myo-reps,
-#                          muscle round, rest-pause: mesma mecânica de blocos)
+#   "singles"           — N repetições AVULSAS da MESMA carga, uma de cada vez
+#                          (rest-pause: não tem "bloco" nenhum, é 1 rep -> 10s
+#                          -> 1 rep -> 10s..., cada toque marca UMA repetição)
+#   "activation_blocks" — 1 série de ativação + N mini-sets clicáveis, cada um
+#                          com VÁRIAS reps (myo-reps, muscle round: block_reps
+#                          > 1, então cada bloco pode sair parcial/completo)
 #   "cluster"           — blocos dentro da MESMA série, com pausa curta entre eles
 #   "drop"              — série principal + quedas de carga encadeadas
 #   "cue_only"          — não muda a estrutura da série (ex.: superset, que é
 #                          sobre emendar DOIS exercícios, não sobre a série)
 TECHNIQUE_STRUCTURES: dict[str, dict] = {
+    # 10 repetições AVULSAS na mesma carga (~5RM), uma por vez, sem status de
+    # bloco — uma rep só é feita ou não é. "activation_reps: 1" é a primeira
+    # rep (R1); "blocks: 9, block_reps: 1" são R2..R10 (9×1 = 9 reps).
     "rest_pause": {
-        "form": "activation_blocks",
-        "activation_reps": 5,      # carga ~5RM
-        "blocks": 5,               # 5×1 + a ativação = 10 reps totais
+        "form": "singles",
+        "activation_reps": 1,
+        "blocks": 9,
         "block_reps": 1,
         "rest_between_blocks_s": 10,
     },

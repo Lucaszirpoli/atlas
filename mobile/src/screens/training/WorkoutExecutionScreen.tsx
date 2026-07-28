@@ -235,6 +235,18 @@ export function WorkoutExecutionScreen() {
     );
   }
 
+  // Rest-pause (técnica "singles"): a carga é UMA só pra todas as repetições
+  // avulsas — só existe um campo "Carga" na tela, então digitar nele precisa
+  // preencher o peso de toda a fileira de una vez (senão confirmar R2 em
+  // diante travava por peso vazio).
+  function updateWeightAcrossGroup(exerciseIndex: number, indices: number[], weight: string) {
+    setSetsByExercise((prev) =>
+      prev.map((rows, i) =>
+        i === exerciseIndex ? rows.map((row, j) => (indices.includes(j) ? { ...row, weight } : row)) : rows
+      )
+    );
+  }
+
   async function handleConfirmSet(exerciseIndex: number, setIdx: number) {
     const chave = `${exerciseIndex}:${setIdx}`;
     const row = setsByExercise[exerciseIndex][setIdx];
@@ -302,10 +314,25 @@ export function WorkoutExecutionScreen() {
                 rir: "",
                 showMore: false,
                 role: "work" as const,
+                // Marca de onde veio — só uma série ADICIONADA aqui (não
+                // prescrita pela rotina/coach) pode ser removida depois. Tirar
+                // uma série que o coach mandou mudaria o treino sem passar por
+                // "Alterar respostas", que é onde essa decisão mora de verdade.
+                manuallyAdded: true,
               },
             ]
           : rows
       )
+    );
+  }
+
+  // Só desfaz uma série que a PRÓPRIA pessoa acrescentou e que ainda não foi
+  // registrada — depois de confirmada ela virou histórico (regra 4: histórico
+  // é append-only, não existe endpoint pra apagar um log). Antes de confirmar
+  // é só um rascunho na tela, então tirar da lista é seguro.
+  function handleRemoveSet(exerciseIndex: number, setIdx: number) {
+    setSetsByExercise((prev) =>
+      prev.map((rows, i) => (i === exerciseIndex ? rows.filter((_, j) => j !== setIdx) : rows))
     );
   }
 
@@ -548,6 +575,18 @@ export function WorkoutExecutionScreen() {
                             saving={salvando.has(chave)}
                             onPress={() => handleConfirmSet(exerciseIndex, idx)}
                           />
+                          {/* Só a série ADICIONADA aqui ("+ série extra") e
+                              ainda não registrada pode ser removida — é o
+                              desfazer de "toquei demais no botão". */}
+                          {row.manuallyAdded && !row.completed ? (
+                            <TouchableOpacity
+                              onPress={() => handleRemoveSet(exerciseIndex, idx)}
+                              hitSlop={8}
+                              style={{ marginLeft: spacing.xs, padding: 4 }}
+                            >
+                              <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
+                            </TouchableOpacity>
+                          ) : null}
                         </View>
 
                         {/* RIR — sempre visível, quick-select. Não se aplica a
@@ -624,6 +663,62 @@ export function WorkoutExecutionScreen() {
                 const aberto = blocks.find((b) => b.idx === abertoIdx) ?? null;
                 const prescricao = prescriptionFor(overlays, routineExercise.exercise_id);
                 const chaveAtivacao = `${exerciseIndex}:${activationIdx}`;
+
+                // Rest-pause: N repetições AVULSAS da MESMA carga, uma de cada
+                // vez — não tem "bloco" (não faz sentido perguntar se uma
+                // repetição saiu "completa/parcial"), então não usa o cartão
+                // de Ativação+RIR+BLOCOS genérico abaixo. Só existe UM campo de
+                // carga (a técnica não muda o peso entre repetições) e uma
+                // fileira de toques — tocar em Rn já é confirmar aquela rep.
+                if (prescricao?.form === "singles") {
+                  const todas = [{ idx: activationIdx, row: activation }, ...blocks];
+                  const feitas = todas.filter((r) => r.row.completed).length;
+                  const indicesDoGrupo = todas.map((r) => r.idx);
+                  return (
+                    <React.Fragment key={`tec-${activationIdx}`}>
+                      <TechniqueHeader label={prescricao.label} cue={prescricao.cue} />
+                      <Card
+                        padded={false}
+                        style={{ marginBottom: spacing.sm, borderWidth: 1.5, borderColor: colors.primary + "3A" }}
+                      >
+                        <View style={{ padding: spacing.sm }}>
+                          <View style={{ flexDirection: "row", alignItems: "center" }}>
+                            <View
+                              style={{
+                                width: 30, height: 30, borderRadius: 15,
+                                backgroundColor: colors.primary + "22",
+                                alignItems: "center", justifyContent: "center",
+                              }}
+                            >
+                              <Ionicons name="flash" size={15} color={colors.primary} />
+                            </View>
+                            <Text style={[type.caption, { color: colors.primary, fontWeight: "700", flex: 1, marginLeft: spacing.sm }]}>
+                              Carga · {feitas}/{todas.length} repetições
+                            </Text>
+                            <SetInput
+                              compact
+                              value={activation.weight}
+                              onChangeText={(v) => updateWeightAcrossGroup(exerciseIndex, indicesDoGrupo, v)}
+                            />
+                          </View>
+
+                          <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", marginTop: spacing.sm, gap: 6 }}>
+                            {todas.map(({ idx, row }, i) => (
+                              <RepChip
+                                key={idx}
+                                number={i + 1}
+                                completed={row.completed}
+                                saving={salvando.has(`${exerciseIndex}:${idx}`)}
+                                disabled={!row.weight}
+                                onPress={() => handleConfirmSet(exerciseIndex, idx)}
+                              />
+                            ))}
+                          </View>
+                        </View>
+                      </Card>
+                    </React.Fragment>
+                  );
+                }
 
                 return (
                   <React.Fragment key={`tec-${activationIdx}`}>
@@ -858,6 +953,51 @@ function ConfirmCheck({
         <ActivityIndicator size="small" color={colors.textSecondary} />
       ) : (
         <Ionicons name="checkmark" size={22} color={completed ? colors.textOnPrimary : colors.textSecondary} />
+      )}
+    </TouchableOpacity>
+  );
+}
+
+/** Chip "R1"/"R2"... do rest-pause — uma repetição avulsa. Diferente do
+ * BlockChip (que abre um painel pra escolher completo/parcial/não saiu), aqui
+ * o toque JÁ confirma: uma repetição não tem "quanto fechou", só feita ou não. */
+function RepChip({
+  number,
+  completed,
+  saving,
+  disabled,
+  onPress,
+}: {
+  number: number;
+  completed: boolean;
+  saving: boolean;
+  disabled: boolean;
+  onPress: () => void;
+}) {
+  const { colors, type } = useTheme();
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={completed || saving || disabled}
+      hitSlop={4}
+      style={{
+        width: 34,
+        height: 34,
+        borderRadius: 12,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: completed ? colors.secondary : colors.surfaceAlt,
+        borderWidth: 1.5,
+        borderColor: completed ? colors.secondary : colors.border,
+        opacity: disabled && !completed ? 0.5 : 1,
+      }}
+    >
+      {saving ? (
+        <ActivityIndicator size="small" color={colors.textSecondary} />
+      ) : completed ? (
+        <Ionicons name="checkmark" size={16} color={colors.textOnPrimary} />
+      ) : (
+        <Text style={[type.caption, { color: colors.textSecondary, fontWeight: "800" }]}>R{number}</Text>
       )}
     </TouchableOpacity>
   );

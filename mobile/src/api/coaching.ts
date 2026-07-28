@@ -268,7 +268,7 @@ export type WorkoutOverlay = {
 };
 
 /** Que interface a execução monta pra uma técnica avançada prescrita. */
-export type TechniqueForm = "activation_blocks" | "cluster" | "drop" | "cue_only";
+export type TechniqueForm = "singles" | "activation_blocks" | "cluster" | "drop" | "cue_only";
 
 /** Overlays ativos pro lado do treino (técnica + progressão/troca por exercício
  * + deload global). A prévia e a execução leem e mostram no exercício certo. */

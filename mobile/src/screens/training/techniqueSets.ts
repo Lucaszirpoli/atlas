@@ -20,12 +20,14 @@ export type SetRole =
   | "prep"
   /** série de trabalho reta: peso, reps e RIR */
   | "work"
-  /** ativação (myo-reps/rest-pause) ou série principal (cluster/drop) */
+  /** ativação (myo-reps) ou série principal (cluster/drop/singles) */
   | "activation"
   /** mini-set clicável — no lugar do RIR mostra o campo BLOCO */
   | "block"
-  /** queda de carga do drop-set / back-off */
-  | "drop";
+  /** queda de carga do back-off */
+  | "drop"
+  /** 1 repetição avulsa do rest-pause — feita ou não feita, sem status de bloco */
+  | "single_rep";
 
 export type SetRow = {
   weight: string;
@@ -52,6 +54,9 @@ export type SetRow = {
   groupStart?: boolean;
   /** Marca a última linha do grupo, pra fechar o bloco visual. */
   groupEnd?: boolean;
+  /** Série ADICIONADA pela pessoa ("+ série extra"), não prescrita pela
+   * rotina — só estas podem ser removidas (e só antes de confirmadas). */
+  manuallyAdded?: boolean;
 };
 
 export type TechniquePrescription = {
@@ -127,7 +132,28 @@ export function expandTechnique(
   const st = setTypeFor(tech.key);
   const linhas: SetRow[] = [];
 
-  if (tech.form === "activation_blocks") {
+  if (tech.form === "singles") {
+    // Rest-pause: N repetições AVULSAS da MESMA carga, uma por vez — não é
+    // bloco (bloco tem "quanto fechou": 2/2 reps, completo/parcial). Uma
+    // repetição só tem feita ou não feita, então nenhuma linha aqui pede
+    // status — o próprio toque de confirmar é o "feita".
+    const total = tech.activationReps + tech.blocks * tech.blockReps;
+    for (let i = 1; i <= total; i++) {
+      linhas.push({
+        ...(i === 1 ? ultima : base()),
+        role: i === 1 ? "activation" : "single_rep",
+        setType: st,
+        blockIndex: i - 1,
+        blockLabel: `R${i}`,
+        weight: peso,
+        reps: "1",
+        repsLocked: true,
+        restAfterS: tech.restBetweenBlocksS,
+        groupStart: i === 1,
+        groupEnd: i === total,
+      });
+    }
+  } else if (tech.form === "activation_blocks") {
     linhas.push({
       ...ultima,
       role: "activation",
@@ -244,7 +270,7 @@ export function buildDisplayItems(sets: SetRow[]): DisplayItem[] {
     if (row.role === "activation" && row.groupStart) {
       const blocks: { idx: number; row: SetRow }[] = [];
       let j = i + 1;
-      while (j < sets.length && (sets[j].role === "block" || sets[j].role === "drop")) {
+      while (j < sets.length && (sets[j].role === "block" || sets[j].role === "drop" || sets[j].role === "single_rep")) {
         blocks.push({ idx: j, row: sets[j] });
         const fechou = sets[j].groupEnd;
         j++;
