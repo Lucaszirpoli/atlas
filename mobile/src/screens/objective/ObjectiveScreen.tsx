@@ -1,18 +1,21 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 import {
   activateObjectivePlan,
+  applyPersonalDiet,
   COMPONENT_LABEL,
   discardObjectiveDraft,
   formatAnswer,
   getObjectiveState,
+  getPersonalDiet,
   getQuestionnaire,
   saveObjectiveDraft,
   type Answers,
   type ObjectiveState,
   type PendingChange,
+  type PersonalDiet,
   type PlanSummary,
   type QuestionField,
   type Questionnaire,
@@ -22,8 +25,10 @@ import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { HelpDot } from "../../components/HelpDot";
+import { InfoDialog } from "../../components/InfoDialog";
 import { useTheme } from "../../theme/ThemeProvider";
 import { mensagemDeErro } from "../../utils/errorMessage";
+import { exportDietAsPdf } from "../../utils/pdfExport";
 
 /**
  * ABA OBJETIVO (Premium) — o centro visual e informacional do Coaching.
@@ -42,11 +47,9 @@ import { mensagemDeErro } from "../../utils/errorMessage";
 type Modo = "resumo" | "questionario" | "atualizado";
 
 export function ObjectiveScreen({
-  onOpenDietPdf,
   onScrollTop,
   onPlanActivated,
 }: {
-  onOpenDietPdf: () => void;
   /** Avisa a tela do Coaching que o plano mudou, pra ela recarregar a análise.
    * Sem isto, logo depois de "Seu plano foi atualizado" o card do coach acima
    * continuava mostrando o objetivo ANTIGO — duas versões da verdade na mesma
@@ -73,6 +76,65 @@ export function ObjectiveScreen({
   const [verMetas, setVerMetas] = useState(false);
   const [metaAtual, setMetaAtual] = useState<CalorieGoal | null>(null);
   const [planoNovo, setPlanoNovo] = useState<PlanSummary | null>(null);
+
+  // "Ver dieta em PDF" — modal interno (não uma tela navegada): a dieta que o
+  // Coaching montou pra ESSA pessoa (meta + restrições do questionário), nunca
+  // as dietas prontas genéricas (essas ficam só na aba Dieta).
+  const [dietaAberta, setDietaAberta] = useState(false);
+  const [dieta, setDieta] = useState<PersonalDiet | null>(null);
+  const [carregandoDieta, setCarregandoDieta] = useState(false);
+  const [erroDieta, setErroDieta] = useState<string | null>(null);
+  const [baixandoDieta, setBaixandoDieta] = useState(false);
+  const [aplicandoDieta, setAplicandoDieta] = useState(false);
+  const [confirmarUsarDieta, setConfirmarUsarDieta] = useState(false);
+  const [sucessoDieta, setSucessoDieta] = useState<string | null>(null);
+
+  async function abrirDietaPdf() {
+    setDietaAberta(true);
+    setErroDieta(null);
+    setCarregandoDieta(true);
+    try {
+      setDieta(await getPersonalDiet());
+    } catch (e: any) {
+      setErroDieta(mensagemDeErro(e, "Não consegui montar sua dieta agora."));
+    } finally {
+      setCarregandoDieta(false);
+    }
+  }
+
+  async function baixarDietaPdf() {
+    if (!dieta || baixandoDieta) return;
+    setBaixandoDieta(true);
+    try {
+      await exportDietAsPdf({
+        name: dieta.name,
+        tagline: dieta.tagline,
+        meals: dieta.meals.map((m) => ({
+          category: m.category,
+          items: m.items.map((i) => ({ food_name: i.food_name, quantity_g: i.quantity_g, kcal: i.kcal })),
+        })),
+        totals: dieta.totals,
+      });
+    } finally {
+      setBaixandoDieta(false);
+    }
+  }
+
+  async function usarDietaHoje() {
+    setConfirmarUsarDieta(false);
+    setAplicandoDieta(true);
+    try {
+      const r = await applyPersonalDiet();
+      setSucessoDieta(
+        `Registrei sua dieta no diário de hoje — ${r.items_logged} alimentos, ${r.totals.kcal} kcal. ` +
+          "Você pode ajustar ou remover qualquer item na aba Dieta."
+      );
+    } catch (e: any) {
+      setErroDieta(mensagemDeErro(e, "Não consegui registrar agora."));
+    } finally {
+      setAplicandoDieta(false);
+    }
+  }
 
   const carregar = useCallback(async () => {
     setErro(null);
@@ -440,7 +502,7 @@ export function ObjectiveScreen({
               getCurrentGoal().then(setMetaAtual).catch(() => {});
             }}
           />
-          <Button title="Ver dieta em PDF" variant="secondary" onPress={onOpenDietPdf} />
+          <Button title="Ver dieta em PDF" variant="secondary" onPress={abrirDietaPdf} />
           <TouchableOpacity onPress={() => setModo("resumo")} style={{ alignItems: "center", paddingVertical: spacing.sm }}>
             <Text style={[type.bodySmall, { color: colors.textSecondary, fontWeight: "700" }]}>
               Voltar pro meu objetivo
@@ -546,7 +608,7 @@ export function ObjectiveScreen({
           pronta). "Ver meu treino" e "Ver análise" saíram: quem quiser essas
           informações vai direto nas abas Treino e Coaching. */}
       <View style={{ gap: spacing.xs, marginBottom: spacing.md }}>
-        <Atalho icon="document-text" tint={colors.info} title="Ver dieta em PDF" onPress={onOpenDietPdf} />
+        <Atalho icon="document-text" tint={colors.info} title="Ver dieta em PDF" onPress={abrirDietaPdf} />
       </View>
 
       {/* Metas nutricionais — só consulta. Editar é só pelo questionário
@@ -679,6 +741,145 @@ export function ObjectiveScreen({
         destructive
         onConfirm={descartar}
       />
+
+      {/* Dieta personalizada — montada pelo Coaching (meta + restrições do
+          questionário), nunca uma dieta pronta genérica. Modal em vez de tela
+          navegada: mesmo padrão do preview de "Dietas prontas" na aba Dieta. */}
+      <Modal
+        visible={dietaAberta}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setDietaAberta(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: colors.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: "88%" }}>
+            {carregandoDieta || !dieta ? (
+              <View style={{ padding: spacing.xxl, alignItems: "center" }}>
+                {erroDieta ? (
+                  <>
+                    <Text style={[type.body, { color: colors.textPrimary, textAlign: "center", marginBottom: spacing.md }]}>
+                      {erroDieta}
+                    </Text>
+                    <Button title="Fechar" variant="secondary" compact onPress={() => setDietaAberta(false)} />
+                  </>
+                ) : (
+                  <ActivityIndicator color={colors.primary} size="large" />
+                )}
+              </View>
+            ) : (
+              <>
+                <View
+                  style={{
+                    flexDirection: "row", alignItems: "center", padding: spacing.lg,
+                    borderBottomWidth: 1, borderBottomColor: colors.border,
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={[type.h1, { color: colors.textPrimary }]}>{dieta.name}</Text>
+                    <Text style={[type.bodySmall, { color: colors.textSecondary, marginTop: 2 }]}>{dieta.tagline}</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => setDietaAberta(false)} hitSlop={10}>
+                    <Ionicons name="close" size={26} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView contentContainerStyle={{ padding: spacing.lg }} showsVerticalScrollIndicator={false}>
+                  <View
+                    style={{
+                      flexDirection: "row", justifyContent: "space-around",
+                      backgroundColor: colors.surface, borderRadius: radius.card, borderWidth: 1, borderColor: colors.border,
+                      paddingVertical: spacing.md, marginBottom: spacing.md,
+                    }}
+                  >
+                    <Total label="kcal" value={`${dieta.totals.kcal}`} colors={colors} type={type} />
+                    <Total label="proteína" value={`${Math.round(dieta.totals.protein_g)}g`} colors={colors} type={type} />
+                    <Total label="carbo" value={`${Math.round(dieta.totals.carbs_g)}g`} colors={colors} type={type} />
+                    <Total label="gordura" value={`${Math.round(dieta.totals.fat_g)}g`} colors={colors} type={type} />
+                  </View>
+
+                  {dieta.restrictions.length > 0 ? (
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: spacing.md }}>
+                      {dieta.restrictions.map((r) => (
+                        <View key={r} style={{ backgroundColor: colors.surfaceAlt, borderRadius: radius.pill, paddingVertical: 4, paddingHorizontal: 10 }}>
+                          <Text style={[type.caption, { color: colors.textSecondary, fontSize: 11 }]}>{r}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+
+                  {dieta.meals.map((meal) => (
+                    <View key={meal.category} style={{ marginBottom: spacing.md }}>
+                      <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "700", marginBottom: spacing.xs }]}>
+                        {meal.category}
+                      </Text>
+                      {meal.items.map((it) => (
+                        <View key={it.food_id + it.food_name} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 4 }}>
+                          <Text style={[type.bodySmall, { color: colors.textPrimary, flex: 1 }]} numberOfLines={1}>
+                            {it.food_name}
+                            <Text style={{ color: colors.textSecondary }}> · {Math.round(it.quantity_g)}g</Text>
+                          </Text>
+                          <Text style={[type.caption, { color: colors.textSecondary }]}>{Math.round(it.kcal)} kcal</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ))}
+                </ScrollView>
+
+                <View style={{ padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border }}>
+                  <TouchableOpacity
+                    onPress={baixarDietaPdf}
+                    disabled={baixandoDieta}
+                    style={{
+                      flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+                      paddingVertical: 10, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border,
+                      marginBottom: spacing.sm,
+                    }}
+                  >
+                    {baixandoDieta ? (
+                      <ActivityIndicator size="small" color={colors.textSecondary} />
+                    ) : (
+                      <Ionicons name="download-outline" size={16} color={colors.textSecondary} />
+                    )}
+                    <Text style={[type.bodySmall, { color: colors.textSecondary, fontWeight: "700" }]}>Baixar PDF</Text>
+                  </TouchableOpacity>
+                  <Button title="Usar esta dieta hoje" onPress={() => setConfirmarUsarDieta(true)} loading={aplicandoDieta} />
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      <ConfirmDialog
+        visible={confirmarUsarDieta}
+        onClose={() => setConfirmarUsarDieta(false)}
+        title="Usar esta dieta hoje?"
+        message={
+          dieta
+            ? `Vou registrar as ${dieta.meals.length} refeições (${dieta.totals.kcal} kcal) no seu diário de hoje. Isso não apaga o que você já registrou — só adiciona.`
+            : undefined
+        }
+        confirmLabel="Registrar"
+        onConfirm={usarDietaHoje}
+      />
+      <InfoDialog
+        visible={sucessoDieta !== null}
+        onClose={() => {
+          setSucessoDieta(null);
+          setDietaAberta(false);
+        }}
+        title="Dieta registrada ✓"
+        message={sucessoDieta ?? undefined}
+      />
+    </View>
+  );
+}
+
+function Total({ label, value, colors, type }: { label: string; value: string; colors: any; type: any }) {
+  return (
+    <View style={{ alignItems: "center" }}>
+      <Text style={[type.h2, { color: colors.textPrimary }]}>{value}</Text>
+      <Text style={[type.caption, { color: colors.textSecondary, fontSize: 11 }]}>{label}</Text>
     </View>
   );
 }
