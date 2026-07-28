@@ -314,6 +314,20 @@ def _treino_insight(
         return Insight("treino", SEV_ATTENTION, "Frequência de treino baixa", f"Média de {t.sessions_per_week:.1f} "
                        "treinos/semana. Abaixo de 2× por grupo o estímulo cai — mire 2–3×.", chart="carga")
     if t.stalled_lifts:
+        # ANTES de prescrever técnica ou volume, investigar a causa (§6.2). Um
+        # platô quase nunca é falta de série: é sono curto, comida de menos,
+        # frequência baixa ou fadiga acumulada. Empilhar volume em cima de uma
+        # dessas é o erro clássico — piora o que já estava ruim.
+        causa = _causa_provavel_do_plato(m)
+        if causa is not None:
+            nomes = ", ".join(s["name"] for s in t.stalled_lifts)
+            return Insight(
+                "treino", SEV_ATTENTION, "Progressão travada — e eu acho que sei por quê",
+                f"{nomes} não subiu nas últimas semanas. Antes de mexer no treino: {causa} "
+                "Resolvido isso, a carga costuma voltar a subir sozinha — se não voltar, aí sim eu "
+                "entro com técnica ou volume.",
+                chart="carga",
+            )
         # Só oferece técnica pros que AINDA não têm uma dica aplicada. Sem isto, a
         # barra reoferecia pra sempre a mesma técnica mesmo depois de aplicada (a
         # técnica não "destrava" o lift na hora — vira dica na prévia do treino),
@@ -410,6 +424,62 @@ def _insights(
     if pendentes is not None:
         insights.insert(0, pendentes)
     return insights
+
+
+def _causa_provavel_do_plato(m: Metrics) -> str | None:
+    """Causa upstream de um platô, quando existe uma clara (§6.2).
+
+    Ordem de investigação: primeiro o que sustenta o treino (frequência, sono,
+    comida), depois a fadiga acumulada. None = nada evidente; aí sim faz sentido
+    mexer em técnica/volume. Nunca acusa: descreve o que os dados mostram.
+    """
+    t, n, s = m.training, m.nutrition, m.sleep
+
+    # 1) ADESÃO — não dá pra progredir no que não foi treinado.
+    if t.window_days >= 14 and t.sessions_per_week < MIN_SESSIONS_PER_WEEK:
+        return (
+            f"sua frequência está em {t.sessions_per_week:.1f} treinos/semana. Abaixo de 2× por grupo o "
+            "estímulo não se acumula — voltar pra 3 dias fixos costuma resolver mais que qualquer técnica."
+        )
+
+    # 2) SONO — é onde a adaptação acontece.
+    if s.nights >= 4 and s.avg_hours is not None and s.avg_hours < 6.5:
+        return (
+            f"você está dormindo {s.avg_hours:g}h por noite (mediana). Força e recuperação caem rápido "
+            "abaixo de 7h — é o suspeito número um de carga travada."
+        )
+
+    # 3) ALIMENTAÇÃO — sem matéria-prima não tem adaptação. Só quando a leitura
+    #    tem confiança suficiente pra afirmar isso (§10.4).
+    if n.avg_confidence not in ("insuficiente", "baixa") and n.avg_kcal_logged and n.goal_kcal:
+        if n.avg_kcal_logged < n.goal_kcal * 0.85:
+            falta = round(n.goal_kcal - n.avg_kcal_logged)
+            return (
+                f"sua média está {falta} kcal/dia abaixo da meta. Treinar num déficit maior que o planejado "
+                "trava carga antes de qualquer outra coisa."
+            )
+        alvo_prot = _protein_target(m)
+        if alvo_prot and n.avg_protein_logged and n.avg_protein_logged < alvo_prot * 0.8:
+            return (
+                f"a proteína está em {round(n.avg_protein_logged)}g/dia contra um alvo de {round(alvo_prot)}g. "
+                "Fechar a proteína costuma destravar mais que série extra."
+            )
+
+    # 4) FADIGA ACUMULADA — volume caindo com carga travada é sinal de que o
+    #    corpo já está pedindo recuperação, não mais estímulo.
+    if t.volume_trend_pct is not None and t.volume_trend_pct < -10:
+        return (
+            f"seu volume total caiu {abs(t.volume_trend_pct):.0f}% no período. Carga travada com volume "
+            "caindo é fadiga acumulada — uma semana leve resolve mais que uma técnica de intensidade."
+        )
+
+    # 5) DADO INSUFICIENTE — honestidade antes de palpite.
+    if n.avg_confidence == "insuficiente" and s.nights < 4:
+        return (
+            "ainda tenho pouco registro de dieta e de sono no período pra saber se o problema é o treino ou "
+            "a recuperação. Registrando alguns dias eu consigo apontar a causa em vez de chutar."
+        )
+    return None
 
 
 def _dias_incompletos_insight(m: Metrics) -> Insight | None:

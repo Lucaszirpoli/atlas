@@ -11,6 +11,8 @@ o mesmo output. A camada de conversa (IA Pro) só traduz isto; não muda a decis
 
 from __future__ import annotations
 
+from app.models.exercise import MuscleGroup
+
 # ---------------------------------------------------------------------------
 # PONTO FRACO — grupos que fazem sentido priorizar nos acessórios. (Valores
 # batem com o enum MuscleGroup; o motor de treino já sabe priorizar.)
@@ -412,23 +414,79 @@ def suggested_work_rir(period: str) -> int:
 # duas conta no número de séries do título/log book — é preparação, não
 # trabalho (regra 5). O feeder NÃO é rampa: é uma única série a 50%.
 # ---------------------------------------------------------------------------
-def warmup_feeder_ramp_for(base_weight_kg: float | None) -> list[dict]:
+def warmup_feeder_ramp_for(
+    base_weight_kg: float | None,
+    *,
+    include_warmup: bool = True,
+    include_feeder: bool = True,
+) -> list[dict]:
     """Aquecimento (25% da carga, 12–15 reps) + feeder (50% da carga, 8–10
     reps). `base_weight_kg` é a carga mais pesada entre as séries de trabalho
-    e de falha do exercício (o mais pesado entre os dois). Sempre retorna as
-    duas séries — na primeira vez no exercício ainda não há carga pra basear
-    o peso, então weight_kg vem None e a pessoa preenche na mão (mesmo padrão
-    das séries de trabalho sem histórico)."""
+    e de falha do exercício (o mais pesado entre os dois). Sem histórico, o
+    peso vem None e a pessoa preenche na mão.
+
+    `include_warmup=False` quando o grupo/padrão JÁ foi preparado antes na
+    mesma sessão (§6.3): tríceps depois do supino não precisa de aquecimento
+    geral de novo — repetir isso só rouba tempo e energia do treino.
+    `include_feeder` continua valendo mesmo com o músculo aquecido, quando o
+    exercício é pesado ou tem um padrão bem diferente (série de aproximação).
+    """
 
     def _round(kg: float) -> float | None:
         return round(kg * 2) / 2 if kg else None  # incremento de 0.5kg
 
     base = base_weight_kg if base_weight_kg and base_weight_kg > 0 else None
-    return [
-        {"kind": "warmup", "label": "Aquecimento",
-         "weight_kg": _round(base * 0.25) if base else None,
-         "reps_min": 12, "reps_max": 15},
-        {"kind": "feeder", "label": "Feeder",
-         "weight_kg": _round(base * 0.50) if base else None,
-         "reps_min": 8, "reps_max": 10},
-    ]
+    out: list[dict] = []
+    if include_warmup:
+        out.append({"kind": "warmup", "label": "Aquecimento",
+                    "weight_kg": _round(base * 0.25) if base else None,
+                    "reps_min": 12, "reps_max": 15})
+    if include_feeder:
+        out.append({"kind": "feeder", "label": "Feeder",
+                    "weight_kg": _round(base * 0.50) if base else None,
+                    "reps_min": 8, "reps_max": 10})
+    return out
+
+
+# ---------------------------------------------------------------------------
+# QUEM PREPARA QUEM (§6.3). Ao treinar o músculo-chave, estes já entram
+# aquecidos junto e não pedem aquecimento próprio depois na mesma sessão.
+#
+# A tabela da spec é explícita e tem uma assimetria de propósito:
+#   supino  -> tríceps e ombro JÁ aquecidos  (empurrar carrega os dois)
+#   remada  -> bíceps NÃO                    (rosca é o primeiro trabalho
+#                                             direto específico de bíceps)
+# ---------------------------------------------------------------------------
+_PREPARA: dict[MuscleGroup, tuple[MuscleGroup, ...]] = {
+    MuscleGroup.CHEST: (MuscleGroup.TRICEPS, MuscleGroup.SHOULDERS),
+    MuscleGroup.SHOULDERS: (MuscleGroup.TRICEPS,),
+    MuscleGroup.TRICEPS: (),
+    # Costas prepara costas e trapézio; bíceps continua pedindo o dele.
+    MuscleGroup.BACK: (MuscleGroup.TRAPS,),
+    MuscleGroup.BICEPS: (MuscleGroup.FOREARMS,),
+    # Mesma lógica nas pernas: agachar/levantar já prepara glúteo e posterior.
+    MuscleGroup.QUADS: (MuscleGroup.GLUTES, MuscleGroup.HAMSTRINGS),
+    MuscleGroup.HAMSTRINGS: (MuscleGroup.GLUTES,),
+    MuscleGroup.GLUTES: (),
+}
+
+
+def prepared_by(muscle: MuscleGroup) -> tuple[MuscleGroup, ...]:
+    """Músculos que ficam prontos de carona ao treinar `muscle`."""
+    return (muscle,) + _PREPARA.get(muscle, ())
+
+
+def needs_warmup(
+    primary_muscle: MuscleGroup, already_prepared: set[MuscleGroup]
+) -> bool:
+    """Este exercício abre o trabalho desse grupo na sessão? Só nesse caso o
+    aquecimento geral entra (§6.3)."""
+    return primary_muscle not in already_prepared
+
+
+def needs_feeder(is_compound: bool, warmed: bool) -> bool:
+    """Feeder é diferente de aquecimento e continua existindo mesmo com o
+    músculo quente: um exercício PESADO (composto) merece uma série de
+    aproximação antes da série valendo. Isolado com o músculo já preparado vai
+    direto pro trabalho."""
+    return True if not warmed else is_compound

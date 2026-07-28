@@ -97,6 +97,11 @@ def build_prefill(db: Session, user: User, routine: Routine) -> list[dict]:
     period = cycle_state.current_period(db, user.id)
     suggested_rir = training_brain.suggested_work_rir(period)
     prefill = []
+    # Aquecimento entra APENAS quando a sessão começa a trabalhar um grupo
+    # ainda não preparado (§6.3). Percorre os exercícios na ORDEM do treino e
+    # vai marcando o que já ficou pronto: depois do supino, o tríceps não pede
+    # aquecimento geral de novo. Feeder é outra coisa e continua existindo.
+    ja_preparados: set = set()
     for routine_exercise in routine.exercises:
         performance = get_last_performance(db, user.id, routine_exercise.exercise_id)
         item = performance or {
@@ -106,10 +111,21 @@ def build_prefill(db: Session, user: User, routine: Routine) -> list[dict]:
         item["suggested_rir"] = suggested_rir
         # Aquecimento/feeder se baseiam na carga MAIS PESADA das séries de
         # trabalho/falha da última vez (o "mais pesado entre os dois"). Sem
-        # histórico o peso vem None (warmup_feeder_ramp_for já trata isso) —
-        # as duas séries continuam aparecendo, só sem peso sugerido.
+        # histórico o peso vem None (warmup_feeder_ramp_for já trata isso).
         base_weight = max((s["weight_kg"] for s in item["sets"]), default=None)
-        item["warmup_feeder"] = training_brain.warmup_feeder_ramp_for(base_weight)
+
+        exercise = routine_exercise.exercise or db.get(Exercise, routine_exercise.exercise_id)
+        muscle = exercise.primary_muscle_group if exercise else None
+        aquecer = muscle is None or training_brain.needs_warmup(muscle, ja_preparados)
+        item["warmup_feeder"] = training_brain.warmup_feeder_ramp_for(
+            base_weight,
+            include_warmup=aquecer,
+            include_feeder=training_brain.needs_feeder(
+                bool(exercise.is_compound) if exercise else True, warmed=not aquecer
+            ),
+        )
+        if muscle is not None:
+            ja_preparados.update(training_brain.prepared_by(muscle))
         prefill.append(item)
     return prefill
 

@@ -93,17 +93,28 @@ def build_and_save(db: Session, user: User) -> dict:
                 continue
             slot_count_by_muscle[sl.muscle_group] = slot_count_by_muscle.get(sl.muscle_group, 0) + 1
 
+    # O volume de TODOS os músculos sai de uma vez: subir o ponto fraco obriga a
+    # baixar o resto (equalização do §6.1). Calcular músculo a músculo não
+    # enxerga o custo sistêmico e a semana inteira estoura junto.
+    musculos: list[MuscleGroup] = []
+    desconhecidos: list[str] = []
+    for muscle_value in slot_count_by_muscle:
+        try:
+            musculos.append(MuscleGroup(muscle_value))
+        except ValueError:
+            desconhecidos.append(muscle_value)
+
+    plano_semanal = volume_landmarks.weekly_plan(musculos, exp, weeks_acc, weak_points=wps)
+
     base_by_muscle: dict[str, int] = {}
     remainder_by_muscle: dict[str, int] = {}
-    for muscle_value, n_slots in slot_count_by_muscle.items():
-        try:
-            muscle = MuscleGroup(muscle_value)
-        except ValueError:
-            base_by_muscle[muscle_value], remainder_by_muscle[muscle_value] = 3, 0
-            continue
-        weekly = volume_landmarks.weekly_target_sets(muscle, exp, weeks_acc)
-        base_by_muscle[muscle_value] = weekly // n_slots
-        remainder_by_muscle[muscle_value] = weekly % n_slots
+    for muscle_value in desconhecidos:
+        base_by_muscle[muscle_value], remainder_by_muscle[muscle_value] = 3, 0
+    for muscle in musculos:
+        n_slots = slot_count_by_muscle[muscle.value]
+        weekly = plano_semanal[muscle]
+        base_by_muscle[muscle.value] = weekly // n_slots
+        remainder_by_muscle[muscle.value] = weekly % n_slots
 
     # Substitui o treino ativo: arquiva o que existe (não deleta) e cria o novo.
     for r in db.execute(
