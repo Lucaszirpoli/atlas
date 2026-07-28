@@ -261,8 +261,22 @@ def build_and_save(db: Session, user: User) -> dict:
             if ja_ativa is not None:
                 aplicadas_na_sessao += 1  # já tem técnica: ocupa o mesmo orçamento de fadiga
                 continue
+            # As MESMAS quatro entradas que a análise de platô e o "aplicar
+            # técnica" manual usam (suggest_technique): ponto fraco > tempo por
+            # sessão > fase do ciclo > composto/isolado. O montador fixava
+            # "intensificacao" e não passava o ponto fraco, então dois caminhos
+            # do mesmo coach prescreviam técnicas diferentes pro mesmo
+            # exercício — e a fase de acumulação (cluster/myo-reps) nunca era
+            # alcançada na montagem, apesar de existir na regra.
+            try:
+                eh_ponto_fraco = MuscleGroup(finisher.muscle_group) in wps
+            except ValueError:
+                eh_ponto_fraco = False
             tech_key, tech_label, cue_text = training_brain.suggest_technique(
-                finisher.is_compound, "intensificacao", session_length=profile.session_length
+                finisher.is_compound,
+                training_brain.training_period(weeks_acc),
+                session_length=profile.session_length,
+                is_weak_point=eh_ponto_fraco,
             )
             db.add(CoachingTechniqueCue(
                 user_id=user.id, finding_key=f"densidade:{finisher.exercise_id}",
