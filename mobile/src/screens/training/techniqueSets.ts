@@ -179,17 +179,21 @@ export function expandTechnique(
       });
     }
   } else if (tech.form === "drop") {
-    linhas.push({ ...ultima, role: "activation", setType: st, blockIndex: 0, blockLabel: "Série principal", groupStart: true });
+    // Hoje só o back-off usa esta forma (1 top set + N quedas encadeadas) — os
+    // rótulos já nascem no vocabulário dele ("Top set" / "Back-off"), não um
+    // "Série principal"/"Queda" genérico de quando drop-set também existia aqui.
+    linhas.push({ ...ultima, role: "activation", setType: st, blockIndex: 0, blockLabel: "Top set", groupStart: true });
     const pesoBase = Number(peso.replace(",", "."));
     for (let i = 1; i <= tech.drops; i++) {
       const fator = Math.pow(1 - tech.dropPct / 100, i);
       const sugerido = Number.isFinite(pesoBase) && pesoBase > 0 ? String(Math.round(pesoBase * fator * 2) / 2) : "";
+      const rotulo = tech.drops > 1 ? `Back-off ${i} · −${tech.dropPct}%` : `Back-off · −${tech.dropPct}%`;
       linhas.push({
         ...base(),
         role: "drop",
         setType: st,
         blockIndex: i,
-        blockLabel: `Queda ${i} · −${tech.dropPct}%`,
+        blockLabel: rotulo,
         weight: sugerido,
         reps: tech.dropReps ? String(tech.dropReps) : "",
         restAfterS: tech.restBeforeDropS,

@@ -11,6 +11,8 @@ o mesmo output. A camada de conversa (IA Pro) só traduz isto; não muda a decis
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from app.models.exercise import MuscleGroup
 
 # ---------------------------------------------------------------------------
@@ -191,54 +193,72 @@ def training_period(weeks_accumulating: float | None) -> str:
     return "acumulacao" if weeks_accumulating < 3 else "intensificacao"
 
 
-# Catálogo das técnicas avançadas com que o coach trabalha. chave -> (rótulo,
-# como-fazer). As chaves batem com o enum SetType quando existe (rest_pause,
-# drop_set, myo_reps, cluster_set), mas aqui a dica é overlay de execução —
-# título + texto — então não depende disso. Os números e o jeito de contar no
-# log book vêm de definição direta do produto (não são chute): cada técnica
-# tem uma regra explícita de "quanto conta como série", pra bater com o volume
-# real que ela entrega.
-TECHNIQUES: dict[str, tuple[str, str]] = {
-    "rest_pause": (
-        "Rest-pause",
-        "Carga de ~4–5RM: faça 1 repetição por vez, com 10–15s de descanso entre elas, até somar ~10 reps "
-        "no total — dobra o volume efetivo dessa série. Como as reps ficam sempre perto da falha, gerencie "
-        "bem a fadiga: é pontual, não pra toda sessão.",
+@dataclass(frozen=True)
+class TechniqueInfo:
+    """Uma técnica avançada, em texto — o que a pessoa lê pra saber fazer.
+    `how_to` é também o que vira o `cue_text`/`detail` do overlay de execução
+    (spec §7): a instrução de execução tem que estar em cima do exercício, não
+    só numa referência que ninguém abre no meio do treino."""
+
+    label: str
+    when_to_use: str
+    best_application: str
+    how_to: str
+
+
+# Catálogo das técnicas avançadas com que o coach trabalha. Reduzido a 5 —
+# cluster-set e drop-set saíram do catálogo de SUGESTÃO do coach (continuam
+# existindo como tipo de série que a pessoa escolhe na mão, ver SetType /
+# techniqueSets.ts; são independentes deste catálogo). Texto e números vêm de
+# uma revisão explícita do produto (2026-07-28), não são chute.
+TECHNIQUES: dict[str, TechniqueInfo] = {
+    "rest_pause": TechniqueInfo(
+        label="Rest-pause em repetições únicas",
+        when_to_use="Quando o objetivo é realizar mais repetições com uma carga alta, preservando a "
+        "qualidade de cada repetição.",
+        best_application="Exercícios estáveis, especialmente máquinas e compostos guiados.",
+        how_to="Escolha uma carga para aproximadamente 5 repetições máximas. Faça 1 repetição, descanse "
+        "10 segundos e repita. Continue nesse formato até completar 10 repetições totais. Encerre antes "
+        "caso a execução se deteriore.",
     ),
-    "cluster_set": (
-        "Cluster (séries fragmentadas)",
-        "Quebre a série em blocos: 2–4 reps, 15–20s de descanso DENTRO da série, e repita até somar o "
-        "total (ex.: 4×3). Mantém a carga alta com técnica limpa — ideal pra intensificar um composto.",
+    "myo_reps": TechniqueInfo(
+        label="Myo-reps",
+        when_to_use="Quando se deseja aumentar o estímulo com pouco tempo e pouco volume convencional.",
+        best_application="Isoladores, cabos e máquinas estáveis.",
+        how_to="Faça uma série de ativação de 6 repetições, próxima da falha. Descanse cerca de 10–20 "
+        "segundos e realize 3 miniblocos de 2 repetições, mantendo a mesma carga e descansando 10–20 "
+        "segundos entre os blocos.",
     ),
-    "myo_reps": (
-        "Myo-reps",
-        "Série de ativação: 6 reps a 0 RIR (conta como 1 série no log book). Descanse 30–40s e faça um "
-        "bloco de 2 reps; descanse ~20s e repita até fechar 3 blocos de 2 (ativação + 2/2/2). O conjunto "
-        "inteiro conta como 2 séries — acumula volume de verdade num treino curto, sem esticar a sessão.",
+    "muscle_round": TechniqueInfo(
+        label="Muscle round",
+        when_to_use="Quando se busca grande densidade de trabalho e estímulo elevado com carga "
+        "relativamente alta.",
+        best_application="Máquinas muito estáveis e praticantes experientes.",
+        how_to="Use uma carga com a qual conseguiria aproximadamente 8–10 repetições contínuas. Faça 6 "
+        "blocos de 4 repetições, descansando cerca de 10 segundos entre os blocos. A falha ou quase falha "
+        "deve ocorrer nos blocos finais.",
     ),
-    "muscle_round": (
-        "Muscle round",
-        "Escolha uma carga de ~8RM e fragmente em 6 blocos de 4 reps, com 15–20s de descanso entre eles "
-        "(24 reps no total). Um muscle round completo conta como 2 séries no log book, sempre (não "
-        "triplica por ter mais blocos). Mesma ideia do myo-reps: volume eficiente em pouco tempo.",
+    "back_off": TechniqueInfo(
+        label="Top set + back-off",
+        when_to_use="Quando se quer combinar uma série pesada com uma série posterior de maior volume.",
+        best_application="Supino, agachamento, remadas, desenvolvimento, leg press e máquinas compostas.",
+        how_to="Após o aquecimento, faça 1 top set de 4–8 repetições em 1–2 RIR. Depois, reduza a carga "
+        "em aproximadamente 8–15% e faça somente 1 série de back-off de 6–12 repetições, próxima da "
+        "falha técnica.",
     ),
-    "back_off": (
-        "Back-off",
-        "Depois de 2 séries retas, descanse 30s, tire ~30% da carga e faça mais 8 reps. Conta como MEIA "
-        "série extra no log book — é um teste de tolerância a mais volume antes de comprometer com uma "
-        "série reta a mais de verdade.",
-    ),
-    "superset_antagonista": (
-        "Superset antagonista",
-        "Emende o exercício com um do músculo oposto (peito↔costas, bíceps↔tríceps, quadríceps↔posterior) "
-        "sem descanso entre eles. Ganha densidade e um ajuda a recuperação do outro, sem perder carga.",
-    ),
-    "drop_set": (
-        "Drop-set",
-        "Na última série: ao falhar, tire ~20–30% da carga e siga sem descanso até falhar de novo. "
-        "Um choque de volume pra destravar o isolado.",
+    "superset_antagonista": TechniqueInfo(
+        label="Superset antagonista",
+        when_to_use="Quando é necessário economizar tempo sem concentrar toda a fadiga no mesmo grupo "
+        "muscular.",
+        best_application="Bíceps + tríceps, peito + costas, extensora + flexora.",
+        how_to="Faça o exercício A e, após 0–30 segundos, execute o exercício B. Depois de completar os "
+        "dois, descanse 90–180 segundos antes de repetir. Trabalhe geralmente em 8–15 repetições e 1–2 RIR.",
     ),
 }
+
+
+def technique_info(key: str) -> TechniqueInfo | None:
+    return TECHNIQUES.get(key)
 
 # ---------------------------------------------------------------------------
 # ESTRUTURA das técnicas — o que a tela de execução precisa MONTAR.
@@ -257,16 +277,10 @@ TECHNIQUES: dict[str, tuple[str, str]] = {
 TECHNIQUE_STRUCTURES: dict[str, dict] = {
     "rest_pause": {
         "form": "activation_blocks",
-        "activation_reps": 5,      # carga ~4-5RM
-        "blocks": 5,
+        "activation_reps": 5,      # carga ~5RM
+        "blocks": 5,               # 5×1 + a ativação = 10 reps totais
         "block_reps": 1,
-        "rest_between_blocks_s": 12,
-    },
-    "cluster_set": {
-        "form": "cluster",
-        "blocks": 4,
-        "block_reps": 3,
-        "rest_between_blocks_s": 18,
+        "rest_between_blocks_s": 10,
     },
     "myo_reps": {
         # Ativação com 6 reps FIXAS e carga livre pra digitar — padrão definido
@@ -275,26 +289,27 @@ TECHNIQUE_STRUCTURES: dict[str, dict] = {
         "activation_reps": 6,
         "blocks": 3,
         "block_reps": 2,
-        "first_rest_s": 35,
-        "rest_between_blocks_s": 20,
+        "first_rest_s": 15,
+        "rest_between_blocks_s": 15,
     },
     "muscle_round": {
         "form": "cluster",
         "blocks": 6,
         "block_reps": 4,
-        "rest_between_blocks_s": 18,
+        "rest_between_blocks_s": 10,
     },
-    "drop_set": {
-        "form": "drop",
-        "drops": 2,
-        "drop_pct": 25,
-    },
+    # 1 top set pesado + 1 ÚNICA série de back-off — não é mais "2 séries retas
+    # + meia extra". `drops: 1` + target_sets forçado a 1 pelo peso em
+    # TECHNIQUE_SET_WEIGHT (ver per_exercise_max_with_technique) fazem a última
+    # série reta virar o top set, com o back-off encadeado depois dela.
+    # `drop_reps: None` deixa a pessoa digitar (a faixa 6–12 é larga demais pra
+    # travar um número só).
     "back_off": {
         "form": "drop",
         "drops": 1,
-        "drop_pct": 30,
-        "drop_reps": 8,
-        "rest_before_drop_s": 30,
+        "drop_pct": 12,       # meio da faixa 8–15%
+        "drop_reps": None,
+        "rest_before_drop_s": 20,
     },
     "superset_antagonista": {"form": "cue_only"},
 }
@@ -311,23 +326,30 @@ def technique_structure(key: str) -> dict:
 # o texto de TECHNIQUES já promete (rest-pause "dobra o volume", myo-reps e
 # muscle round "contam como 2 séries", back-off "MEIA série extra"). Técnica
 # sem multiplicador documentado vale 1 (não credita volume além do normal).
+#
+# back_off vale 2 por um motivo diferente dos outros: não é "dobra o volume da
+# mesma série", é o PRÓPRIO PESO que faz per_exercise_max_with_technique (forma
+# "drop": teto = PER_EXERCISE_MAX - peso) reduzir o exercício a 1 série reta —
+# que é exatamente o top set. É essa 1 série + o back-off encadeado que forma
+# o "1 top set + 1 back-off" da técnica, nunca mais que isso.
 TECHNIQUE_SET_WEIGHT: dict[str, float] = {
     "rest_pause": 2,
-    "cluster_set": 1,
     "myo_reps": 2,
     "muscle_round": 2,
-    "back_off": 0.5,
+    "back_off": 2,
     "superset_antagonista": 1,
-    "drop_set": 1,
 }
 
 
 # Fallback por (composto?, período) pro caso "meio-termo" (tempo médio/não
 # definido, sem ser ponto fraco): acumulação puxa densidade/volume,
 # intensificação puxa intensidade — o resto do critério é session_length e
-# ponto fraco, tratados em suggest_technique.
+# ponto fraco, tratados em suggest_technique. Composto+acumulação usa muscle
+# round (mesma lógica de "densidade com carga relativamente alta" que o
+# catálogo já atribui a ela) — só isolado+intensificação usa muscle round
+# também, o que é intencional: a técnica serve pros dois casos.
 _TECH_BY_PERIOD: dict[tuple[bool, str], str] = {
-    (True, "acumulacao"): "cluster_set",
+    (True, "acumulacao"): "muscle_round",
     (True, "intensificacao"): "rest_pause",
     (False, "acumulacao"): "myo_reps",
     (False, "intensificacao"): "muscle_round",
@@ -366,9 +388,9 @@ def suggest_technique(
     elif session_length == "longo":
         key = "back_off"
     else:
-        key = _TECH_BY_PERIOD.get((is_compound, period)) or ("rest_pause" if is_compound else "drop_set")
-    label, cue = TECHNIQUES[key]
-    return key, label, cue
+        key = _TECH_BY_PERIOD.get((is_compound, period)) or ("rest_pause" if is_compound else "myo_reps")
+    info = TECHNIQUES[key]
+    return key, info.label, info.how_to
 
 
 # ---------------------------------------------------------------------------

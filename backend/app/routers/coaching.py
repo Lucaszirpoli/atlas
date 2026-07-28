@@ -828,14 +828,18 @@ def workout_overlays(
         # de uma técnica precisa valer pra quem já tem a dica aplicada, senão a
         # explicação antiga (ex.: contagem de blocos que mudou) fica pra sempre
         # na tela de quem mais precisa dela. O que a dica guarda é QUAL técnica
-        # é — o texto dela é do código.
-        label, cue = training_brain.TECHNIQUES.get(
-            c.technique, (c.technique_label, c.cue_text)
-        )
+        # é — o texto dela é do código. Técnica que saiu do catálogo (ex.:
+        # cluster-set/drop-set, removidos em 2026-07-28) cai no que ficou
+        # gravado — nunca quebra a tela de quem já tinha a dica aplicada.
+        info = training_brain.technique_info(c.technique)
+        label = info.label if info else c.technique_label
+        cue = info.how_to if info else c.cue_text
         out.append(WorkoutOverlay(source="technique", id=c.id, kind="technique",
                                   exercise_id=c.exercise_id, exercise_name=c.exercise_name,
                                   title=label, detail=cue,
                                   payload={"technique": c.technique,
+                                           "when_to_use": info.when_to_use if info else None,
+                                           "best_application": info.best_application if info else None,
                                            **training_brain.technique_structure(c.technique)}))
     for a in db.execute(
         select(CoachingAction).where(
