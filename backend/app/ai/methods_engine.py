@@ -524,43 +524,62 @@ def add_accessory_slot(
     muscle: MuscleGroup,
     *,
     prefer_machines: bool = False,
+    max_per_session: int = 9,
 ) -> PlannedSlot | None:
-    """Acrescenta UMA vaga isolada do `muscle` ao plano e devolve a vaga criada
-    (None se não houver exercício novo ou nenhuma sessão que treine o músculo).
+    """Acrescenta UMA vaga do `muscle` ao plano e devolve a vaga criada (None se
+    não houver exercício novo, nenhuma sessão que treine o músculo, ou todas as
+    candidatas já estarem no teto de vagas).
 
-    Existe pro caso do PONTO FRACO cujo volume semanal não cabe nas vagas que
-    ele já tem: a saída certa é outro EXERCÍCIO do mesmo músculo, não mais
-    séries empilhadas na mesma vaga (uma vaga tem teto de séries de trabalho
-    efetivas, e passar dele é fadiga sem estímulo novo).
+    Existe porque o volume semanal de um músculo pode não caber nas vagas que
+    ele tem: a saída certa é outro EXERCÍCIO, não mais séries empilhadas na
+    mesma vaga (uma vaga tem teto de séries de trabalho efetivas, e passar dele
+    é fadiga sem estímulo novo).
 
-    A vaga entra no FIM da sessão que já treina esse músculo — nunca num dia
-    que não é dele (peito no dia de perna não vira prioridade, vira treino
-    incoerente) — e é sempre isolada, o que também mantém a regra de ordem
-    "nenhum isolado antes de um composto" (validate_plan, item 3).
+    A vaga entra no FIM da sessão que já treina esse músculo — nunca num dia que
+    não é dele (peito no dia de perna não vira volume, vira treino incoerente).
+
+    Isolada por padrão, o que mantém de graça a regra de ordem "nenhum isolado
+    antes de um composto" (validate_plan, item 3). Quando a sessão precisa de
+    composto pra não furar a proporção do método, entra um composto — e aí a
+    vaga é inserida ANTES do primeiro isolado, não no fim.
     """
     usados = {sl.exercise_id for s in plan.sessions for sl in s.slots if sl.exercise_id is not None}
-    escolhidos = _pick(db, [muscle], False, 1, usados, False, prefer_machines)
-    if not escolhidos:
-        return None
-    ex = escolhidos[0]
 
-    # A sessão com MENOS vagas entre as que já treinam o músculo — assim o dia
-    # que já está cheio não é o que cresce.
+    # A sessão com MENOS vagas entre as que já treinam o músculo e ainda cabem —
+    # assim o dia que já está cheio não é o que cresce.
     candidatas = [
         s for s in plan.sessions
-        if any(sl.muscle_group == muscle.value for sl in s.slots)
+        if len(s.slots) < max_per_session
+        and any(sl.muscle_group == muscle.value for sl in s.slots)
     ]
     if not candidatas:
         return None
     sessao = min(candidatas, key=lambda s: len(s.slots))
 
+    # Composto ou isolado? Mantém a proporção do método dentro da tolerância de
+    # 1 vaga que validate_plan cobra — encher a sessão só de isolado furaria a
+    # proporção e o plano deixaria de ser fiel ao método.
+    ratio = plan_compound_ratio(plan)
+    n_compostos = sum(1 for sl in sessao.slots if sl.is_compound)
+    quer_composto = (n_compostos + 1) <= round((len(sessao.slots) + 1) * ratio)
+
+    escolhidos = _pick(db, [muscle], quer_composto, 1, usados, False, prefer_machines)
+    if not escolhidos and quer_composto:
+        # Vários músculos não têm composto próprio (bíceps, panturrilha) — cai
+        # pro isolado em vez de desistir da vaga.
+        quer_composto = False
+        escolhidos = _pick(db, [muscle], False, 1, usados, False, prefer_machines)
+    if not escolhidos:
+        return None
+    ex = escolhidos[0]
+
     # Herda os parâmetros (séries/reps/descanso) das vagas da própria sessão —
     # o método continua mandando; o que muda é só existir mais uma vaga.
     modelo = sessao.slots[-1]
     slot = PlannedSlot(
-        order=len(sessao.slots) + 1,
+        order=0,  # reordenado abaixo
         muscle_group=muscle.value,
-        is_compound=False,
+        is_compound=quer_composto,
         exercise_id=ex.id,
         exercise_name=ex.name,
         sets=modelo.sets,
@@ -570,8 +589,25 @@ def add_accessory_slot(
         rir=modelo.rir,
         note=modelo.note,
     )
-    sessao.slots.append(slot)
+    if quer_composto:
+        primeiro_isolado = next(
+            (i for i, sl in enumerate(sessao.slots) if not sl.is_compound), len(sessao.slots)
+        )
+        sessao.slots.insert(primeiro_isolado, slot)
+    else:
+        sessao.slots.append(slot)
+    for i, sl in enumerate(sessao.slots, start=1):
+        sl.order = i
     return slot
+
+
+def plan_compound_ratio(plan: WorkoutPlan) -> float:
+    """Proporção composto/total que o plano JÁ pratica — serve de alvo pra
+    qualquer vaga acrescentada depois manter o método fiel."""
+    total = sum(len(s.slots) for s in plan.sessions)
+    if total == 0:
+        return 0.5
+    return sum(1 for s in plan.sessions for sl in s.slots if sl.is_compound) / total
 
 
 def validate_plan(method: MethodSpec, plan: WorkoutPlan) -> list[str]:

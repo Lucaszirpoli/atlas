@@ -25,10 +25,20 @@ from app.models.routine import Routine, RoutineExercise
 from app.models.user import User
 
 
-# Teto de vagas EXTRAS por ponto fraco. Sem um limite, um alvo semanal alto num
-# músculo com muitas opções na base encheria a sessão inteira de um grupo só —
-# "priorizar" viraria "só treinar isso".
-_MAX_EXTRA_SLOTS_POR_PONTO_FRACO = 2
+# Teto de vagas acrescentadas numa montagem. É uma trava de segurança do laço
+# (o alvo semanal no pico do mesociclo pede ~32 vagas contra as ~20 do plano
+# base), não uma meta — quem para o laço de verdade é o alvo ter sido atingido.
+_MAX_VAGAS_EXTRAS = 24
+
+# Exercícios por sessão que o coach não passa, mesmo com volume sobrando. É o
+# mesmo teto que build_plan já respeita; passar disso deixa de ser treino e
+# vira maratona, por mais denso que a técnica avançada deixe a sessão.
+_MAX_EXERCICIOS_POR_SESSAO = 9
+
+# Técnicas avançadas por sessão. Elas são o que segura o tempo quando o volume
+# manda acrescentar exercício, mas todas trabalham perto da falha — em exercício
+# demais viram fadiga que não recupera, e aí o volume extra não vira estímulo.
+_MAX_TECNICAS_POR_SESSAO = 3
 
 
 def _first_int(s, default: int) -> int:
@@ -113,29 +123,45 @@ def build_and_save(db: Session, user: User) -> dict:
 
     plano_semanal = volume_landmarks.weekly_plan(musculos, exp, weeks_acc, weak_points=wps)
 
-    # --- PONTO FRACO SEM VAGA SUFICIENTE -> OUTRO EXERCÍCIO -----------------
+    # --- VOLUME QUE NÃO CABE NAS VAGAS -> OUTRO EXERCÍCIO -------------------
     # Uma vaga entrega no máximo PER_EXERCISE_MAX séries de trabalho efetivas.
-    # Quando o alvo semanal de um ponto fraco não cabe nas vagas que ele tem, a
-    # saída é ACRESCENTAR EXERCÍCIO, não empilhar série: passar do teto por vaga
-    # é fadiga sem estímulo novo, e era o que fazia o volume extra do ponto
-    # fraco simplesmente sumir (o clamp cortava e ninguém ficava sabendo).
+    # Quando o alvo semanal de um músculo não cabe nas vagas que ele tem, a
+    # saída é ACRESCENTAR EXERCÍCIO, não empilhar série na mesma vaga: passar do
+    # teto por vaga é fadiga sem estímulo novo. Sem isto o clamp do teto cortava
+    # o excedente em silêncio e a semana saía subdosada sem ninguém saber.
     #
-    # Só o(s) ponto(s) fraco(s) ganham vaga nova — os demais músculos aceitam o
-    # volume que couber. É a escolha de produto: a sessão só cresce onde a
-    # pessoa pediu prioridade.
+    # Vale pra TODO músculo, não só pro ponto fraco — equilibrar com exercício é
+    # o mecanismo, e a densidade (técnica avançada, abaixo) é o que segura o
+    # tempo. O músculo com maior falta é servido primeiro; empate pelo nome pra
+    # a montagem continuar determinística.
+    #
+    # O alvo semanal SOBE ao longo do mesociclo (volume_landmarks._progress), o
+    # que faz o número de exercícios subir junto — que é o que fase de
+    # acumulação significa. No início do ciclo quase nada é acrescentado.
     exercicios_extras: list[str] = []
-    for muscle in wps:
-        if muscle not in plano_semanal:
+    ids_extras: set[int] = set()
+    for _ in range(_MAX_VAGAS_EXTRAS):
+        faltas = [
+            (plano_semanal[m] - slot_count_by_muscle.get(m.value, 0) * volume_landmarks.PER_EXERCISE_MAX, m.value, m)
+            for m in musculos
+            if plano_semanal[m] > slot_count_by_muscle.get(m.value, 0) * volume_landmarks.PER_EXERCISE_MAX
+        ]
+        if not faltas:
+            break
+        _, _, muscle = max(faltas, key=lambda f: (f[0], f[1]))
+        slot = methods_engine.add_accessory_slot(
+            db, plan, muscle, prefer_machines=curto, max_per_session=_MAX_EXERCICIOS_POR_SESSAO
+        )
+        if slot is None:
+            # Sem exercício novo desse músculo na base (ou sessões cheias): o
+            # alvo dele não fecha. Tira ele da fila pra não travar o laço e
+            # deixar os outros músculos sem serem servidos.
+            slot_count_by_muscle[muscle.value] = slot_count_by_muscle.get(muscle.value, 0)
+            plano_semanal[muscle] = slot_count_by_muscle[muscle.value] * volume_landmarks.PER_EXERCISE_MAX
             continue
-        for _ in range(_MAX_EXTRA_SLOTS_POR_PONTO_FRACO):
-            vagas = slot_count_by_muscle.get(muscle.value, 0)
-            if vagas * volume_landmarks.PER_EXERCISE_MAX >= plano_semanal[muscle]:
-                break
-            slot = methods_engine.add_accessory_slot(db, plan, muscle, prefer_machines=curto)
-            if slot is None:
-                break  # acabaram os exercícios novos desse músculo na base
-            slot_count_by_muscle[muscle.value] = vagas + 1
-            exercicios_extras.append(slot.exercise_name)
+        slot_count_by_muscle[muscle.value] = slot_count_by_muscle.get(muscle.value, 0) + 1
+        exercicios_extras.append(slot.exercise_name)
+        ids_extras.add(slot.exercise_id)
 
     base_by_muscle: dict[str, int] = {}
     remainder_by_muscle: dict[str, int] = {}
@@ -154,15 +180,23 @@ def build_and_save(db: Session, user: User) -> dict:
         r.is_archived = True
     db.flush()
 
-    # Sessão CURTA: hipertrofia é volume-dependente, então o ÚLTIMO composto e
-    # o ÚLTIMO isolado de cada dia já nascem com a série fragmentada — muscle
-    # round no composto, myo-reps no isolado (mesmo critério do
-    # suggest_technique) — pra render mais volume sem esticar um treino de
-    # pouco tempo. Os dois porque compostos vêm sempre antes na sessão (regra
-    # de ordem do motor): pegar só "o último exercício" pegaria sempre um
-    # isolado e muscle round nunca apareceria. Não sobrescreve uma dica já
-    # ativa nesse exercício por outro motivo (ex.: platô) nem duplica ao
-    # refazer o treino.
+    # TÉCNICA AVANÇADA = DENSIDADE. Ela é o que paga o tempo dos exercícios que
+    # o volume mandou acrescentar: a mesma quantidade de séries de trabalho
+    # efetivas sai com descanso de 15–40s dentro da série em vez de 60–90s
+    # entre séries retas. Ganham técnica:
+    #
+    #   - o último composto e o último isolado do dia, quando a sessão é CURTA
+    #     (os dois porque composto vem sempre antes na ordem: pegar só "o
+    #     último exercício" pegaria sempre um isolado e muscle round nunca
+    #     apareceria);
+    #   - todo exercício ACRESCENTADO pelo preenchimento de volume acima, em
+    #     qualquer tamanho de sessão — ele só existe pra fechar o alvo semanal,
+    #     então é exatamente onde a densidade tem que entrar.
+    #
+    # Com teto por sessão: técnica perto da falha em exercício demais é fadiga
+    # que não recupera (o próprio texto do rest-pause diz "é pontual, não pra
+    # toda sessão"). Não sobrescreve dica já ativa por outro motivo (ex.: platô)
+    # nem duplica ao refazer o treino.
     technique_applied: list[str] = []
     # Todo RoutineExercise criado nesta montagem, por exercício (o mesmo
     # exercício pode aparecer em mais de um dia). O teto por técnica é aplicado
@@ -203,30 +237,40 @@ def build_and_save(db: Session, user: User) -> dict:
             total_ex += 1
         nomes.append(nome)
 
+        candidatos: list = []
         if curto:
-            last_compound = next((sl for sl in reversed(slots) if sl.is_compound), None)
-            last_isolation = next((sl for sl in reversed(slots) if not sl.is_compound), None)
-            for finisher in (last_compound, last_isolation):
-                if finisher is None:
-                    continue
-                ja_ativa = db.execute(
-                    select(CoachingTechniqueCue.id).where(
-                        CoachingTechniqueCue.user_id == user.id,
-                        CoachingTechniqueCue.exercise_id == finisher.exercise_id,
-                        CoachingTechniqueCue.reverted_at.is_(None),
-                    )
-                ).scalar_one_or_none()
-                if ja_ativa is not None:
-                    continue
-                tech_key, tech_label, cue_text = training_brain.suggest_technique(
-                    finisher.is_compound, "intensificacao", session_length="curto"
+            candidatos.append(next((sl for sl in reversed(slots) if sl.is_compound), None))
+            candidatos.append(next((sl for sl in reversed(slots) if not sl.is_compound), None))
+        candidatos += [sl for sl in slots if sl.exercise_id in ids_extras]
+
+        vistos: set[int] = set()
+        aplicadas_na_sessao = 0
+        for finisher in candidatos:
+            if finisher is None or finisher.exercise_id in vistos:
+                continue
+            vistos.add(finisher.exercise_id)
+            if aplicadas_na_sessao >= _MAX_TECNICAS_POR_SESSAO:
+                break
+            ja_ativa = db.execute(
+                select(CoachingTechniqueCue.id).where(
+                    CoachingTechniqueCue.user_id == user.id,
+                    CoachingTechniqueCue.exercise_id == finisher.exercise_id,
+                    CoachingTechniqueCue.reverted_at.is_(None),
                 )
-                db.add(CoachingTechniqueCue(
-                    user_id=user.id, finding_key=f"session_curto:{finisher.exercise_id}",
-                    exercise_id=finisher.exercise_id, exercise_name=finisher.exercise_name,
-                    technique=tech_key, technique_label=tech_label, cue_text=cue_text,
-                ))
-                technique_applied.append(f"{tech_label} no {finisher.exercise_name}")
+            ).scalar_one_or_none()
+            if ja_ativa is not None:
+                aplicadas_na_sessao += 1  # já tem técnica: ocupa o mesmo orçamento de fadiga
+                continue
+            tech_key, tech_label, cue_text = training_brain.suggest_technique(
+                finisher.is_compound, "intensificacao", session_length=profile.session_length
+            )
+            db.add(CoachingTechniqueCue(
+                user_id=user.id, finding_key=f"densidade:{finisher.exercise_id}",
+                exercise_id=finisher.exercise_id, exercise_name=finisher.exercise_name,
+                technique=tech_key, technique_label=tech_label, cue_text=cue_text,
+            ))
+            technique_applied.append(f"{tech_label} no {finisher.exercise_name}")
+            aplicadas_na_sessao += 1
     db.flush()
 
     # --- TETO DE SÉRIES DE TRABALHO EFETIVAS --------------------------------
@@ -258,9 +302,8 @@ def build_and_save(db: Session, user: User) -> dict:
     technique_note = None
     if technique_applied:
         technique_note = (
-            "Tempo curto: já marquei fragmentação de série (pra render volume sem alongar o treino) no "
-            "principal composto e no isolado final de cada dia — " + "; ".join(technique_applied) + ". Vê na "
-            "prévia do treino; dá pra remover em 'O que o coach mudou'."
+            "Marquei fragmentação de série (rende volume com descanso curto dentro da própria série) em "
+            + "; ".join(technique_applied) + ". Vê na prévia do treino; dá pra remover em 'O que o coach mudou'."
         )
 
     weak_labels = [training_brain.WEAK_POINT_LABEL[w] for w in weak_values]
@@ -270,10 +313,10 @@ def build_and_save(db: Session, user: User) -> dict:
     extra_note = None
     if exercicios_extras:
         extra_note = (
-            f"Pra dar conta do volume semanal de {weak_label}, acrescentei "
+            f"Pra fechar seu volume semanal acrescentei {len(exercicios_extras)} exercício(s): "
             + ", ".join(exercicios_extras)
-            + ". É outro exercício em vez de mais séries no mesmo: passar do teto de séries por "
-            "exercício acumula fadiga sem estímulo novo."
+            + ". É outro exercício em vez de mais séries no mesmo — passar do teto de séries por "
+            "exercício acumula fadiga sem estímulo novo. O treino cresce ao longo do ciclo e alivia no deload."
         )
     if profile.wants_cardio:
         cardio_note = ("Como você quer cardio, inclua 2× de 20–30 min na semana (esteira, bike ou elíptico), "
