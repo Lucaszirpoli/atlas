@@ -239,6 +239,72 @@ TECHNIQUES: dict[str, tuple[str, str]] = {
     ),
 }
 
+# ---------------------------------------------------------------------------
+# ESTRUTURA das técnicas — o que a tela de execução precisa MONTAR.
+# ---------------------------------------------------------------------------
+# O texto acima ensina a técnica; isto aqui é a técnica em forma de dados, pra
+# ela virar séries e campos de registro de verdade na sessão ativa (spec §7) em
+# vez de um aviso decorativo que a pessoa lê e ignora.
+#
+# `form` diz qual interface a execução monta:
+#   "activation_blocks" — 1 série de ativação + N mini-sets clicáveis (myo-reps,
+#                          muscle round, rest-pause: mesma mecânica de blocos)
+#   "cluster"           — blocos dentro da MESMA série, com pausa curta entre eles
+#   "drop"              — série principal + quedas de carga encadeadas
+#   "cue_only"          — não muda a estrutura da série (ex.: superset, que é
+#                          sobre emendar DOIS exercícios, não sobre a série)
+TECHNIQUE_STRUCTURES: dict[str, dict] = {
+    "rest_pause": {
+        "form": "activation_blocks",
+        "activation_reps": 5,      # carga ~4-5RM
+        "blocks": 5,
+        "block_reps": 1,
+        "rest_between_blocks_s": 12,
+    },
+    "cluster_set": {
+        "form": "cluster",
+        "blocks": 4,
+        "block_reps": 3,
+        "rest_between_blocks_s": 18,
+    },
+    "myo_reps": {
+        # Ativação com 6 reps FIXAS e carga livre pra digitar — padrão definido
+        # pro app (spec §7.1). Os 3 blocos de 2 vêm depois da ativação.
+        "form": "activation_blocks",
+        "activation_reps": 6,
+        "blocks": 3,
+        "block_reps": 2,
+        "first_rest_s": 35,
+        "rest_between_blocks_s": 20,
+    },
+    "muscle_round": {
+        "form": "cluster",
+        "blocks": 4,
+        "block_reps": 4,
+        "rest_between_blocks_s": 18,
+    },
+    "drop_set": {
+        "form": "drop",
+        "drops": 2,
+        "drop_pct": 25,
+    },
+    "back_off": {
+        "form": "drop",
+        "drops": 1,
+        "drop_pct": 30,
+        "drop_reps": 8,
+        "rest_before_drop_s": 30,
+    },
+    "superset_antagonista": {"form": "cue_only"},
+}
+
+
+def technique_structure(key: str) -> dict:
+    """Estrutura da técnica em dados, pra execução materializar as séries.
+    Técnica desconhecida vira "cue_only" — nunca quebra a tela de treino."""
+    return TECHNIQUE_STRUCTURES.get(key, {"form": "cue_only"})
+
+
 # Fallback por (composto?, período) pro caso "meio-termo" (tempo médio/não
 # definido, sem ser ponto fraco): acumulação puxa densidade/volume,
 # intensificação puxa intensidade — o resto do critério é session_length e

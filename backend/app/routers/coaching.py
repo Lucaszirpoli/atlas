@@ -801,9 +801,14 @@ def workout_overlays(
             CoachingTechniqueCue.reverted_at.is_(None),
         )
     ).scalars():
+        # A ESTRUTURA da técnica vai junto: sem ela a execução só teria um
+        # texto pra mostrar, e a técnica prescrita viraria enfeite. Com ela, a
+        # tela monta as séries e os campos de registro do método (spec §7).
         out.append(WorkoutOverlay(source="technique", id=c.id, kind="technique",
                                   exercise_id=c.exercise_id, exercise_name=c.exercise_name,
-                                  title=c.technique_label, detail=c.cue_text, payload={}))
+                                  title=c.technique_label, detail=c.cue_text,
+                                  payload={"technique": c.technique,
+                                           **training_brain.technique_structure(c.technique)}))
     for a in db.execute(
         select(CoachingAction).where(
             CoachingAction.user_id == current_user.id,

@@ -231,6 +231,10 @@ def _stalled_lifts(db: Session, user_id: int, since: datetime, tz: ZoneInfo) -> 
             WorkoutSession.completed_at.is_not(None),
             WorkoutSetLog.weight_kg > 0,
             WorkoutSetLog.reps > 0,
+            # Mini-set de técnica avançada (myo-reps, cluster) não é série de
+            # trabalho: um bloco de 2 reps não diz nada sobre progressão de
+            # carga e só faria o e1RM do dia parecer pior do que foi.
+            _sem_bloco(),
         )
     ).all()
 
@@ -281,6 +285,15 @@ _PROG_REP_CEIL_BODYWEIGHT = 18
 _NON_WORKING_SETS = {"warmup", "feeder"}
 
 
+def _sem_bloco():
+    """Filtro: ignora os MINI-SETS das técnicas avançadas (block_index >= 1).
+    A ativação/série principal (block_index 0 ou NULL) continua contando —
+    é ela que carrega o peso de trabalho de verdade."""
+    from sqlalchemy import or_
+
+    return or_(WorkoutSetLog.block_index.is_(None), WorkoutSetLog.block_index == 0)
+
+
 def _progression_lifts(
     db: Session, user_id: int, since: datetime, stalled_ids: set[int], tz: ZoneInfo
 ) -> list[dict]:
@@ -312,6 +325,7 @@ def _progression_lifts(
             WorkoutSession.started_at >= since,
             WorkoutSession.completed_at.is_not(None),
             WorkoutSetLog.reps > 0,
+            _sem_bloco(),
         )
     ).all()
 

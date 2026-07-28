@@ -75,6 +75,26 @@ def _ensure_routine_exercise_columns() -> None:
             conn.execute(text("ALTER TABLE routine_exercises ADD COLUMN set_intents JSON"))
 
 
+def _ensure_set_log_columns() -> None:
+    """ALTER idempotente pras colunas de BLOCO em workout_set_logs (técnicas
+    avançadas: myo-reps, cluster, rest-pause, drop-set). Mesma regra das
+    outras: select(WorkoutSetLog) roda o tempo todo, então num banco antigo
+    essas colunas precisam existir antes de qualquer consulta."""
+    from sqlalchemy import inspect, text
+
+    existentes = {c["name"] for c in inspect(engine).get_columns("workout_set_logs")}
+    add_cols = [("block_index", "INTEGER", "INTEGER"), ("block_status", "VARCHAR(12)", "VARCHAR(12)")]
+    pg = engine.dialect.name == "postgresql"
+    with engine.begin() as conn:
+        for col, pg_type, sqlite_type in add_cols:
+            if col in existentes:
+                continue
+            if pg:
+                conn.execute(text(f"ALTER TABLE workout_set_logs ADD COLUMN IF NOT EXISTS {col} {pg_type}"))
+            else:
+                conn.execute(text(f"ALTER TABLE workout_set_logs ADD COLUMN {col} {sqlite_type}"))
+
+
 def run() -> None:
     print(f"Criando schema em {engine.url} ...")
     Base.metadata.create_all(bind=engine)
@@ -108,6 +128,9 @@ def run() -> None:
     # set_intents em routine_exercises — mesma regra (select(RoutineExercise)
     # roda o tempo todo em prod).
     _ensure_routine_exercise_columns()
+
+    # Blocos das técnicas avançadas em workout_set_logs — mesma regra.
+    _ensure_set_log_columns()
 
     db = SessionLocal()
     try:

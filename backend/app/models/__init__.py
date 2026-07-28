@@ -12,6 +12,7 @@ from app.models.consent import ConsentRecord
 from app.models.content_report import ContentReport
 from app.models.day_quality import DayMarkStatus, NutritionDayMark
 from app.models.exercise import Exercise
+from app.models.exercise_history_link import ExerciseHistoryLink
 from app.models.feed import FeedComment, FeedPost, FeedReaction
 from app.models.food import Food
 from app.models.friend_request import FriendRequest
@@ -68,4 +69,5 @@ __all__ = [
     "SleepLog",
     "NutritionDayMark",
     "DayMarkStatus",
+    "ExerciseHistoryLink",
 ]

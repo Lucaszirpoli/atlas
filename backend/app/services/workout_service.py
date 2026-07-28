@@ -8,9 +8,29 @@ from app.models.user import User
 from app.models.workout_session import WorkoutSession, WorkoutSetLog
 
 
-def get_last_performance(db: Session, user_id: int, exercise_id: int) -> dict | None:
-    """Última vez que o usuário executou esse exercício, em qualquer rotina —
-    usado para pré-preencher peso/reps na tela de execução."""
+def _inherited_source(db: Session, user_id: int, exercise_id: int) -> int | None:
+    """Exercício de onde este herda histórico, quando a pessoa trocou de
+    exercício e escolheu MANTER os registros (spec §8.1). Segue a cadeia (A->B->C)
+    com teto, pra uma sequência de trocas não virar laço nem consulta infinita."""
+    from app.models.exercise_history_link import ExerciseHistoryLink
+
+    atual = exercise_id
+    vistos = {atual}
+    for _ in range(5):
+        origem = db.execute(
+            select(ExerciseHistoryLink.inherits_from_exercise_id).where(
+                ExerciseHistoryLink.user_id == user_id,
+                ExerciseHistoryLink.exercise_id == atual,
+            )
+        ).scalar_one_or_none()
+        if origem is None or origem in vistos:
+            break
+        vistos.add(origem)
+        atual = origem
+    return None if atual == exercise_id else atual
+
+
+def _last_performance_raw(db: Session, user_id: int, exercise_id: int) -> dict | None:
     last_session_id = db.execute(
         select(WorkoutSetLog.session_id)
         .join(WorkoutSession, WorkoutSession.id == WorkoutSetLog.session_id)
@@ -29,16 +49,47 @@ def get_last_performance(db: Session, user_id: int, exercise_id: int) -> dict | 
             .where(
                 WorkoutSetLog.session_id == last_session_id,
                 WorkoutSetLog.exercise_id == exercise_id,
+                # Mini-set de técnica avançada não serve de referência de carga
+                # pra próxima vez — um bloco de 2 reps não é a série de trabalho.
+                (WorkoutSetLog.block_index.is_(None)) | (WorkoutSetLog.block_index == 0),
             )
             .order_by(WorkoutSetLog.set_number)
         ).scalars()
     )
+    if not sets:
+        return None
     return {
         "exercise_id": exercise_id,
         "last_performed_at": session.started_at,
         "sets": [
             {"set_number": s.set_number, "weight_kg": s.weight_kg, "reps": s.reps} for s in sets
         ],
+    }
+
+
+def get_last_performance(db: Session, user_id: int, exercise_id: int) -> dict | None:
+    """Última vez que o usuário executou esse exercício, em qualquer rotina —
+    usado para pré-preencher peso/reps na tela de execução.
+
+    Sem registro próprio, cai no exercício de ORIGEM quando houve uma troca com
+    "manter registros" — é isso que faz o peso continuar de onde parou depois
+    de trocar de exercício, com a origem identificada."""
+    proprio = _last_performance_raw(db, user_id, exercise_id)
+    if proprio is not None:
+        return proprio
+
+    origem_id = _inherited_source(db, user_id, exercise_id)
+    if origem_id is None:
+        return None
+    herdado = _last_performance_raw(db, user_id, origem_id)
+    if herdado is None:
+        return None
+    origem = db.get(Exercise, origem_id)
+    return {
+        **herdado,
+        "exercise_id": exercise_id,
+        # A UI mostra de onde veio — "carga herdada" sem dizer de quê confunde.
+        "inherited_from_name": origem.name if origem else None,
     }
 
 

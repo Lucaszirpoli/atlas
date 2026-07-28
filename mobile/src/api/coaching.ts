@@ -245,8 +245,30 @@ export type WorkoutOverlay = {
   exercise_name: string | null;
   title: string;
   detail: string;
-  payload: { new_weight?: number | null; to_exercise_id?: number; to_name?: string };
+  payload: {
+    new_weight?: number | null;
+    to_exercise_id?: number;
+    to_name?: string;
+    // --- Técnica prescrita, em forma de DADOS (spec §7) -------------------
+    // Sem isto a técnica seria só um texto por cima do exercício; com isto a
+    // tela de execução monta as séries e os campos de registro do método.
+    technique?: string;
+    /** activation_blocks | cluster | drop | cue_only */
+    form?: TechniqueForm;
+    activation_reps?: number;
+    blocks?: number;
+    block_reps?: number;
+    first_rest_s?: number;
+    rest_between_blocks_s?: number;
+    drops?: number;
+    drop_pct?: number;
+    drop_reps?: number;
+    rest_before_drop_s?: number;
+  };
 };
+
+/** Que interface a execução monta pra uma técnica avançada prescrita. */
+export type TechniqueForm = "activation_blocks" | "cluster" | "drop" | "cue_only";
 
 /** Overlays ativos pro lado do treino (técnica + progressão/troca por exercício
  * + deload global). A prévia e a execução leem e mostram no exercício certo. */

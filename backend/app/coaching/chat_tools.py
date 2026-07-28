@@ -21,6 +21,7 @@ from app.coaching import workout_builder
 from app.core.text import normalize_search_text
 from app.models.coaching_action import CoachingAction
 from app.models.exercise import Exercise, quality_order
+from app.models.exercise_history_link import ExerciseHistoryLink
 from app.models.food import Food
 from app.models.meal import MealCategory
 from app.models.routine import Routine, RoutineExercise
@@ -63,6 +64,17 @@ TOOLS = [
                     ),
                 },
                 "motivo": {"type": "string", "description": "Por que trocar (opcional)."},
+                "manter_registros": {
+                    "type": "boolean",
+                    "description": (
+                        "O que fazer com o histórico do exercício que sai. NÃO preencha na primeira "
+                        "chamada: a ferramenta devolve a pergunta obrigatória e você a faz à pessoa, "
+                        "oferecendo as três opções (manter registros / começar novos registros / "
+                        "cancelar). Só então chame de novo com true (manter séries, repetições, cargas "
+                        "e progressão do exercício anterior) ou false (começar do zero, sem valores "
+                        "pré-preenchidos). Se ela cancelar, NÃO chame a ferramenta de novo."
+                    ),
+                },
             },
             "required": ["exercicio"],
         },
@@ -257,6 +269,27 @@ def run_tool(db: Session, user: User, name: str, tool_input: dict) -> dict:
             alt = _alternative(db, orig)
             if alt is None:
                 return {"for_model": {"erro": f"Não achei uma variação boa pra trocar {orig.name}."}}
+
+        # PERGUNTA OBRIGATÓRIA antes de trocar (spec §8.1): o que fazer com o
+        # histórico do exercício que está saindo. Trocar sem perguntar já custou
+        # a progressão de gente que só queria mudar de aparelho — e a resposta
+        # muda o que a pessoa vê pré-preenchido no próximo treino.
+        manter = tool_input.get("manter_registros")
+        if manter is None:
+            return {
+                "for_model": {
+                    "precisa_confirmar": True,
+                    "de": orig.name,
+                    "para": alt.name,
+                    "pergunte": (
+                        "Deseja manter os registros anteriores de séries, repetições e cargas? "
+                        "Ofereça as três opções: manter registros, começar novos registros, "
+                        "ou cancelar a substituição. Depois chame trocar_exercicio de novo com "
+                        "manter_registros=true ou false. Nada foi alterado ainda."
+                    ),
+                }
+            }
+
         # Edição DEFINITIVA na rotina — não é overlay/sugestão: muda o
         # exercise_id de verdade em toda ocorrência ativa (a rotina pode ter o
         # mesmo exercício em mais de um dia).
@@ -280,10 +313,47 @@ def run_tool(db: Session, user: User, name: str, tool_input: dict) -> dict:
             CoachingAction.kind.in_(("progression", "exercise_swap")), CoachingAction.reverted_at.is_(None),
         )).scalars():
             act.reverted_at = now
+
+        # "Manter registros" cria o LINK de herança: o novo exercício passa a
+        # ler o histórico do antigo até ter o seu. Nada é copiado nem apagado —
+        # as séries antigas continuam no exercício de origem (regra 4).
+        if manter:
+            existente = db.execute(
+                select(ExerciseHistoryLink).where(
+                    ExerciseHistoryLink.user_id == user.id,
+                    ExerciseHistoryLink.exercise_id == alt.id,
+                )
+            ).scalar_one_or_none()
+            if existente is None:
+                db.add(ExerciseHistoryLink(
+                    user_id=user.id, exercise_id=alt.id, inherits_from_exercise_id=orig.id
+                ))
+            else:
+                existente.inherits_from_exercise_id = orig.id
+        else:
+            # "Começar novos registros": o novo exercício começa limpo. Se um
+            # link antigo existia (troca anterior), ele sai — mas o histórico
+            # do exercício de origem continua intacto, só arquivado.
+            for link in db.execute(
+                select(ExerciseHistoryLink).where(
+                    ExerciseHistoryLink.user_id == user.id,
+                    ExerciseHistoryLink.exercise_id == alt.id,
+                )
+            ).scalars():
+                db.delete(link)
+
         db.commit()
+        detalhe = (
+            f"Mantive o histórico de {orig.name} — o peso da próxima vez já vem preenchido."
+            if manter
+            else f"Comecei do zero em {alt.name}. O histórico de {orig.name} continua guardado."
+        )
         return {
-            "for_model": {"ok": True, "de": orig.name, "para": alt.name},
-            "action": {"type": "exercise_swapped", "summary": f"Troquei {orig.name} por {alt.name} no seu treino."},
+            "for_model": {"ok": True, "de": orig.name, "para": alt.name, "manteve_registros": bool(manter)},
+            "action": {
+                "type": "exercise_swapped",
+                "summary": f"Troquei {orig.name} por {alt.name} no seu treino. {detalhe}",
+            },
         }
 
     if name == "registrar_refeicao":

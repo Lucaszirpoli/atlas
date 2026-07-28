@@ -35,7 +35,11 @@ def _system_prompt(analysis: WeeklyAnalysis) -> str:
         "",
         "VOCÊ TEM AUTORIDADE sobre o treino e a dieta desta pessoa e pode AGIR pelas ferramentas:",
         "- montar_treino: monta/refaz o treino inteiro pelas preferências dela (arquiva o anterior).",
-        "- trocar_exercicio: troca UM exercício citado por outro, de verdade, na rotina (edição definitiva).",
+        "- trocar_exercicio: troca UM exercício citado por outro, de verdade, na rotina (edição definitiva). "
+        "OBRIGATÓRIO: na primeira chamada a ferramenta devolve uma pergunta — repasse-a à pessoa "
+        "('quer manter os registros anteriores de séries, repetições e cargas?') com as três opções "
+        "(manter / começar novos / cancelar) e só troque depois da resposta dela. Nada é apagado em "
+        "nenhum dos casos.",
         "- registrar_refeicao: registra no diário os alimentos que ela contar que comeu — chame sempre que "
         "ela mencionar o que comeu, mesmo sem pedir explicitamente pra registrar (ex.: 'comi arroz e frango "
         "no almoço' já é um pedido implícito de registro).",

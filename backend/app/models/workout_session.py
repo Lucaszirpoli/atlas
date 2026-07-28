@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, func
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -68,6 +68,19 @@ class WorkoutSetLog(Base):
     set_type: Mapped[SetType] = mapped_column(Enum(SetType, name="set_type"), default=SetType.STRAIGHT)
     rpe: Mapped[float | None] = mapped_column(Float, nullable=True)
     rir: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # --- Técnicas avançadas com blocos (spec §7) -----------------------------
+    # Myo-reps, cluster, rest-pause e drop-set não são "uma série": são uma
+    # ativação/série principal + N mini-sets. Cada bloco é uma LINHA própria
+    # (append-only, igual ao resto do histórico), identificada por:
+    #   block_index = 0 -> ativação / série principal; 1..N -> os blocos.
+    #   block_status = como o bloco terminou. Nos blocos, este campo substitui
+    #     o RIR na interface — perguntar RIR de um mini-set de 2 reps não faz
+    #     sentido; o que importa é se fechou, fechou parcial ou não saiu.
+    block_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    block_status: Mapped[str | None] = mapped_column(
+        String(12), nullable=True
+    )  # completo | parcial | nao_concluido
 
     completed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

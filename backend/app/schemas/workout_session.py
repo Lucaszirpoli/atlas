@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -28,6 +29,9 @@ class ExercisePrefill(BaseModel):
     exercise_id: int
     last_performed_at: datetime | None
     sets: list[LastSetPerformance]
+    # Quando os números vieram de OUTRO exercício (troca com "manter registros"),
+    # o nome de origem vai junto — a pessoa precisa saber de onde saiu a carga.
+    inherited_from_name: str | None = None
     # RIR sugerido pra série de trabalho reta (a até-a-falha é sempre RIR 0,
     # já sabida por set_intents — isso aqui só vale pras séries sem intenção).
     suggested_rir: int = 2
@@ -60,6 +64,10 @@ class WorkoutSetLogCreate(BaseModel):
     set_type: SetType = SetType.STRAIGHT
     rpe: float | None = Field(default=None, ge=0, le=10)
     rir: int | None = Field(default=None, ge=0, le=10)
+    # Técnicas com blocos: 0 = ativação/série principal, 1..N = mini-sets.
+    # Null nas séries retas normais.
+    block_index: int | None = Field(default=None, ge=0, le=20)
+    block_status: Literal["completo", "parcial", "nao_concluido"] | None = None
 
 
 class WorkoutSetLogUpdate(BaseModel):
@@ -85,6 +93,8 @@ class WorkoutSetLogRead(BaseModel):
     set_type: SetType
     rpe: float | None
     rir: int | None
+    block_index: int | None = None
+    block_status: str | None = None
     completed_at: datetime
 
 

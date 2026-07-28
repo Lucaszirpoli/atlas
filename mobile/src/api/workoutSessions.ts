@@ -39,11 +39,19 @@ export type ExercisePrefill = {
   exercise_id: number;
   last_performed_at: string | null;
   sets: { set_number: number; weight_kg: number; reps: number }[];
+  /** Nome do exercício de ORIGEM quando os números vieram de uma troca com
+   * "manter registros" — a pessoa precisa saber de onde saiu a carga. */
+  inherited_from_name?: string | null;
   /** RIR sugerido pra série de trabalho reta (a até-a-falha já é sempre RIR 0). */
   suggested_rir: number;
   /** Aquecimento + feeder — sempre as duas séries; sem histórico, weight_kg vem null. */
   warmup_feeder: WarmupFeederSet[];
 };
+
+/** Como um bloco de técnica avançada terminou. Nos mini-sets este campo
+ * SUBSTITUI o RIR (spec §7.1): perguntar RIR de um bloco de 2 reps não diz
+ * nada — o que importa é se fechou, fechou pela metade ou não saiu. */
+export type BlockStatus = "completo" | "parcial" | "nao_concluido";
 
 export type WorkoutSetLog = {
   id: number;
@@ -56,6 +64,9 @@ export type WorkoutSetLog = {
   set_type: SetType;
   rpe: number | null;
   rir: number | null;
+  /** 0 = ativação/série principal, 1..N = mini-sets. null = série reta. */
+  block_index: number | null;
+  block_status: BlockStatus | null;
   completed_at: string;
 };
 
@@ -102,6 +113,8 @@ export async function logSet(
     set_type?: SetType;
     rpe?: number | null;
     rir?: number | null;
+    block_index?: number | null;
+    block_status?: BlockStatus | null;
   }
 ): Promise<WorkoutSetLog> {
   const { data } = await api.post<WorkoutSetLog>(`/workout-sessions/${sessionId}/sets`, payload);
