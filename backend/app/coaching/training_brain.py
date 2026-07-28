@@ -218,10 +218,9 @@ TECHNIQUES: dict[str, tuple[str, str]] = {
     ),
     "muscle_round": (
         "Muscle round",
-        "Escolha uma carga de ~8RM e fragmente em blocos de 4 reps, com 15–20s de descanso entre eles — "
-        "no mínimo 4 blocos, no máximo 6 (16–24 reps no total). Um muscle round completo conta como 2 "
-        "séries no log book, sempre (não triplica mesmo fechando os 6 blocos). Mesma ideia do myo-reps: "
-        "volume eficiente em pouco tempo.",
+        "Escolha uma carga de ~8RM e fragmente em 6 blocos de 4 reps, com 15–20s de descanso entre eles "
+        "(24 reps no total). Um muscle round completo conta como 2 séries no log book, sempre (não "
+        "triplica por ter mais blocos). Mesma ideia do myo-reps: volume eficiente em pouco tempo.",
     ),
     "back_off": (
         "Back-off",
@@ -281,7 +280,7 @@ TECHNIQUE_STRUCTURES: dict[str, dict] = {
     },
     "muscle_round": {
         "form": "cluster",
-        "blocks": 4,
+        "blocks": 6,
         "block_reps": 4,
         "rest_between_blocks_s": 18,
     },
@@ -305,6 +304,22 @@ def technique_structure(key: str) -> dict:
     """Estrutura da técnica em dados, pra execução materializar as séries.
     Técnica desconhecida vira "cue_only" — nunca quebra a tela de treino."""
     return TECHNIQUE_STRUCTURES.get(key, {"form": "cue_only"})
+
+
+# Quanto cada técnica vale em séries de trabalho EFETIVAS, pro orçamento de
+# volume_landmarks.per_exercise_max_with_technique — o número vem direto do que
+# o texto de TECHNIQUES já promete (rest-pause "dobra o volume", myo-reps e
+# muscle round "contam como 2 séries", back-off "MEIA série extra"). Técnica
+# sem multiplicador documentado vale 1 (não credita volume além do normal).
+TECHNIQUE_SET_WEIGHT: dict[str, float] = {
+    "rest_pause": 2,
+    "cluster_set": 1,
+    "myo_reps": 2,
+    "muscle_round": 2,
+    "back_off": 0.5,
+    "superset_antagonista": 1,
+    "drop_set": 1,
+}
 
 
 # Fallback por (composto?, período) pro caso "meio-termo" (tempo médio/não

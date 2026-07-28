@@ -8,6 +8,7 @@ from app.coaching import chat as coach_chat
 from app.coaching import cycle_state
 from app.coaching import overlays as coach_overlays
 from app.coaching import training_brain
+from app.coaching import volume_landmarks
 from app.coaching import workout_builder
 from app.coaching.engine import analyze, progression_step, weekly_checkin
 from app.coaching.metrics import compute_metrics
@@ -19,7 +20,7 @@ from app.models.coaching_adjustment import CoachingAdjustment
 from app.models.coaching_baseline import CoachingBaseline
 from app.models.coaching_technique_cue import CoachingTechniqueCue
 from app.models.exercise import Exercise, quality_order
-from app.models.routine import Routine
+from app.models.routine import Routine, RoutineExercise
 from app.models.user import Plan, User
 from app.models.user_profile import GoalPace
 from app.services import goal_service
@@ -543,6 +544,23 @@ def apply_technique(
             cue_text=cue_text,
         )
     )
+    # Mesma regra do montador automático (workout_builder): uma técnica que já
+    # vale mais de 1 série de trabalho (rest-pause, myo-reps, muscle round
+    # contam como 2) não pode somar com as séries retas que já existiam e
+    # estourar o teto de 3 séries de trabalho efetivas do exercício.
+    cap = volume_landmarks.per_exercise_max_with_technique(tech_key)
+    routine_exercise = db.execute(
+        select(RoutineExercise)
+        .join(Routine, RoutineExercise.routine_id == Routine.id)
+        .where(
+            Routine.user_id == current_user.id,
+            Routine.is_archived.is_(False),
+            RoutineExercise.exercise_id == exercise_id,
+        )
+    ).scalars().first()
+    if routine_exercise is not None and routine_exercise.target_sets > cap:
+        routine_exercise.target_sets = cap
+        routine_exercise.set_intents = training_brain.set_intents_for(cap, lift["is_compound"])
     db.commit()
     return ApplyTechniqueResult(
         applied=True,
@@ -804,9 +822,19 @@ def workout_overlays(
         # A ESTRUTURA da técnica vai junto: sem ela a execução só teria um
         # texto pra mostrar, e a técnica prescrita viraria enfeite. Com ela, a
         # tela monta as séries e os campos de registro do método (spec §7).
+        #
+        # Rótulo e explicação também são REDERIVADOS do catálogo (TECHNIQUES),
+        # não lidos do que ficou gravado quando a dica nasceu: corrigir o texto
+        # de uma técnica precisa valer pra quem já tem a dica aplicada, senão a
+        # explicação antiga (ex.: contagem de blocos que mudou) fica pra sempre
+        # na tela de quem mais precisa dela. O que a dica guarda é QUAL técnica
+        # é — o texto dela é do código.
+        label, cue = training_brain.TECHNIQUES.get(
+            c.technique, (c.technique_label, c.cue_text)
+        )
         out.append(WorkoutOverlay(source="technique", id=c.id, kind="technique",
                                   exercise_id=c.exercise_id, exercise_name=c.exercise_name,
-                                  title=c.technique_label, detail=c.cue_text,
+                                  title=label, detail=cue,
                                   payload={"technique": c.technique,
                                            **training_brain.technique_structure(c.technique)}))
     for a in db.execute(

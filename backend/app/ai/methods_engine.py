@@ -518,6 +518,62 @@ def build_plan(
     return plan
 
 
+def add_accessory_slot(
+    db: Session,
+    plan: WorkoutPlan,
+    muscle: MuscleGroup,
+    *,
+    prefer_machines: bool = False,
+) -> PlannedSlot | None:
+    """Acrescenta UMA vaga isolada do `muscle` ao plano e devolve a vaga criada
+    (None se não houver exercício novo ou nenhuma sessão que treine o músculo).
+
+    Existe pro caso do PONTO FRACO cujo volume semanal não cabe nas vagas que
+    ele já tem: a saída certa é outro EXERCÍCIO do mesmo músculo, não mais
+    séries empilhadas na mesma vaga (uma vaga tem teto de séries de trabalho
+    efetivas, e passar dele é fadiga sem estímulo novo).
+
+    A vaga entra no FIM da sessão que já treina esse músculo — nunca num dia
+    que não é dele (peito no dia de perna não vira prioridade, vira treino
+    incoerente) — e é sempre isolada, o que também mantém a regra de ordem
+    "nenhum isolado antes de um composto" (validate_plan, item 3).
+    """
+    usados = {sl.exercise_id for s in plan.sessions for sl in s.slots if sl.exercise_id is not None}
+    escolhidos = _pick(db, [muscle], False, 1, usados, False, prefer_machines)
+    if not escolhidos:
+        return None
+    ex = escolhidos[0]
+
+    # A sessão com MENOS vagas entre as que já treinam o músculo — assim o dia
+    # que já está cheio não é o que cresce.
+    candidatas = [
+        s for s in plan.sessions
+        if any(sl.muscle_group == muscle.value for sl in s.slots)
+    ]
+    if not candidatas:
+        return None
+    sessao = min(candidatas, key=lambda s: len(s.slots))
+
+    # Herda os parâmetros (séries/reps/descanso) das vagas da própria sessão —
+    # o método continua mandando; o que muda é só existir mais uma vaga.
+    modelo = sessao.slots[-1]
+    slot = PlannedSlot(
+        order=len(sessao.slots) + 1,
+        muscle_group=muscle.value,
+        is_compound=False,
+        exercise_id=ex.id,
+        exercise_name=ex.name,
+        sets=modelo.sets,
+        reps=modelo.reps,
+        tempo=modelo.tempo,
+        rest_seconds=modelo.rest_seconds,
+        rir=modelo.rir,
+        note=modelo.note,
+    )
+    sessao.slots.append(slot)
+    return slot
+
+
 def validate_plan(method: MethodSpec, plan: WorkoutPlan) -> list[str]:
     """Devolve a lista de violações das regras do método. Vazia = plano fiel."""
     problems: list[str] = []

@@ -70,7 +70,33 @@ _LEVEL_FACTOR = {"iniciante": 0.75, "intermediario": 1.0, "avancado": 1.15}
 # músculo entre as vagas que o treinam) — nunca deixa 1 exercício isolado
 # carregar todo o volume do músculo nem virar quantidade irrisória.
 PER_EXERCISE_MIN = 2
-PER_EXERCISE_MAX = 4
+PER_EXERCISE_MAX = 3
+
+
+def per_exercise_max_with_technique(technique_key: str | None) -> int:
+    """PER_EXERCISE_MAX já descontando o peso REAL da técnica prescrita nesse
+    exercício — o teto de séries de trabalho EFETIVAS de um exercício é sempre
+    3, mesmo quando uma das séries já vale mais de uma sozinha (ex.: muscle
+    round e myo-reps contam como 2; uma técnica que vale 2 só deixa espaço pra
+    1 série reta a mais, não pras 3 normais de sempre).
+
+    Duas famílias de técnica pesam diferente (training_brain.TECHNIQUE_STRUCTURES):
+    - "activation_blocks"/"cluster" TROCAM a última série reta por uma estrutura
+      que já vale `weight` séries — sobra só `PER_EXERCISE_MAX - weight + 1`.
+    - "drop" ACRESCENTA `weight` séries em cima das que já existiam (não troca
+      slot nenhum) — sobra `PER_EXERCISE_MAX - weight`.
+    - "cue_only" (superset) não muda a série deste exercício — teto normal.
+    """
+    if not technique_key:
+        return PER_EXERCISE_MAX
+    structure = training_brain.technique_structure(technique_key)
+    weight = training_brain.TECHNIQUE_SET_WEIGHT.get(technique_key, 1)
+    form = structure.get("form")
+    if form == "cue_only":
+        return PER_EXERCISE_MAX
+    if form == "drop":
+        return max(1, int(PER_EXERCISE_MAX - weight))
+    return max(1, int(PER_EXERCISE_MAX - weight + 1))
 
 
 def weekly_set_range(muscle: MuscleGroup, level: str | None) -> tuple[int, int]:

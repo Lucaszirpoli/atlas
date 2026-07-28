@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai import methods_engine
 from app.ai.methods import coach_custom_spec
 from app.ai.methods_engine import build_plan
 from app.coaching import cycle_state, training_brain, volume_landmarks
@@ -22,6 +23,12 @@ from app.models.coaching_technique_cue import CoachingTechniqueCue
 from app.models.exercise import MuscleGroup
 from app.models.routine import Routine, RoutineExercise
 from app.models.user import User
+
+
+# Teto de vagas EXTRAS por ponto fraco. Sem um limite, um alvo semanal alto num
+# músculo com muitas opções na base encheria a sessão inteira de um grupo só —
+# "priorizar" viraria "só treinar isso".
+_MAX_EXTRA_SLOTS_POR_PONTO_FRACO = 2
 
 
 def _first_int(s, default: int) -> int:
@@ -106,6 +113,30 @@ def build_and_save(db: Session, user: User) -> dict:
 
     plano_semanal = volume_landmarks.weekly_plan(musculos, exp, weeks_acc, weak_points=wps)
 
+    # --- PONTO FRACO SEM VAGA SUFICIENTE -> OUTRO EXERCÍCIO -----------------
+    # Uma vaga entrega no máximo PER_EXERCISE_MAX séries de trabalho efetivas.
+    # Quando o alvo semanal de um ponto fraco não cabe nas vagas que ele tem, a
+    # saída é ACRESCENTAR EXERCÍCIO, não empilhar série: passar do teto por vaga
+    # é fadiga sem estímulo novo, e era o que fazia o volume extra do ponto
+    # fraco simplesmente sumir (o clamp cortava e ninguém ficava sabendo).
+    #
+    # Só o(s) ponto(s) fraco(s) ganham vaga nova — os demais músculos aceitam o
+    # volume que couber. É a escolha de produto: a sessão só cresce onde a
+    # pessoa pediu prioridade.
+    exercicios_extras: list[str] = []
+    for muscle in wps:
+        if muscle not in plano_semanal:
+            continue
+        for _ in range(_MAX_EXTRA_SLOTS_POR_PONTO_FRACO):
+            vagas = slot_count_by_muscle.get(muscle.value, 0)
+            if vagas * volume_landmarks.PER_EXERCISE_MAX >= plano_semanal[muscle]:
+                break
+            slot = methods_engine.add_accessory_slot(db, plan, muscle, prefer_machines=curto)
+            if slot is None:
+                break  # acabaram os exercícios novos desse músculo na base
+            slot_count_by_muscle[muscle.value] = vagas + 1
+            exercicios_extras.append(slot.exercise_name)
+
     base_by_muscle: dict[str, int] = {}
     remainder_by_muscle: dict[str, int] = {}
     for muscle_value in desconhecidos:
@@ -133,6 +164,11 @@ def build_and_save(db: Session, user: User) -> dict:
     # ativa nesse exercício por outro motivo (ex.: platô) nem duplica ao
     # refazer o treino.
     technique_applied: list[str] = []
+    # Todo RoutineExercise criado nesta montagem, por exercício (o mesmo
+    # exercício pode aparecer em mais de um dia). O teto por técnica é aplicado
+    # numa passada só, DEPOIS — ver o bloco "TETO DE SÉRIES" no fim.
+    routine_exercises_by_id: dict[int, list[RoutineExercise]] = {}
+    is_compound_by_id: dict[int, bool] = {}
 
     nomes: list[str] = []
     total_ex = 0
@@ -153,14 +189,17 @@ def build_and_save(db: Session, user: User) -> dict:
                 sets += 1
                 remainder_by_muscle[sl.muscle_group] -= 1
             sets = max(volume_landmarks.PER_EXERCISE_MIN, min(sets, volume_landmarks.PER_EXERCISE_MAX))
-            db.add(RoutineExercise(
+            routine_exercise = RoutineExercise(
                 routine_id=routine.id, exercise_id=sl.exercise_id, sort_order=i,
                 target_sets=sets,
                 target_reps_min=max(1, rmin), target_reps_max=max(rmin, rmax),
                 rest_seconds=max(0, _first_int(sl.rest_seconds, 90)),
                 notes=sl.note,
                 set_intents=training_brain.set_intents_for(sets, sl.is_compound),
-            ))
+            )
+            db.add(routine_exercise)
+            routine_exercises_by_id.setdefault(sl.exercise_id, []).append(routine_exercise)
+            is_compound_by_id[sl.exercise_id] = bool(sl.is_compound)
             total_ex += 1
         nomes.append(nome)
 
@@ -188,6 +227,32 @@ def build_and_save(db: Session, user: User) -> dict:
                     technique=tech_key, technique_label=tech_label, cue_text=cue_text,
                 ))
                 technique_applied.append(f"{tech_label} no {finisher.exercise_name}")
+    db.flush()
+
+    # --- TETO DE SÉRIES DE TRABALHO EFETIVAS --------------------------------
+    # Uma passada sobre TODAS as dicas de técnica ativas da pessoa — não só as
+    # que acabaram de ser criadas. Uma técnica que já vale mais de uma série
+    # (rest-pause, myo-reps e muscle round contam como 2) tem que descontar do
+    # teto de 3: senão o exercício fica com 3 retas + a técnica valendo 2 = 5
+    # séries de trabalho, que é o dobro do permitido.
+    #
+    # A passada é aqui, e não junto da criação da dica, porque a dica sobrevive
+    # a remontagens (ela é por usuário+exercício e nunca é revertida ao refazer
+    # o treino). Aplicar só na criação deixava justamente o caso comum de fora:
+    # quem já tinha a dica de uma montagem anterior recebia rotina nova sem teto.
+    for cue in db.execute(
+        select(CoachingTechniqueCue).where(
+            CoachingTechniqueCue.user_id == user.id,
+            CoachingTechniqueCue.reverted_at.is_(None),
+        )
+    ).scalars():
+        cap = volume_landmarks.per_exercise_max_with_technique(cue.technique)
+        for routine_exercise in routine_exercises_by_id.get(cue.exercise_id, []):
+            if routine_exercise.target_sets > cap:
+                routine_exercise.target_sets = cap
+                routine_exercise.set_intents = training_brain.set_intents_for(
+                    cap, is_compound_by_id.get(cue.exercise_id, False)
+                )
     db.commit()
 
     technique_note = None
@@ -200,6 +265,16 @@ def build_and_save(db: Session, user: User) -> dict:
 
     weak_labels = [training_brain.WEAK_POINT_LABEL[w] for w in weak_values]
     weak_label = ", ".join(weak_labels) if weak_labels else None
+    # A sessão cresceu por um motivo específico — dizer qual, senão a pessoa
+    # abre o treino e só vê "ficou mais longo".
+    extra_note = None
+    if exercicios_extras:
+        extra_note = (
+            f"Pra dar conta do volume semanal de {weak_label}, acrescentei "
+            + ", ".join(exercicios_extras)
+            + ". É outro exercício em vez de mais séries no mesmo: passar do teto de séries por "
+            "exercício acumula fadiga sem estímulo novo."
+        )
     if profile.wants_cardio:
         cardio_note = ("Como você quer cardio, inclua 2× de 20–30 min na semana (esteira, bike ou elíptico), "
                        "de preferência longe dos dias pesados de perna.")
@@ -218,6 +293,7 @@ def build_and_save(db: Session, user: User) -> dict:
         "session_range": training_brain.session_range_text(profile.session_length),
         "cardio_note": cardio_note,
         "technique_note": technique_note,
+        "extra_exercises_note": extra_note,
         "periodization_label": period_label,
         "message": f"Pronto — montei {len(nomes)} treino(s) pra {days} dia(s) na semana. "
                    "Já estão nas suas rotinas, é só treinar.",

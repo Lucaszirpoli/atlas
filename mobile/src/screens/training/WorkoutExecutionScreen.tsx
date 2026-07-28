@@ -461,10 +461,18 @@ export function WorkoutExecutionScreen() {
               ) : null}
 
               {/* Overlays do coach neste exercício (técnica / subir carga /
-                  troca). Só leitura aqui — desfazer é no Coaching ou na prévia. */}
-              {overlaysFor(routineExercise.exercise_id).map((o) => (
-                <CoachOverlayBlock key={`${o.source}:${o.id}`} overlay={o} />
-              ))}
+                  troca). Só leitura aqui — desfazer é no Coaching ou na prévia.
+                  Técnica com estrutura própria (rest-pause, myo-reps, muscle
+                  round, cluster, drop-set) já ganha o cabeçalho dela mais
+                  embaixo (TechniqueHeader), junto das séries que ela gerou —
+                  repetir o card aqui em cima duplicava o mesmo aviso. Só as
+                  técnicas "cue only" (ex.: superset, que não muda a série
+                  deste exercício) continuam aparecendo só aqui. */}
+              {overlaysFor(routineExercise.exercise_id)
+                .filter((o) => !(o.kind === "technique" && prescriptionFor(overlays, routineExercise.exercise_id)))
+                .map((o) => (
+                  <CoachOverlayBlock key={`${o.source}:${o.id}`} overlay={o} />
+                ))}
 
               {/* Cabeçalho da tabela — Série / Anterior / kg / Reps / ✓ */}
               <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.sm, marginBottom: spacing.xs }}>
