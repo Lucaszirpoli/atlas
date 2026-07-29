@@ -35,13 +35,14 @@ const initialForm: FormState = {
   dietary_restrictions: [],
   injuries_limitations: null,
   preferred_advanced_technique: null,
+  allow_advanced_techniques: null,
   trains_with_partner: false,
   partner_handle: "",
   accepted_lgpd_health_data: false,
   accepted_medical_disclaimer: false,
 };
 
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 9;
 
 export function OnboardingScreen({ onDone }: { onDone?: () => void } = {}) {
   const { colors, type, spacing } = useTheme();
@@ -71,6 +72,10 @@ export function OnboardingScreen({ onDone }: { onDone?: () => void } = {}) {
       case 5:
         return !!form.activity_level;
       case 6:
+        return !!form.experience_level;
+      case 7:
+        return form.allow_advanced_techniques !== null;
+      case 8:
         return form.accepted_lgpd_health_data && form.accepted_medical_disclaimer;
       default:
         return true;
@@ -198,7 +203,71 @@ export function OnboardingScreen({ onDone }: { onDone?: () => void } = {}) {
         );
       case 6:
         return (
-          <Step title="Quase lá!" subtitle="Só falta o consentimento. Experiência de treino, local e restrições você ajusta depois no perfil.">
+          <Step
+            title="Há quanto tempo você treina?"
+            help={{
+              title: "Por que isso importa",
+              text:
+                "O tempo de treino muda o quanto seu corpo ainda responde ao básico. Quem está começando "
+                + "progride só subindo carga; quem já tem anos de treino precisa de mais volume e, às vezes, "
+                + "de técnicas de intensificação. Conta o tempo treinando de forma consistente.",
+            }}
+          >
+            {([
+              ["iniciante", "Iniciante", "Até 2 anos"],
+              ["intermediario", "Intermediário", "2 a 4 anos"],
+              ["avancado", "Avançado", "Mais de 4 anos"],
+            ] as const).map(([value, label, faixa]) => (
+              <OptionButton
+                key={value}
+                label={`${label} · ${faixa}`}
+                selected={form.experience_level === value}
+                onPress={() => {
+                  update("experience_level", value);
+                  // Iniciante começa SEM técnica avançada — é o padrão seguro
+                  // (ver training_brain.advanced_allowed no backend). A pessoa
+                  // ainda decide no passo seguinte; isto só pré-marca.
+                  update("allow_advanced_techniques", value === "iniciante" ? false : true);
+                }}
+              />
+            ))}
+          </Step>
+        );
+      case 7:
+        return (
+          <Step
+            title="Pode usar técnicas avançadas?"
+            subtitle="Séries que vão além da série normal, pra arrancar mais estímulo do mesmo tempo de treino."
+            help={{
+              title: "O que são",
+              text:
+                "Myo-reps, rest-pause, muscle round e drop-set: em vez de encerrar a série, você descansa "
+                + "poucos segundos e emenda mais repetições. Rende mais em menos tempo, mas cansa bem mais e "
+                + "exige execução firme. Dizendo não, o coach trabalha só com séries normais — e continua "
+                + "fazendo você progredir por carga e volume. Dá pra mudar quando quiser.",
+            }}
+          >
+            <OptionButton
+              label="Pode usar"
+              selected={form.allow_advanced_techniques === true}
+              onPress={() => update("allow_advanced_techniques", true)}
+            />
+            <OptionButton
+              label="Só séries normais"
+              selected={form.allow_advanced_techniques === false}
+              onPress={() => update("allow_advanced_techniques", false)}
+            />
+            {form.experience_level === "iniciante" && form.allow_advanced_techniques === true ? (
+              <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm }]}>
+                No primeiro ano de treino a carga sobe sozinha — técnica avançada costuma cansar mais do
+                que ajudar. Dá pra ativar depois, quando a progressão travar.
+              </Text>
+            ) : null}
+          </Step>
+        );
+      case 8:
+        return (
+          <Step title="Quase lá!" subtitle="Só falta o consentimento. Local de treino e restrições você ajusta depois no perfil.">
             {/* Um único consentimento cobre as duas autorizações (uso de dados
                 de saúde pela LGPD + ciência de que não substitui médico) — ambos
                 continuam registrados no backend, mas a pessoa marca uma vez só. */}

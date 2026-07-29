@@ -26,6 +26,9 @@ class OnboardingRequest(BaseModel):
     dietary_restrictions: list[str] = Field(default_factory=list)
     injuries_limitations: str | None = None
     preferred_advanced_technique: str | None = None
+    # Deixa o coach usar técnica avançada (myo-reps, rest-pause, muscle round)?
+    # None = não respondeu; a regra de segurança nega pra iniciante.
+    allow_advanced_techniques: bool | None = None
     trains_with_partner: bool = False
     partner_handle: str | None = None
 

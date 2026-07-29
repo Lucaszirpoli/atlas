@@ -102,6 +102,16 @@ class UserProfile(Base):
         String(50), nullable=True
     )
 
+    # A pessoa aceita que o coach use TÉCNICA AVANÇADA (myo-reps, rest-pause,
+    # muscle round, drop-set) ou só série normal? Nulo = nunca respondeu; aí
+    # vale a regra de segurança de training_brain.advanced_allowed, que nega
+    # pra iniciante. Quem treina há pouco tempo precisa de técnica de execução
+    # e constância, não de intensificação — e a fadiga extra atrapalha mais do
+    # que ajuda nessa fase.
+    allow_advanced_techniques: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )
+
     # --- Preferências de treino do Coaching (o "cérebro de treino") ----------
     # Como o coach monta/ajusta o treino da pessoa. Todas OPCIONAIS: sem escolha,
     # o coach usa padrões seguros. Colunas novas -> ensure_columns no init_db

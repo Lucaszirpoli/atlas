@@ -363,6 +363,28 @@ _TECH_BY_PERIOD: dict[tuple[bool, str], str] = {
 }
 
 
+def advanced_allowed(profile) -> bool:
+    """A pessoa aceita técnica avançada (myo-reps, rest-pause, muscle round)?
+
+    Regra de segurança quando ela nunca respondeu (perfil antigo, `None`):
+    INICIANTE não recebe. Quem está no primeiro ou segundo ano precisa de
+    execução e constância, não de intensificação — a fadiga extra atrapalha
+    mais do que ajuda, e a progressão ainda vem sozinha da carga.
+
+    Dito "não", o coach fica só com série normal: sem dica de técnica na
+    prévia do treino, sem finisher com técnica no montador, e o endpoint de
+    aplicar técnica recusa. Volume e carga continuam progredindo igual.
+    """
+    if profile is None:
+        return False
+    escolha = getattr(profile, "allow_advanced_techniques", None)
+    if escolha is not None:
+        return bool(escolha)
+    nivel = getattr(profile, "experience_level", None)
+    nivel = getattr(nivel, "value", nivel)
+    return nivel != "iniciante"
+
+
 def suggest_technique(
     is_compound: bool,
     period: str,

@@ -119,6 +119,10 @@ def _training_prefs_block(db: Session, user: User) -> dict | None:
         "training_days_per_week": training_brain.valid_training_days(profile.training_days_per_week),
         "training_days_options": training_brain.TRAINING_DAYS_OPTIONS,
         "wants_cardio": profile.wants_cardio,
+        # Técnica avançada (myo-reps, rest-pause, muscle round). O valor
+        # EFETIVO, já com a regra de iniciante aplicada — a tela mostra o que
+        # o coach realmente vai fazer, não o campo cru.
+        "allow_advanced_techniques": training_brain.advanced_allowed(profile),
         "periodization": _periodization_of(user),
         "periodization_options": [
             {"value": v, "label": label, "desc": desc}
@@ -186,6 +190,7 @@ def coaching_analysis(
         session_length=training_brain.valid_session_length(getattr(profile, "session_length", None)),
         weak_points=tuple(training_brain.resolve_weak_points(profile)) if profile else (),
         applied_technique_ex_ids=applied_tech_ex_ids,
+        allow_advanced=training_brain.advanced_allowed(profile),
     ).to_dict()
     _inject_transition(result, db, current_user)
     result["metrics"]["pace"] = _pace_block(db, current_user)
@@ -421,6 +426,8 @@ def set_training_prefs(
         profile.training_days_per_week = training_brain.valid_training_days(payload.training_days_per_week)
     if "wants_cardio" in enviados:
         profile.wants_cardio = payload.wants_cardio
+    if "allow_advanced_techniques" in enviados:
+        profile.allow_advanced_techniques = payload.allow_advanced_techniques
     if "periodization" in enviados:
         profile.periodization = training_brain.valid_periodization(payload.periodization)
     db.commit()
@@ -509,6 +516,16 @@ def apply_technique(
     # por sessão > período do ciclo. Não confia num valor vindo do app.
     period = _cycle_context(db, current_user, datetime.now(timezone.utc))["period"]
     profile = getattr(current_user, "profile", None)
+    # Recusa no servidor, não só na tela: a preferência é do usuário e o app
+    # pode estar desatualizado ou a chamada vir de fora.
+    if not training_brain.advanced_allowed(profile):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Você escolheu treinar só com séries normais. Dá pra mudar isso em "
+                "Objetivo › Preferências de treino."
+            ),
+        )
     session_length = training_brain.valid_session_length(getattr(profile, "session_length", None))
     weak_points = training_brain.resolve_weak_points(profile) if profile else []
     is_weak_point = lift.get("muscle") in weak_points

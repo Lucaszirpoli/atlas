@@ -268,6 +268,10 @@ def build_and_save(db: Session, user: User) -> dict:
             # do mesmo coach prescreviam técnicas diferentes pro mesmo
             # exercício — e a fase de acumulação (cluster/myo-reps) nunca era
             # alcançada na montagem, apesar de existir na regra.
+            # Quem pediu só série normal não ganha finisher com técnica: o
+            # treino cresce por exercício e volume, como o resto do motor já faz.
+            if not training_brain.advanced_allowed(profile):
+                continue
             try:
                 eh_ponto_fraco = MuscleGroup(finisher.muscle_group) in wps
             except ValueError:

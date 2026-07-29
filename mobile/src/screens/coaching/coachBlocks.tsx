@@ -221,7 +221,7 @@ function OptionSheet({
 // única dessas mesmas informações. Mantido aqui, sem estar montado em tela
 // nenhuma, porque as opções e os rótulos ainda descrevem bem o domínio — se um
 // dia voltar a existir um atalho de edição rápida, é daqui que ele sai.
-type PrefSheetField = "weak_point" | "session_length" | "training_days" | "cardio" | "periodization";
+type PrefSheetField = "weak_point" | "session_length" | "training_days" | "cardio" | "tecnicas" | "periodization";
 
 export function TrainingPrefsCard({
   prefs,
@@ -273,6 +273,7 @@ export function TrainingPrefsCard({
   const tempoTxt = tempoOpt ? `${tempoOpt.label} · ${tempoOpt.range}` : "Não definido";
   const diasTxt = prefs.training_days_per_week ? `${prefs.training_days_per_week}× por semana` : "Automático";
   const cardioTxt = prefs.wants_cardio == null ? "Não definido" : prefs.wants_cardio ? "Com cardio" : "Sem cardio";
+  const tecnicasTxt = prefs.allow_advanced_techniques ? "Pode usar" : "Só séries normais";
   const periodTxt = prefs.periodization_options.find((x) => x.value === prefs.periodization)?.label ?? "Automática";
 
   const sheetConfig =
@@ -326,6 +327,22 @@ export function TrainingPrefsCard({
           ],
           pick: (v: string) => salvar({ wants_cardio: v === "sim" }, "Cardio"),
         }
+      : sheet === "tecnicas"
+      ? {
+          title: "Técnicas avançadas",
+          subtitle:
+            "Myo-reps, rest-pause, muscle round e drop-set: em vez de encerrar a série, você descansa poucos segundos e emenda mais repetições. Rende mais no mesmo tempo, mas cansa bem mais.",
+          current: prefs.allow_advanced_techniques ? "sim" : "nao",
+          options: [
+            { value: "sim", label: "Pode usar", desc: "O coach aplica quando a progressão travar ou o tempo apertar." },
+            {
+              value: "nao",
+              label: "Só séries normais",
+              desc: "O coach progride por carga e volume, sem série de intensificação.",
+            },
+          ],
+          pick: (v: string) => salvar({ allow_advanced_techniques: v === "sim" }, "Técnicas avançadas"),
+        }
       : sheet === "periodization"
       ? {
           title: "Periodização",
@@ -363,6 +380,7 @@ export function TrainingPrefsCard({
           <PrefRow icon="calendar" label="Dias por semana" value={diasTxt} onPress={() => setSheet("training_days")} />
           <PrefRow icon="time" label="Tempo por sessão" value={tempoTxt} onPress={() => setSheet("session_length")} />
           <PrefRow icon="heart" label="Cardio" value={cardioTxt} onPress={() => setSheet("cardio")} />
+          <PrefRow icon="flash" label="Técnicas avançadas" value={tecnicasTxt} onPress={() => setSheet("tecnicas")} />
           <PrefRow icon="repeat" label="Periodização" value={periodTxt} onPress={() => setSheet("periodization")} last />
 
           {prefs.cardio_warning ? (

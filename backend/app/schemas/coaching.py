@@ -233,6 +233,8 @@ class SetTrainingPrefsRequest(BaseModel):
     session_length: str | None = None   # curto | medio | longo | null
     training_days_per_week: int | None = None  # 2..7 | null (automático)
     wants_cardio: bool | None = None     # true | false | null (não escolheu)
+    # Deixa o coach usar técnica avançada? false = só série normal.
+    allow_advanced_techniques: bool | None = None
     periodization: str | None = None     # auto | linear | ondulatoria
 
 

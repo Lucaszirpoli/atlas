@@ -8,6 +8,9 @@ export type OnboardingPayload = {
   activity_level: "sedentary" | "light" | "moderate" | "active" | "very_active";
   goal: "emagrecimento" | "hipertrofia" | "manutencao" | "performance" | "recomposicao";
   experience_level: "iniciante" | "intermediario" | "avancado";
+  /** Deixa o coach usar técnica avançada (myo-reps, rest-pause, muscle round)?
+   *  null = não respondeu; o backend nega pra iniciante nesse caso. */
+  allow_advanced_techniques: boolean | null;
   training_location:
     | "academia_completa"
     | "academia_basica"

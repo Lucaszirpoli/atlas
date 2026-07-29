@@ -302,6 +302,7 @@ def _treino_insight(
     session_length: str | None = None,
     weak_points: tuple[str, ...] = (),
     applied_technique_ex_ids: frozenset[int] = frozenset(),
+    allow_advanced: bool = True,
 ) -> Insight:
     t = m.training
     # Em deload, o coach NÃO manda forçar (nem progressão, nem técnica de
@@ -333,6 +334,18 @@ def _treino_insight(
         # técnica não "destrava" o lift na hora — vira dica na prévia do treino),
         # e a pessoa via o botão voltar toda vez. Aqui ele some quando já aplicou.
         pendentes = [s for s in t.stalled_lifts if s["exercise_id"] not in applied_technique_ex_ids]
+        # Quem pediu só série normal (ou é iniciante e nunca respondeu) não
+        # recebe oferta de técnica: pra essa pessoa o caminho do platô é carga,
+        # volume e execução — não intensificação.
+        if pendentes and not allow_advanced:
+            nomes = ", ".join(s["name"] for s in pendentes)
+            return Insight(
+                "treino", SEV_ATTENTION, "Progressão travada",
+                f"{nomes} não subiu de carga/reps nas últimas semanas. Tenta baixar um pouco a "
+                "carga e voltar subindo, ou somar uma série a mais no exercício — sem pressa, "
+                "platô é normal.",
+                chart="carga",
+            )
         if pendentes:
             lift = pendentes[0]  # o principal ainda sem técnica (compostos primeiro)
             # Técnica avançada escolhida por ponto fraco > tempo por sessão > fase
@@ -404,6 +417,7 @@ def _insights(
     session_length: str | None = None,
     weak_points: tuple[str, ...] = (),
     applied_technique_ex_ids: frozenset[int] = frozenset(),
+    allow_advanced: bool = True,
 ) -> list[Insight]:
     # Decisão ÚNICA de oferecer deload (mata o paradoxo): a periodização manda.
     offer = training_brain.offer_deload(
@@ -418,7 +432,8 @@ def _insights(
         _macros_insight(m),
         _sono_insight(m),
         _carga_insight(m, active_deload, periodization, offer, planned_deload),
-        _treino_insight(m, active_deload, offer, period, session_length, weak_points, applied_technique_ex_ids),
+        _treino_insight(m, active_deload, offer, period, session_length, weak_points,
+                        applied_technique_ex_ids, allow_advanced=allow_advanced),
     ]
     pendentes = _dias_incompletos_insight(m)
     if pendentes is not None:
@@ -648,6 +663,7 @@ def analyze(
     session_length: str | None = None,
     weak_points: tuple[str, ...] = (),
     applied_technique_ex_ids: frozenset[int] = frozenset(),
+    allow_advanced: bool = True,
 ) -> WeeklyAnalysis:
     findings: list[Finding] = []
     findings += _weight_findings(m)
@@ -680,7 +696,7 @@ def analyze(
         headline=headline,
         findings=findings,
         insights=_insights(m, active_deload, periodization, planned_deload, period, session_length, weak_points,
-                           applied_technique_ex_ids),
+                           applied_technique_ex_ids, allow_advanced=allow_advanced),
         data_gaps=gaps,
         metrics=_metrics_public(m),
     )

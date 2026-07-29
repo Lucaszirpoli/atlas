@@ -157,6 +157,7 @@ def complete_onboarding(
         dietary_restrictions=payload.dietary_restrictions,
         injuries_limitations=payload.injuries_limitations,
         preferred_advanced_technique=payload.preferred_advanced_technique,
+        allow_advanced_techniques=payload.allow_advanced_techniques,
         trains_with_partner=payload.trains_with_partner,
         partner_user_id=partner_user_id,
     )

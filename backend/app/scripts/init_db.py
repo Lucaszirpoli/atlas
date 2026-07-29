@@ -48,6 +48,9 @@ def _ensure_profile_columns() -> None:
         ("training_days_per_week", "INTEGER", "INTEGER"),
         # Fuso do aparelho — define o dia de calendário de cada registro.
         ("timezone", "VARCHAR(64)", "VARCHAR(64)"),
+        # Deixa o coach usar técnica avançada? NULL = perfil que nunca
+        # respondeu; a regra de segurança nega pra iniciante.
+        ("allow_advanced_techniques", "BOOLEAN", "BOOLEAN"),
     ]
     pg = engine.dialect.name == "postgresql"
     with engine.begin() as conn:

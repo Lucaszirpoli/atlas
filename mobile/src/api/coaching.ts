@@ -76,6 +76,8 @@ export type TrainingPrefs = {
   training_days_per_week: number | null;
   training_days_options: number[];
   wants_cardio: boolean | null;
+  /** Valor EFETIVO (já com a regra de iniciante aplicada no backend). */
+  allow_advanced_techniques: boolean;
   periodization: Periodization;
   periodization_options: { value: Periodization; label: string; desc: string }[];
   cardio_warning: string | null;
@@ -345,6 +347,7 @@ export type TrainingPrefsUpdate = {
   session_length?: SessionLength | null;
   training_days_per_week?: number | null;
   wants_cardio?: boolean | null;
+  allow_advanced_techniques?: boolean | null;
   periodization?: Periodization;
 };
 

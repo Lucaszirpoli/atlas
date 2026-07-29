@@ -79,6 +79,61 @@ def _medidas_para(nome: str, categoria: str | None, regras: list[dict], padroes:
     return []
 
 
+# Peso escrito no rótulo de porção ("20 g", "1 barrinha (25 g)") ou no nome do
+# produto ("Pote 90g", "Lata 350g", "Sachê 30 g").
+_PESO_TEXTO = re.compile(r"(\d+(?:[.,]\d+)?)\s*(g|gm|gr|ml)\b", re.IGNORECASE)
+
+
+def _peso_declarado(texto: str | None, teto: float) -> float | None:
+    achado = _PESO_TEXTO.search(texto or "")
+    if not achado:
+        return None
+    try:
+        gramas = float(achado.group(1).replace(",", "."))
+    except ValueError:
+        return None
+    return gramas if 0 < gramas <= teto else None
+
+
+def _backfill_porcao_de_marca(db) -> int:
+    """Produto de marca cacheado ANTES de o importador passar a ler a porção do
+    fabricante ficou com os 100 g genéricos. O dado já está guardado no rótulo
+    (`default_portion_label` = o serving_size cru do Open Food Facts) e, quando
+    não está lá, no próprio nome do produto ("Iogurte ... Pote 90g").
+
+    É o caso da barrinha: ela tem 25 g, não 100 g, e o app abria em 100 g.
+    Do nome só aceita até 500 g — acima disso é embalagem de várias porções
+    (pacote de 1 kg de whey), onde os 100 g erram menos."""
+    corrigidos = 0
+    for food in db.execute(
+        select(Food).where(Food.source == FoodSource.OPEN_FOOD_FACTS)
+    ).scalars():
+        # O peso DECLARADO sempre vence, mesmo que já exista uma porção: a que
+        # está lá pode ter vindo de uma regra genérica ("iogurte = pote de
+        # 170 g") num produto que diz 160 g na própria embalagem.
+        gramas = _peso_declarado(food.default_portion_label, 5000) or _peso_declarado(
+            food.name, 500
+        )
+        if gramas is None or abs(gramas - 100.0) <= 0.01:
+            continue
+        if food.default_portion_g and abs(food.default_portion_g - gramas) <= 0.01:
+            continue
+        food.default_portion_g = gramas
+        corrigidos += 1
+    return corrigidos
+
+
+def _tem_porcao_do_fabricante(food: Food) -> bool:
+    """Produto de marca com porção informada pelo fabricante. Nenhuma regra
+    genérica pode sobrescrever isso: o iogurte grego de 90 g é de 90 g, mesmo
+    que a regra de "iogurte" diga que um pote tem 170 g."""
+    return (
+        food.source == FoodSource.OPEN_FOOD_FACTS
+        and bool(food.default_portion_g)
+        and abs(food.default_portion_g - 100.0) > 0.01
+    )
+
+
 def _porcao_padrao_inutil(label: str | None) -> bool:
     """True quando o rótulo da porção padrão não é uma medida caseira de
     verdade: vazio, ou só um peso ("100 g", "100 g (referência TACO)", "50gm").
@@ -114,7 +169,7 @@ def _aplicar_medidas(db, categorias: dict[str, str], regras, padroes) -> tuple[i
         # "100 g": a busca e a ficha leem default_portion_*, não food_portions.
         # Só sobrescreve rótulo de peso ("100 g (referência TACO)") ou vazio —
         # porção curada de verdade ("2 fatias") é melhor e fica como está.
-        if _porcao_padrao_inutil(food.default_portion_label):
+        if _porcao_padrao_inutil(food.default_portion_label) and not _tem_porcao_do_fabricante(food):
             label, grams = medidas[0]
             food.default_portion_label = f"1 {label}"
             food.default_portion_g = grams
@@ -193,10 +248,15 @@ def run() -> None:
 
     db = SessionLocal()
     try:
+        # Antes de tudo: a porção do fabricante manda em produto de marca, e as
+        # regras genéricas abaixo precisam saber quem já tem a sua.
+        corrigidos = _backfill_porcao_de_marca(db)
+        db.flush()
         escondidos = _suprimir_duplicados(db)
         db.flush()
         criadas, alimentos = _aplicar_medidas(db, categorias, regras, padroes)
         db.commit()
+        print(f"Porção do fabricante recuperada em {corrigidos} produtos de marca.")
         print(f"Medidas caseiras: {criadas} criadas em {alimentos} alimentos.")
         print(f"Duplicados escondidos da busca: {escondidos}.")
     finally:

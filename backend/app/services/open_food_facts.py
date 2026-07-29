@@ -2,6 +2,7 @@
 Gratuita, sem chave — só exige um User-Agent identificando a aplicação.
 """
 
+import re
 import threading
 import time
 
@@ -119,9 +120,53 @@ def _normalize_product(product: dict) -> dict | None:
         "fiber_g_per_100g": nutriments.get("fiber_100g"),
         "sodium_mg_per_100g": sodium_g * 1000 if sodium_g is not None else None,
         "sugar_g_per_100g": nutriments.get("sugars_100g"),
-        "default_portion_g": 100.0,
+        # A porção do fabricante, quando ele informa. Produto de marca quase
+        # nunca se come em 100 g: uma barrinha tem 25 g, um pote de iogurte
+        # 90 g, um scoop de whey 30 g. Sem isto o app abria TUDO em 100 g e a
+        # pessoa tinha que corrigir na mão em todo registro.
+        "default_portion_g": _porcao_em_gramas(product) or 100.0,
         "default_portion_label": product.get("serving_size"),
     }
+
+
+# "25 g", "1 barrinha (25g)", "30g (1 scoop)", "250 ml".
+_GRAMAS_NA_PORCAO = re.compile(r"(\d+(?:[.,]\d+)?)\s*(g|gm|gr|ml)\b", re.IGNORECASE)
+
+
+def _porcao_em_gramas(product: dict) -> float | None:
+    """Peso de UMA porção do produto, na ordem em que o OFF é confiável:
+
+    1. `serving_quantity` — o campo numérico, já normalizado pelo OFF;
+    2. o número escrito em `serving_size` ("1 barrinha (25 g)" -> 25);
+    3. `product_quantity` quando o pacote inteiro é uma porção só (até 60 g/ml:
+       barrinha, sachê, iogurte). Acima disso é embalagem pra várias porções e
+       usar o peso do pacote seria pior que os 100 g.
+
+    ml conta como g: pra bebida a densidade é ~1 e o erro é menor que abrir
+    um suco de caixinha em "100 g"."""
+    bruto = product.get("serving_quantity")
+    try:
+        if bruto is not None and 0 < float(bruto) <= 5000:
+            return float(bruto)
+    except (TypeError, ValueError):
+        pass
+
+    achado = _GRAMAS_NA_PORCAO.search(str(product.get("serving_size") or ""))
+    if achado:
+        try:
+            gramas = float(achado.group(1).replace(",", "."))
+            if 0 < gramas <= 5000:
+                return gramas
+        except ValueError:
+            pass
+
+    try:
+        pacote = float(product.get("product_quantity") or 0)
+        if 0 < pacote <= 60:
+            return pacote
+    except (TypeError, ValueError):
+        pass
+    return None
 
 
 def fetch_by_barcode(barcode: str) -> dict | None:
@@ -145,7 +190,7 @@ def _buscar_search_a_licious(query: str, page_size: int) -> list[dict]:
         params={
             "q": f'{query} countries_tags:"en:brazil"',
             "page_size": page_size,
-            "fields": "code,product_name,brands,nutriments,serving_size",
+            "fields": "code,product_name,brands,nutriments,serving_size,serving_quantity,product_quantity",
         },
         headers={"User-Agent": USER_AGENT},
         timeout=_SEARCH_TIMEOUT_S,
@@ -164,7 +209,7 @@ def _buscar_cgi(base: str, query: str, page_size: int, so_brasil: bool) -> list[
         "action": "process",
         "json": 1,
         "page_size": page_size,
-        "fields": "code,product_name,brands,nutriments,serving_size",
+        "fields": "code,product_name,brands,nutriments,serving_size,serving_quantity,product_quantity",
     }
     if so_brasil:
         params.update({"tagtype_0": "countries", "tag_contains_0": "contains", "tag_0": "brazil"})
