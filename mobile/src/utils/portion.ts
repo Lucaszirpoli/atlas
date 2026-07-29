@@ -93,6 +93,10 @@ export function parseDefaultPortion(
   if (n !== 1) frase = singularPrimeira(frase);
   if (ROTULOS_GENERICOS.has(frase.toLowerCase())) return null;
   if (UNIDADES_DE_PESO.has(frase.split(" ")[0].toLowerCase())) return null;
+  // "50g", "20 g", "330ml": o rótulo JÁ É um peso, não uma medida caseira. Vem
+  // do campo serving do Open Food Facts e virava uma "medida" chamada "50g"
+  // pesando outra coisa. Espelha seed_food_portions.py.
+  if (/^\d+(?:[.,]\d+)?\s*(?:g|kg|mg|ml|l)$/i.test(frase.trim())) return null;
   return { label: frase.slice(0, 50), grams: Math.round(gramsOne * 100) / 100, amount: n };
 }
 

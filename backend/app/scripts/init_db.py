@@ -21,6 +21,7 @@ from app.scripts import (
     seed_exercises_curated,
     seed_exercises_open,
     seed_food_portions,
+    seed_medidas_caseiras,
     seed_plant_based,
     seed_taco,
     seed_taco_official,
@@ -204,6 +205,11 @@ def run() -> None:
     # Medidas caseiras embutidas (gramas/unidades): deriva uma FoodPortion do
     # default_portion de cada alimento. Depois dos seeds de comida, idempotente.
     seed_food_portions.run()
+
+    # Medidas caseiras CURADAS + supressão de alimentos repetidos. Roda DEPOIS
+    # do seed_food_portions de propósito: aquele deriva a medida do próprio
+    # alimento (fonte melhor) e este só preenche quem ficou sem nenhuma.
+    seed_medidas_caseiras.run()
 
     # Pro de cortesia (testadores) via env PRO_COMP_EMAILS. Só concede.
     grant_comp_pro.run()

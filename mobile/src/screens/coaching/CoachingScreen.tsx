@@ -517,7 +517,6 @@ function CoachingHub({
   const { colors, type, spacing, radius } = useTheme();
   const meta = GOAL_META[analysis.goal ?? ""] ?? { label: "Seu objetivo", icon: "compass" as const };
   const semana = semanaLabel(analysis.metrics.baseline_at);
-  const leitura = checkin?.headline ?? analysis.headline;
 
   const rank = (i: CoachingInsight) => (i.adjustment ? 0 : 10) + (i.severity === "action" ? 0 : 1);
   const missoes = analysis.insights.filter((i) => i.severity !== "info").sort((a, b) => rank(a) - rank(b));
@@ -565,10 +564,13 @@ function CoachingHub({
           ) : null}
         </View>
 
-        <Text style={[type.body, { color: colors.textPrimary, lineHeight: 22 }]}>{leitura}</Text>
+        {/* A "leitura da semana" saiu daqui de propósito: no card de abertura
+            ela repetia em prosa o que os blocos logo abaixo (constância,
+            missões, ritmo) já mostram em número, e roubava a primeira tela.
+            O texto continua no check-in, onde é a resposta do coach. */}
 
         {/* Constância gamificada */}
-        <View style={{ borderTopWidth: 1, borderTopColor: colors.border, marginTop: spacing.md, paddingTop: spacing.md }}>
+        <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md }}>
           {semConstancia ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
               <Ionicons name="flame-outline" size={20} color={colors.textSecondary} />

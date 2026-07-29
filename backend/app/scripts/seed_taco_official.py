@@ -37,6 +37,16 @@ def _num(value) -> float | None:
         return None
 
 
+def _nome_legivel(descricao: str) -> str:
+    """A TACO descreve em formato de catálogo, com vírgulas separando os
+    qualificadores: "Banana, nanica, crua", "Ovo, de galinha, inteiro, frito".
+    Na busca do app isso lê como erro de digitação — e ninguém escreve assim.
+    Vira "Banana nanica crua". Sem as vírgulas as regras de medida caseira
+    também casam (elas procuram "banana nanica")."""
+    limpo = descricao.replace(",", " ")
+    return " ".join(limpo.split())
+
+
 def run() -> None:
     data = json.loads(JSON_PATH.read_text(encoding="utf-8"))
     db = SessionLocal()
@@ -60,7 +70,7 @@ def run() -> None:
             ).scalar_one_or_none()
 
             fields = dict(
-                name=row["description"],
+                name=_nome_legivel(row["description"]),
                 kcal_per_100g=round(kcal, 1),
                 protein_g_per_100g=round(protein, 1),
                 carbs_g_per_100g=round(carbs, 1),

@@ -25,7 +25,7 @@ import {
   type MealLogItem,
   type NutritionDay,
 } from "../../api/meals";
-import { getTodayWaterSummary, logWater, type WaterSummary } from "../../api/water";
+import { deleteWaterLog, getTodayWaterSummary, logWater, type WaterSummary } from "../../api/water";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
@@ -164,6 +164,25 @@ export function DiaryScreen() {
     setWater((prev) => (prev ? { ...prev, total_ml_today: prev.total_ml_today + ml } : prev));
     try {
       await logWater(ml);
+    } finally {
+      getTodayWaterSummary().then(setWater).catch(() => {});
+    }
+  }
+
+  /** Apaga UM registro de água. Errar o copo é comum (tocou +500 quando era
+   * +200), e sem isto o único jeito de corrigir era zerar o dia. */
+  async function handleRemoveWater(log: { id: number; amount_ml: number }) {
+    setWater((prev) =>
+      prev
+        ? {
+            ...prev,
+            total_ml_today: Math.max(prev.total_ml_today - log.amount_ml, 0),
+            logs_today: prev.logs_today.filter((l) => l.id !== log.id),
+          }
+        : prev
+    );
+    try {
+      await deleteWaterLog(log.id);
     } finally {
       getTodayWaterSummary().then(setWater).catch(() => {});
     }
@@ -404,6 +423,36 @@ export function DiaryScreen() {
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* O que já foi registrado hoje, cada copo com seu "x". Tocar errado no
+            +500 quando era +200 é o erro mais comum aqui; sem isto não havia
+            como desfazer. */}
+        {(water?.logs_today ?? []).length > 0 ? (
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginTop: spacing.md }}>
+            {(water?.logs_today ?? []).map((log) => (
+              <TouchableOpacity
+                key={log.id}
+                onPress={() => handleRemoveWater(log)}
+                activeOpacity={0.7}
+                accessibilityLabel={`Remover ${log.amount_ml} ml`}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 5,
+                  backgroundColor: colors.surfaceAlt,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: radius.pill,
+                  paddingVertical: 6,
+                  paddingHorizontal: 11,
+                }}
+              >
+                <Text style={[type.caption, { color: colors.textPrimary }]}>{log.amount_ml} ml</Text>
+                <Ionicons name="close-circle" size={15} color={colors.textSecondary} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
       </Card>
       ) : null}
 

@@ -29,7 +29,9 @@ def search_local(db: Session, query: str, limit: int = 30) -> list[Food]:
         return []
     stems = [_stem(t) for t in terms]
 
-    stmt = select(Food)
+    # `hidden` = gêmeo perdedor de um alimento repetido. Fica fora da busca mas
+    # continua existindo, porque o histórico de refeições aponta pra ele.
+    stmt = select(Food).where(Food.hidden.is_(False))
     for stem in stems:
         stmt = stmt.where(Food.search_text.like(f"%{stem}%"))
     # Puxa um conjunto maior (TACO e nomes curtos primeiro) e reordena em Python.
@@ -111,7 +113,10 @@ def search_brands_live(db: Session, query: str, limit: int = 30) -> list[Food]:
                     Food.source == FoodSource.OPEN_FOOD_FACTS, Food.external_id == ext
                 )
             ).scalar_one_or_none()
-            if existing is not None:
+            # `hidden` = gêmeo perdedor de um produto repetido. A busca local já
+            # filtra; sem filtrar aqui também, ele voltava pela porta dos fundos
+            # (eram os dois "Cuzcuz" de 125 e 340 kcal na mesma lista).
+            if existing is not None and not existing.hidden:
                 out.append(existing)
             continue
         out.append(_upsert_open_food_facts_product(db, product))
@@ -145,7 +150,10 @@ def search_fatsecret_live(db: Session, query: str, limit: int = 30) -> list[Food
             existing = db.execute(
                 select(Food).where(Food.source == FoodSource.FATSECRET, Food.external_id == ext)
             ).scalar_one_or_none()
-            if existing is not None:
+            # `hidden` = gêmeo perdedor de um produto repetido. A busca local já
+            # filtra; sem filtrar aqui também, ele voltava pela porta dos fundos
+            # (eram os dois "Cuzcuz" de 125 e 340 kcal na mesma lista).
+            if existing is not None and not existing.hidden:
                 out.append(existing)
             continue
         out.append(_upsert_product(db, FoodSource.FATSECRET, product))

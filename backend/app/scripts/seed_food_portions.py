@@ -53,6 +53,52 @@ def _singular_primeira(frase: str) -> str:
     return " ".join([w, *palavras[1:]])
 
 
+# O Open Food Facts guarda o serving em ingles e, muitas vezes, com o peso no
+# proprio rotulo ("slice (50 g)", "each (70 g)"). Traduzimos o nome e usamos o
+# peso do rotulo — antes o peso vinha do default_portion_g, que nesses casos
+# caia em 100 g e produzia uma "fatia de 50 g" pesando 100 g na tela.
+_TRADUCAO_SERVING = {
+    # "serving"/"portion" viram "porção", que cai no filtro de rótulo genérico
+    # logo abaixo — "1 porção" não diz nada a mais que as gramas.
+    "serving": "porção",
+    "portion": "porção",
+    "slice": "fatia",
+    "each": "unidade",
+    "unit": "unidade",
+    "piece": "pedaço",
+    "cup": "xícara",
+    "glass": "copo",
+    "bottle": "garrafa",
+    "can": "lata",
+    "package": "pacote",
+    "pack": "pacote",
+    "bar": "barra",
+    "tablespoon": "colher de sopa",
+    "teaspoon": "colher de chá",
+    "scoop": "dose",
+}
+
+# Peso escrito dentro do rotulo: "(50 g)", "50gm", "70 g".
+_PESO_NO_ROTULO = re.compile(r"\(?\s*(\d+(?:[.,]\d+)?)\s*(g|gm|gr|ml)\b\s*\)?", re.IGNORECASE)
+
+
+def _limpar_rotulo(frase: str) -> str | None:
+    """Sobra do rotulo depois de tirar o peso: "slice (50 g)" -> "fatia".
+    None quando o que sobra nao e uma medida utilizavel."""
+    resto = _PESO_NO_ROTULO.sub(" ", frase)
+    resto = resto.split("/")[0]  # "colheres/cuchara" -> "colheres"
+    resto = re.sub(r"[()\[\],.;:]", " ", resto)
+    resto = re.sub(r"\s+", " ", resto).strip().lower()
+    if not resto or len(resto) > 30:
+        return None
+    if not re.fullmatch(r"[a-zà-ÿ ]+", resto):
+        return None
+    resto = _TRADUCAO_SERVING.get(resto, resto)
+    if resto in _GENERICOS or resto.split()[0] in _UNIDADES_DE_PESO:
+        return None
+    return resto
+
+
 def parse_portion(label: str | None, portion_g: float | None) -> tuple[str, float] | None:
     """('3 colheres de sopa', 45.0) -> ('colher de sopa', 15.0).
     ('1 unidade', 50.0) -> ('unidade', 50.0). ('fatia', 25.0) -> ('fatia', 25.0).
@@ -69,6 +115,20 @@ def parse_portion(label: str | None, portion_g: float | None) -> tuple[str, floa
         frase = texto
     if n <= 0 or not frase:
         return None
+
+    # Peso escrito no proprio rotulo manda: e o dado do fabricante. Sem isto,
+    # "slice (50 g)" virava uma fatia pesando o default_portion_g (100 g) —
+    # a medida contradizia o proprio nome.
+    peso = _PESO_NO_ROTULO.search(frase)
+    if peso:
+        limpo = _limpar_rotulo(frase)
+        if limpo is None:
+            return None
+        gramas = float(peso.group(1).replace(",", ".")) / (n if n > 1 else 1)
+        if gramas <= 0 or gramas > 5000:
+            return None
+        return _singular_primeira(limpo)[:50], round(gramas, 2)
+
     grams_one = portion_g / n
     if grams_one <= 0 or grams_one > 5000:
         return None
@@ -78,6 +138,11 @@ def parse_portion(label: str | None, portion_g: float | None) -> tuple[str, floa
     if frase.lower() in _GENERICOS:
         return None
     if frase.split()[0].lower() in _UNIDADES_DE_PESO:
+        return None
+    # "50g", "20 g", "330ml": o rótulo JÁ É um peso, não uma medida caseira. Vem
+    # do campo serving do Open Food Facts e virava uma "medida" chamada "50g"
+    # pesando outra coisa ("50g = 100 g") — o pior tipo de mentira na tela.
+    if re.fullmatch(r"\d+(?:[.,]\d+)?\s*(?:g|kg|mg|ml|l)", frase.strip(), re.IGNORECASE):
         return None
     return frase[:50], round(grams_one, 2)
 
@@ -92,7 +157,8 @@ def _limpar_medidas_de_peso(db) -> int:
         for p in db.execute(
             select(FoodPortion).where(FoodPortion.created_by_user_id.is_(None))
         ).scalars()
-        if p.label.split() and p.label.split()[0].lower() in _UNIDADES_DE_PESO
+        if (p.label.split() and p.label.split()[0].lower() in _UNIDADES_DE_PESO)
+        or re.fullmatch(r"\d+(?:[.,]\d+)?\s*(?:g|kg|mg|ml|l)", p.label.strip(), re.IGNORECASE)
     ]
     for p in alvo:
         db.delete(p)

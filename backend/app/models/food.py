@@ -1,7 +1,19 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, UniqueConstraint, event, func
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    event,
+    false,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -45,6 +57,14 @@ class Food(Base):
 
     default_portion_g: Mapped[float] = mapped_column(Float, default=100.0)
     default_portion_label: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    # Fora da busca, mas ainda existente. É o gêmeo perdedor de um alimento
+    # repetido (o seed curado e a TACO oficial trazem os mesmos alimentos, com
+    # kcal separadas por arredondamento: "Pão francês" 300 vs "Pão trigo
+    # francês" 299,8). Não dá pra apagar: meal_log_items aponta pra cá e o
+    # histórico é append-only — quem já registrou o gêmeo continua vendo o que
+    # comeu. Ver scripts/seed_medidas_caseiras.py.
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
 
     created_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
