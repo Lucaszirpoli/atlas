@@ -2,6 +2,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
@@ -88,3 +89,74 @@ app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+_PRIVACY_POLICY_HTML = """<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Politica de Privacidade - Atlas</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width: 720px; margin: 0 auto; padding: 32px 20px 80px; line-height: 1.6; color: #1a1a1a; }
+  h1 { font-size: 1.6rem; }
+  h2 { font-size: 1.15rem; margin-top: 2rem; }
+  a { color: #FF6B2C; }
+  .muted { color: #666; font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<h1>Politica de Privacidade - Atlas</h1>
+<p class="muted">Ultima atualizacao: 29 de julho de 2026</p>
+
+<p>O Atlas ("app", "nos") e um aplicativo de fitness e nutricao. Esta politica explica quais dados coletamos, para que usamos e quais direitos voce tem, em conformidade com a Lei Geral de Protecao de Dados (LGPD - Lei 13.709/2018).</p>
+
+<h2>1. Quem e o controlador dos dados</h2>
+<p>Lucas Zirpoli, desenvolvedor do Atlas. Contato: <a href="mailto:lucaszirpoli@gmail.com">lucaszirpoli@gmail.com</a>.</p>
+
+<h2>2. Dados que coletamos</h2>
+<ul>
+<li><strong>Dados de conta:</strong> nome, e-mail, nome de usuario, senha (armazenada de forma criptografada).</li>
+<li><strong>Dados de saude e bem-estar:</strong> peso, medidas corporais, refeicoes e macronutrientes registrados, treinos e series executadas, horas e qualidade do sono, ingestao de agua. Esses dados sao sensiveis nos termos da LGPD e so sao coletados com o seu consentimento explicito, dado no cadastro/onboarding do app.</li>
+<li><strong>Dados de uso:</strong> interacoes com o app para fins de funcionamento e melhoria do produto (ex.: quais telas voce usa).</li>
+<li><strong>Conteudo social opcional:</strong> se voce usar os recursos sociais (amigos, desafios, feed), o conteudo que voce publicar e visivel para as pessoas que voce conectar.</li>
+<li><strong>Conversas com o assistente de IA (apenas plano Pro):</strong> mensagens trocadas com o assistente, usadas para gerar respostas e sugestoes de treino/dieta.</li>
+</ul>
+
+<h2>3. Para que usamos seus dados</h2>
+<ul>
+<li>Fornecer as funcionalidades do app: registro de dieta, treino, sono, agua, evolucao e a camada social.</li>
+<li>Gerar recomendacoes de treino/dieta e respostas do assistente de IA (apenas assinantes Pro), via API da Anthropic.</li>
+<li>Processar assinaturas do plano Pro, via RevenueCat (repassamos apenas os identificadores necessarios para validar a compra - nao compartilhamos seus dados de saude com essa plataforma).</li>
+<li>Buscar informacoes publicas de produtos alimenticios (nome, marca, tabela nutricional) na base publica Open Food Facts - essa consulta nao envia seus dados pessoais para o Open Food Facts.</li>
+<li>Melhorar a seguranca e o funcionamento do app.</li>
+</ul>
+
+<h2>4. Compartilhamento de dados</h2>
+<p>Nos <strong>nao vendemos</strong> seus dados pessoais. Compartilhamos dados apenas com prestadores de servico estritamente necessarios para operar o app (processamento de pagamento/assinatura via RevenueCat e Google Play, e o provedor de IA Anthropic para as funcionalidades exclusivas do plano Pro), sempre limitado ao necessario para a funcao de cada servico.</p>
+
+<h2>5. Retencao e exclusao</h2>
+<p>Seu historico (refeicoes, treinos, peso, sono) e mantido para que voce possa acompanhar sua evolucao ao longo do tempo. Voce pode solicitar a exclusao da sua conta e dos seus dados a qualquer momento pelo e-mail <a href="mailto:lucaszirpoli@gmail.com">lucaszirpoli@gmail.com</a>.</p>
+
+<h2>6. Seus direitos (LGPD)</h2>
+<p>Voce pode solicitar, a qualquer momento: confirmacao de tratamento, acesso aos dados, correcao de dados incompletos ou desatualizados, anonimizacao/eliminacao de dados desnecessarios, portabilidade, eliminacao dos dados tratados com consentimento, e revogacao do consentimento. Basta entrar em contato pelo e-mail acima.</p>
+
+<h2>7. Publico infantil</h2>
+<p>O Atlas nao e direcionado a criancas e nao foi desenhado para o publico infantil.</p>
+
+<h2>8. Seguranca</h2>
+<p>Adotamos medidas tecnicas razoaveis para proteger seus dados, incluindo senhas criptografadas e comunicacao via HTTPS.</p>
+
+<h2>9. Alteracoes desta politica</h2>
+<p>Podemos atualizar esta politica periodicamente. Mudancas relevantes serao comunicadas dentro do app.</p>
+
+<h2>10. Contato</h2>
+<p>Duvidas sobre privacidade e dados: <a href="mailto:lucaszirpoli@gmail.com">lucaszirpoli@gmail.com</a>.</p>
+</body>
+</html>
+"""
+
+
+@app.get("/legal/privacidade", response_class=HTMLResponse)
+def privacy_policy() -> str:
+    return _PRIVACY_POLICY_HTML
