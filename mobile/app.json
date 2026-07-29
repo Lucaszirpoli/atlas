@@ -19,7 +19,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "versionCode": 39
+      "versionCode": 40
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -47,7 +47,8 @@
           "isAndroidBackgroundLocationEnabled": false
         }
       ],
-      "./plugins/withCleartextTraffic"
+      "./plugins/withCleartextTraffic",
+      "./plugins/withOptionalHardwareFeatures"
     ],
     "extra": {
       "eas": {
