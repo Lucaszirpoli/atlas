@@ -28,6 +28,16 @@ from app.models.food import Food, FoodPortion
 # "3 colheres de sopa" (45g) precisa virar a medida de UMA "colher de sopa" (15g).
 _PLURAL_ES = ("r", "z")  # colheres->colher, cálices->cálice fica no ramo do 's'
 
+# Rótulos genéricos demais pra virar medida caseira — melhor deixar só gramas.
+_GENERICOS = {"porção", "porcao", "medida", "g", "grama", "gramas"}
+
+# Primeira palavra que denuncia "isto é peso/volume, não medida caseira". Pega
+# o que _GENERICOS não pega porque vem com sufixo: a TACO oficial rotula tudo
+# como "100 g (referência TACO)", e sem isto derivávamos dali uma medida
+# chamada "g (referência TACO)" pesando 1 g nos 597 alimentos da tabela.
+# Espelha UNIDADES_DE_PESO em mobile/src/utils/portion.ts.
+_UNIDADES_DE_PESO = {"g", "grama", "gramas", "mg", "kg", "ml", "l", "litro", "litros"}
+
 
 def _singular_primeira(frase: str) -> str:
     palavras = frase.split()
@@ -65,9 +75,28 @@ def parse_portion(label: str | None, portion_g: float | None) -> tuple[str, floa
     if n != 1.0:
         frase = _singular_primeira(frase)
     # Rótulos genéricos demais ("porção", "medida") não ajudam — melhor só gramas.
-    if frase.lower() in {"porção", "porcao", "medida", "g", "grama", "gramas"}:
+    if frase.lower() in _GENERICOS:
+        return None
+    if frase.split()[0].lower() in _UNIDADES_DE_PESO:
         return None
     return frase[:50], round(grams_one, 2)
+
+
+def _limpar_medidas_de_peso(db) -> int:
+    """Apaga as medidas embutidas que nunca deveriam ter sido criadas — as
+    derivadas de um rótulo de peso ("g (referência TACO)"). Só mexe nas
+    embutidas (created_by_user_id nulo); medida que o usuário criou é dele,
+    mesmo que ele tenha chamado de "g"."""
+    alvo = [
+        p
+        for p in db.execute(
+            select(FoodPortion).where(FoodPortion.created_by_user_id.is_(None))
+        ).scalars()
+        if p.label.split() and p.label.split()[0].lower() in _UNIDADES_DE_PESO
+    ]
+    for p in alvo:
+        db.delete(p)
+    return len(alvo)
 
 
 def ensure_columns() -> None:
@@ -96,6 +125,12 @@ def run() -> None:
     ensure_columns()
     db = SessionLocal()
     try:
+        # Limpa ANTES de calcular quem já tem medida: um alimento cuja única
+        # medida embutida era a lixeira do "g (referência TACO)" precisa voltar
+        # a ser candidato ao backfill (e vai ser corretamente pulado agora).
+        removidas = _limpar_medidas_de_peso(db)
+        db.flush()
+
         # Só alimentos que ainda não têm NENHUMA medida embutida (dono nulo).
         com_medida = set(
             db.execute(
@@ -121,7 +156,7 @@ def run() -> None:
             )
             criadas += 1
         db.commit()
-        print(f"Medidas caseiras embutidas criadas: {criadas}.")
+        print(f"Medidas caseiras embutidas criadas: {criadas}, removidas: {removidas}.")
     finally:
         db.close()
 

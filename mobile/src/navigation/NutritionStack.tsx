@@ -8,6 +8,7 @@ import { BarcodeScannerScreen } from "../screens/nutrition/BarcodeScannerScreen"
 import { CalorieHistoryScreen } from "../screens/nutrition/CalorieHistoryScreen";
 import { DiaryScreen } from "../screens/nutrition/DiaryScreen";
 import { DietTemplatesScreen } from "../screens/nutrition/DietTemplatesScreen";
+import { FoodDetailScreen } from "../screens/nutrition/FoodDetailScreen";
 import { GoalSettingsScreen } from "../screens/nutrition/GoalSettingsScreen";
 import { MeasurementsScreen } from "../screens/nutrition/MeasurementsScreen";
 import { QuickLogScreen } from "../screens/nutrition/QuickLogScreen";
@@ -33,6 +34,9 @@ export function NutritionStack() {
         options={{ title: "Dieta", headerLeft: () => <HeaderBack /> }}
       />
       <Stack.Screen name="AddFood" component={AddFoodScreen} options={{ title: "Adicionar alimento" }} />
+      {/* Sem título: a ficha já mostra o nome do alimento em destaque no corpo,
+          repetir na barra só rouba altura da tabela nutricional. */}
+      <Stack.Screen name="FoodDetail" component={FoodDetailScreen} options={{ title: "" }} />
       <Stack.Screen name="QuickLog" component={QuickLogScreen} options={{ title: "Registrar por texto" }} />
       <Stack.Screen name="DietTemplates" component={DietTemplatesScreen} options={{ title: "Dietas prontas" }} />
       <Stack.Screen name="AiDiet" component={AiDietScreen} options={{ title: "Montar dieta" }} />

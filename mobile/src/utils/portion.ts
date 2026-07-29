@@ -45,6 +45,13 @@ export function formatQuantity(
 
 const ROTULOS_GENERICOS = new Set(["porção", "porcao", "medida", "g", "grama", "gramas"]);
 
+/** Primeira palavra que denuncia "isto é peso/volume, não medida caseira".
+ * Pega os casos que o ROTULOS_GENERICOS não pega porque vêm com sufixo: a TACO
+ * oficial rotula tudo como "100 g (referência TACO)", e sem isto o parser
+ * derivava dali uma medida chamada "g (referência TACO)" pesando 1 g — que
+ * aparecia como opção de unidade nos 597 alimentos da TACO. */
+const UNIDADES_DE_PESO = new Set(["g", "grama", "gramas", "mg", "kg", "ml", "l", "litro", "litros"]);
+
 /** Singulariza a PRIMEIRA palavra da medida ("colheres de sopa" -> "colher de
  * sopa") — o inverso de pluralizar(), usado ao derivar a medida embutida de um
  * alimento a partir do seu default_portion_label. Espelha
@@ -85,6 +92,7 @@ export function parseDefaultPortion(
   if (!(gramsOne > 0) || gramsOne > 5000) return null;
   if (n !== 1) frase = singularPrimeira(frase);
   if (ROTULOS_GENERICOS.has(frase.toLowerCase())) return null;
+  if (UNIDADES_DE_PESO.has(frase.split(" ")[0].toLowerCase())) return null;
   return { label: frase.slice(0, 50), grams: Math.round(gramsOne * 100) / 100, amount: n };
 }
 
