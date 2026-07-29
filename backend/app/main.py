@@ -160,3 +160,46 @@ _PRIVACY_POLICY_HTML = """<!doctype html>
 @app.get("/legal/privacidade", response_class=HTMLResponse)
 def privacy_policy() -> str:
     return _PRIVACY_POLICY_HTML
+
+
+_DELETE_ACCOUNT_HTML = """<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Excluir conta - Atlas</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width: 720px; margin: 0 auto; padding: 32px 20px 80px; line-height: 1.6; color: #1a1a1a; }
+  h1 { font-size: 1.6rem; }
+  h2 { font-size: 1.15rem; margin-top: 2rem; }
+  a { color: #FF6B2C; }
+  .muted { color: #666; font-size: 0.9rem; }
+  ol { padding-left: 1.2rem; }
+</style>
+</head>
+<body>
+<h1>Como excluir sua conta do Atlas</h1>
+<p class="muted">Atlas - aplicativo de fitness e nutricao (desenvolvedor: Lucas Zirpoli)</p>
+
+<h2>Passo a passo</h2>
+<ol>
+<li>Envie um e-mail para <a href="mailto:lucaszirpoli@gmail.com?subject=Excluir%20minha%20conta%20Atlas">lucaszirpoli@gmail.com</a> a partir do endereco de e-mail cadastrado no app, com o assunto "Excluir minha conta".</li>
+<li>Confirmaremos a identidade pelo e-mail cadastrado e processaremos o pedido em ate 15 dias.</li>
+<li>Voce recebe uma confirmacao por e-mail quando a exclusao for concluida.</li>
+</ol>
+
+<h2>O que e excluido</h2>
+<p>Dados de conta (nome, e-mail, senha), perfil, e todo o historico de saude registrado no app: refeicoes, treinos, peso, medidas, sono e agua. Posts, comentarios e conexoes sociais tambem sao removidos.</p>
+
+<h2>O que pode ser mantido</h2>
+<p>Registros que a lei exige manter (por exemplo, dados de faturamento de assinaturas, quando aplicavel) sao retidos apenas pelo prazo minimo exigido por lei, de forma isolada do restante do perfil, e depois eliminados.</p>
+
+<p>Para mais detalhes sobre como tratamos dados, veja a <a href="/legal/privacidade">Politica de Privacidade</a>.</p>
+</body>
+</html>
+"""
+
+
+@app.get("/legal/exclusao-de-conta", response_class=HTMLResponse)
+def delete_account_page() -> str:
+    return _DELETE_ACCOUNT_HTML
