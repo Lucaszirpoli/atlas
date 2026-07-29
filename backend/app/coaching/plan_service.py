@@ -73,6 +73,7 @@ _IMPACTO: dict[str, tuple[str, ...]] = {
     "strong_points": ("treino",),
     "injuries_limitations": ("treino",),
     "exercise_preferences": ("treino",),
+    "exercise_prefs": ("treino",),
     # Alimentação.
     "dietary_restrictions": ("dieta",),
     "meals_per_day": ("dieta",),
@@ -289,6 +290,25 @@ def apply_answers_to_profile(db: Session, user: User, answers: dict) -> None:
         p.dietary_restrictions = list(answers["dietary_restrictions"] or [])
     if answers.get("injuries_limitations") is not None:
         p.injuries_limitations = answers["injuries_limitations"] or None
+
+    # Respostas que ANTES eram descartadas. Elas constavam do mapa de impacto
+    # (mudá-las remontava o plano), mas nada as gravava — quem respondia
+    # "prefiro máquinas e exercícios estáveis" via o coach montar agachamento
+    # livre do mesmo jeito. exercise_prefs muda a escolha de exercícios de
+    # verdade; os textos entram no contexto do coach de IA.
+    if answers.get("exercise_prefs") is not None:
+        p.exercise_prefs = training_brain.valid_exercise_prefs(answers.get("exercise_prefs"))
+    if answers.get("strong_points") is not None:
+        p.strong_points = training_brain.valid_weak_points(answers.get("strong_points"))
+    for campo, chave in (
+        ("exercise_preferences_text", "exercise_preferences"),
+        ("training_history", "training_history"),
+        ("food_dislikes", "food_dislikes"),
+        ("medications", "medications"),
+        ("extra_notes", "notes"),
+    ):
+        if answers.get(chave) is not None:
+            setattr(p, campo, (answers.get(chave) or "").strip() or None)
 
     # Peso é histórico append-only: um valor novo vira um registro novo, nunca
     # sobrescreve o anterior (regra 4 — é a base dos gráficos de evolução).

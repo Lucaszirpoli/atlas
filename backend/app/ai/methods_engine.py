@@ -121,6 +121,44 @@ _DEFAULT_SPLITS: dict[int, list[str]] = {
 # finalizador). Casados por palavra-chave no nome normalizado.
 _HEAVY_COMPOUND_KEYWORDS = ("agachamento", "supino", "terra", "levantamento terra")
 
+# Preferências de exercício que a pessoa marcou no questionário
+# (training_brain.EXERCISE_PREFS). Cada uma vira EXCLUSÃO ou PRIORIDADE aqui —
+# é o que faz "prefiro máquinas e exercícios estáveis" mudar o treino de
+# verdade, em vez de virar um texto que ninguém lê.
+_PREF_EXCLUI = {
+    # Agachamento COM BARRA nas costas. Leg press, hack e agachamento em
+    # máquina continuam valendo — a queixa é a barra nas costas, não o padrão.
+    "sem_agachamento_livre": ("agachamento livre", "agachamento com barra", "back squat", "front squat"),
+    "sem_acima_da_cabeca": (
+        "desenvolvimento", "militar", "overhead", "acima da cabeca", "elevacao frontal com barra",
+    ),
+    "sem_impacto": ("salto", "pulo", "jump", "corrida", "burpee", "pliometr", "box jump"),
+}
+_PREF_UNILATERAL = ("unilateral", "um braco", "uma perna", "afundo", "avanco", "bulgaro", "serrote", "alternado")
+
+
+def _ordenar_por_preferencia(nome_norm: str, equipamento, prefs: frozenset[str]) -> int:
+    """Chave de ordenação (menor = mais cedo no treino) pelas preferências.
+    Só REORDENA — nunca deixa o músculo sem exercício."""
+    from app.models.exercise import Equipment
+
+    peso = 0
+    if "maquinas" in prefs:
+        peso += 0 if equipamento in (Equipment.MACHINE, Equipment.CABLE, Equipment.SMITH_MACHINE) else 2
+    elif "peso_livre" in prefs:
+        peso += 0 if equipamento in (Equipment.BARBELL, Equipment.DUMBBELL, Equipment.KETTLEBELL) else 2
+    if "unilateral" in prefs:
+        peso += 0 if any(k in nome_norm for k in _PREF_UNILATERAL) else 1
+    return peso
+
+
+def _proibido_por_preferencia(nome_norm: str, prefs: frozenset[str]) -> bool:
+    """True quando o exercício bate numa preferência de EVITAR."""
+    return any(
+        chave in prefs and any(k in nome_norm for k in palavras)
+        for chave, palavras in _PREF_EXCLUI.items()
+    )
+
 
 @dataclass
 class PlannedSlot:
@@ -216,6 +254,7 @@ def _pick(
     equipment_pref_machines: bool,
     covered: frozenset[MuscleGroup] = frozenset(),
     session_ids: frozenset[int] = frozenset(),
+    user_prefs: frozenset[str] = frozenset(),
 ) -> list[Exercise]:
     """Escolhe `count` exercícios (determinístico) dos músculos dados, do tipo
     composto/isolado pedido, evitando repetição e respeitando proibições.
@@ -255,7 +294,11 @@ def _pick(
         for ex in candidates:
             if ex.id in exclude:
                 continue
-            if forbid_heavy and any(k in normalize_search_text(ex.name) for k in _HEAVY_COMPOUND_KEYWORDS):
+            nome_norm = normalize_search_text(ex.name)
+            if forbid_heavy and any(k in nome_norm for k in _HEAVY_COMPOUND_KEYWORDS):
+                continue
+            # Preferência de EVITAR: sai do pool antes de qualquer escolha.
+            if _proibido_por_preferencia(nome_norm, user_prefs):
                 continue
             if ex.primary_muscle_group in by_muscle:
                 by_muscle[ex.primary_muscle_group].append(ex)
@@ -265,6 +308,13 @@ def _pick(
 
             for m in by_muscle:
                 by_muscle[m].sort(key=lambda e: 0 if e.equipment in (Equipment.MACHINE, Equipment.CABLE) else 1)
+        # A preferência da PESSOA vem depois da do método: quem pediu máquinas
+        # recebe máquinas mesmo num método que não pede.
+        if user_prefs:
+            for m in by_muscle:
+                by_muscle[m].sort(
+                    key=lambda e: _ordenar_por_preferencia(normalize_search_text(e.name), e.equipment, user_prefs)
+                )
         return by_muscle
 
     def _rotate_fill(by_muscle: dict[MuscleGroup, list[Exercise]]) -> None:
@@ -347,6 +397,7 @@ def build_plan(
     weak_points: list[MuscleGroup] | None = None,
     session_target: int | None = None,
     time_efficient: bool = False,
+    exercise_prefs: list[str] | None = None,
 ) -> WorkoutPlan:
     """weak_point / weak_points: músculo(s) a priorizar nos acessórios (até 2).
     `weak_points` (lista) tem precedência; `weak_point` (singular) é mantido pros
@@ -394,6 +445,9 @@ def build_plan(
     # Máquinas/cabo primeiro: métodos que pedem (Kuba/FST-7) OU sessão curta
     # (multiarticular de máquina rende mais estímulo por minuto).
     prefer_machines = method.key in ("kuba", "fst7") or time_efficient
+    # Preferências de exercício da PESSOA (questionário). Chegam até _pick e
+    # viram exclusão/prioridade real na escolha — ver _proibido_por_preferencia.
+    prefs = frozenset(exercise_prefs or ())
 
     plan = WorkoutPlan(
         method_key=method.key,
@@ -481,6 +535,7 @@ def build_plan(
                 time_efficient,
                 covered=frozenset(e.primary_muscle_group for e in compounds),
                 session_ids=frozenset(e.id for e in compounds),
+                user_prefs=prefs,
             )
             isolations = _pick(
                 db,
@@ -492,6 +547,7 @@ def build_plan(
                 prefer_machines,
                 covered=frozenset(e.primary_muscle_group for e in compounds),
                 session_ids=frozenset(e.id for e in compounds),
+                user_prefs=prefs,
             )
             selected = [(ex, True) for ex in compounds] + [(ex, False) for ex in isolations]
             if method.repeat_same_session:
@@ -524,6 +580,7 @@ def add_accessory_slot(
     muscle: MuscleGroup,
     *,
     prefer_machines: bool = False,
+    exercise_prefs: list[str] | None = None,
     max_per_session: int = 9,
 ) -> PlannedSlot | None:
     """Acrescenta UMA vaga do `muscle` ao plano e devolve a vaga criada (None se
@@ -563,12 +620,13 @@ def add_accessory_slot(
     n_compostos = sum(1 for sl in sessao.slots if sl.is_compound)
     quer_composto = (n_compostos + 1) <= round((len(sessao.slots) + 1) * ratio)
 
-    escolhidos = _pick(db, [muscle], quer_composto, 1, usados, False, prefer_machines)
+    prefs = frozenset(exercise_prefs or ())
+    escolhidos = _pick(db, [muscle], quer_composto, 1, usados, False, prefer_machines, user_prefs=prefs)
     if not escolhidos and quer_composto:
         # Vários músculos não têm composto próprio (bíceps, panturrilha) — cai
         # pro isolado em vez de desistir da vaga.
         quer_composto = False
-        escolhidos = _pick(db, [muscle], False, 1, usados, False, prefer_machines)
+        escolhidos = _pick(db, [muscle], False, 1, usados, False, prefer_machines, user_prefs=prefs)
     if not escolhidos:
         return None
     ex = escolhidos[0]

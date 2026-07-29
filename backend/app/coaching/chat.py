@@ -26,7 +26,47 @@ _MAX_HISTORY = 8
 _MAX_TOOL_ROUNDS = 5
 
 
-def _system_prompt(analysis: WeeklyAnalysis) -> str:
+def _perfil_lines(profile) -> list[str]:
+    """TUDO que a pessoa respondeu no questionário. Antes o coach só recebia a
+    análise numérica: quem respondeu "prefiro máquinas", "dor no ombro direito"
+    ou "não como peixe" conversava com um coach que não sabia de nada disso —
+    e por isso parecia não levar o questionário em conta."""
+    if profile is None:
+        return []
+    from app.coaching import training_brain
+
+    rotulos = dict((v, label) for v, label, _ in training_brain.EXERCISE_PREFS)
+    itens: list[tuple[str, object]] = [
+        ("Nível", getattr(getattr(profile, "experience_level", None), "value", None)),
+        ("Local de treino", getattr(getattr(profile, "training_location", None), "value", None)),
+        ("Dias por semana", getattr(profile, "training_days_per_week", None)),
+        ("Tempo por sessão", getattr(profile, "session_length", None)),
+        ("Pontos fracos", ", ".join(training_brain.resolve_weak_points(profile)) or None),
+        ("Pontos já desenvolvidos", ", ".join(getattr(profile, "strong_points", None) or []) or None),
+        ("Lesões/limitações", getattr(profile, "injuries_limitations", None)),
+        ("Preferências de exercício",
+         ", ".join(rotulos.get(v, v) for v in (getattr(profile, "exercise_prefs", None) or [])) or None),
+        ("Outras preferências", getattr(profile, "exercise_preferences_text", None)),
+        ("Técnica avançada",
+         "pode usar" if training_brain.advanced_allowed(profile) else "SÓ SÉRIES NORMAIS — não sugira técnica"),
+        ("Histórico de treino", getattr(profile, "training_history", None)),
+        ("Quer cardio", getattr(profile, "wants_cardio", None)),
+        ("Restrições alimentares", ", ".join(getattr(profile, "dietary_restrictions", None) or []) or None),
+        ("Não come", getattr(profile, "food_dislikes", None)),
+        ("Medicamentos/hormônios", getattr(profile, "medications", None)),
+        ("Observações dela", getattr(profile, "extra_notes", None)),
+    ]
+    preenchidos = [f"- {rot}: {val}" for rot, val in itens if val not in (None, "", [])]
+    if not preenchidos:
+        return []
+    return [
+        "",
+        "O QUE ELA TE CONTOU NO QUESTIONÁRIO (respeite CADA item; é o contrato com ela):",
+        *preenchidos,
+    ]
+
+
+def _system_prompt(analysis: WeeklyAnalysis, profile=None, retrato=None) -> str:
     m = analysis.metrics
     linhas = [
         "Você é o coach pessoal do usuário dentro do app ATLAS (fitness/nutrição). "
@@ -73,6 +113,13 @@ def _system_prompt(analysis: WeeklyAnalysis) -> str:
             linhas.append(f"  • [{f.severity}] {f.title}: {f.detail}{prop}")
     if analysis.data_gaps:
         linhas.append("- Faltam dados: " + " ".join(analysis.data_gaps))
+    # Quem ela DISSE que é (questionário) e quem ela TEM SIDO (retrato do
+    # histórico). O primeiro é contrato, o segundo é observação — e o segundo
+    # fica mais forte a cada semana de uso.
+    linhas += _perfil_lines(profile)
+    if retrato is not None:
+        linhas.append("")
+        linhas += retrato.prompt_lines()
     return "\n".join(linhas)
 
 
@@ -114,7 +161,14 @@ def answer(
     actions: list[dict] = []
     diet_plan: dict | None = None
     client = get_client()
-    system = _system_prompt(analysis)
+    # Perfil + retrato comportamental: o coach fala com quem CONHECE a pessoa.
+    from app.coaching import user_model
+
+    system = _system_prompt(
+        analysis,
+        profile=getattr(user, "profile", None),
+        retrato=user_model.aprender(db, user.id),
+    )
 
     try:
         for _ in range(_MAX_TOOL_ROUNDS):

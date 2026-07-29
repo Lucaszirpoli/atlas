@@ -51,6 +51,14 @@ def _ensure_profile_columns() -> None:
         # Deixa o coach usar técnica avançada? NULL = perfil que nunca
         # respondeu; a regra de segurança nega pra iniciante.
         ("allow_advanced_techniques", "BOOLEAN", "BOOLEAN"),
+        # Respostas do questionário que antes eram descartadas.
+        ("exercise_prefs", "VARCHAR(40)[]", "TEXT"),
+        ("exercise_preferences_text", "TEXT", "TEXT"),
+        ("training_history", "TEXT", "TEXT"),
+        ("food_dislikes", "TEXT", "TEXT"),
+        ("medications", "TEXT", "TEXT"),
+        ("extra_notes", "TEXT", "TEXT"),
+        ("strong_points", "VARCHAR(20)[]", "TEXT"),
     ]
     pg = engine.dialect.name == "postgresql"
     with engine.begin() as conn:

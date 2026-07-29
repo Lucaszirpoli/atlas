@@ -381,7 +381,13 @@ export function WorkoutExecutionScreen() {
     // Descarte é explícito e confirmado — é o outro caso em que o rascunho sai.
     await clearDraft(sessionId);
     endWorkout();
-    navigation.navigate("RoutineList");
+    // reset, e não navigate: quando o treino foi aberto de fora da lista (do
+    // dashboard, de um atalho), "RoutineList" não está abaixo na pilha — o
+    // navigate EMPURRAVA uma lista nova por cima e a tela do treino descartado
+    // continuava atrás dela. A seta de voltar devolvia a pessoa pro treino que
+    // ela acabou de descartar, como se nada tivesse acontecido. O reset apaga
+    // a pilha: o treino descartado deixa de existir pra navegação.
+    navigation.reset({ index: 0, routes: [{ name: "RoutineList" }] });
   }
 
   return (

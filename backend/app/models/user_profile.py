@@ -112,6 +112,26 @@ class UserProfile(Base):
         Boolean, nullable=True
     )
 
+    # Preferências de exercício marcadas no questionário (máquinas x peso livre,
+    # evitar agachamento livre / acima da cabeça / impacto, gostar de
+    # unilateral). Ver training_brain.EXERCISE_PREFS — cada valor muda a escolha
+    # de exercícios no montador. Antes isto era um texto livre que nada lia.
+    exercise_prefs: Mapped[list[str]] = mapped_column(
+        ARRAY(String(40)).with_variant(JSON(), "sqlite"), default=list
+    )
+    # O que não coube nas opções acima. Não muda o motor (nada determinístico
+    # dá pra extrair de texto livre), mas entra no contexto do coach de IA.
+    exercise_preferences_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Os demais campos abertos do questionário — guardados pra que o coach de IA
+    # os veja. Antes disparavam a remontagem do plano e eram descartados.
+    training_history: Mapped[str | None] = mapped_column(Text, nullable=True)
+    food_dislikes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    medications: Mapped[str | None] = mapped_column(Text, nullable=True)
+    extra_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    strong_points: Mapped[list[str]] = mapped_column(
+        ARRAY(String(20)).with_variant(JSON(), "sqlite"), default=list
+    )
+
     # --- Preferências de treino do Coaching (o "cérebro de treino") ----------
     # Como o coach monta/ajusta o treino da pessoa. Todas OPCIONAIS: sem escolha,
     # o coach usa padrões seguros. Colunas novas -> ensure_columns no init_db

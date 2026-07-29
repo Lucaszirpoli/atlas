@@ -162,9 +162,19 @@ def steps() -> list[dict]:
                 {"key": "injuries_limitations", "label": "Lesões ou limitações (opcional)", "type": TEXT,
                  "required": False, "multiline": True,
                  "placeholder": "Ex.: dor no ombro direito em supino reto, hérnia lombar..."},
-                {"key": "exercise_preferences", "label": "Preferências (opcional)", "type": TEXT,
+                # Virou opção: texto livre aqui era guardado e nunca lido por
+                # nada, então "prefiro máquinas" não mudava treino nenhum. Cada
+                # opção abaixo tem efeito determinístico na escolha dos
+                # exercícios (ver methods_engine._proibido_por_preferencia).
+                {"key": "exercise_prefs", "label": "Preferências de exercício (opcional)", "type": MULTI,
+                 "required": False,
+                 "options": [{"value": v, "label": label, "desc": desc}
+                             for v, label, desc in training_brain.EXERCISE_PREFS],
+                 "help": "Isto muda os exercícios que eu escolho pra você, não só o texto do plano."},
+                {"key": "exercise_preferences", "label": "Mais alguma preferência? (opcional)", "type": TEXT,
                  "required": False, "multiline": True,
-                 "placeholder": "Exercícios que você gosta ou não quer no treino."},
+                 "placeholder": "Exercício específico que você gosta ou não quer.",
+                 "help": "O que não coube nas opções acima. Eu levo em conta na conversa e ao ajustar o plano."},
             ],
         },
         {

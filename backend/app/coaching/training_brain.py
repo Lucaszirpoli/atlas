@@ -42,6 +42,53 @@ def valid_weak_point(value: str | None) -> str | None:
 # que isso deixa de ser "ponto fraco" e vira o treino inteiro.
 WEAK_POINTS_MAX = 2
 
+# ---------------------------------------------------------------------------
+# PREFERÊNCIAS DE EXERCÍCIO — o que a pessoa quer (ou não quer) no treino.
+# ---------------------------------------------------------------------------
+# Eram um campo de texto livre ("Exercícios que você gosta ou não quer"). O
+# texto era guardado e NUNCA lido por nada: quem escrevia "prefiro máquinas e
+# exercícios estáveis" via o coach montar agachamento livre do mesmo jeito.
+# Viraram opções porque opção o motor CONSEGUE obedecer — cada uma abaixo tem
+# um efeito determinístico na escolha dos exercícios (ver
+# workout_builder.filtrar_por_preferencia). O campo de texto continua existindo
+# ao lado, pro que não couber aqui, e vai pro contexto do coach de IA.
+EXERCISE_PREFS: list[tuple[str, str, str]] = [
+    ("maquinas", "Prefiro máquinas e exercícios estáveis",
+     "Máquinas e cabos na frente. Bom pra quem treina sozinho ou quer menos exigência de equilíbrio."),
+    ("peso_livre", "Prefiro peso livre (barra e halteres)",
+     "Barra e halteres na frente das máquinas."),
+    ("sem_agachamento_livre", "Evitar agachamento com barra nas costas",
+     "Troca por leg press, hack, agachamento em máquina e afins."),
+    ("sem_acima_da_cabeca", "Evitar exercícios acima da cabeça",
+     "Sem desenvolvimento militar e variações — comum com ombro sensível."),
+    ("sem_impacto", "Evitar impacto e salto",
+     "Sem pliometria, corrida e pulo — comum com joelho ou lombar sensíveis."),
+    ("unilateral", "Gosto de exercícios unilaterais",
+     "Um lado por vez (afundo, remada serrote, leg press unilateral) ganham prioridade."),
+]
+EXERCISE_PREFS_VALUES = {v for v, _, _ in EXERCISE_PREFS}
+
+# Preferências que se contradizem: marcar as duas não faz sentido, e a segunda
+# escolhida ganha (o app já impede, isto é a rede de segurança do servidor).
+_PREFS_OPOSTAS = {("maquinas", "peso_livre"), ("peso_livre", "maquinas")}
+
+
+def valid_exercise_prefs(valores) -> list[str]:
+    """Sanitiza a lista vinda do app: só valores conhecidos, sem repetição e
+    sem par contraditório (máquinas × peso livre)."""
+    if not valores:
+        return []
+    out: list[str] = []
+    for v in valores:
+        v = str(v).strip()
+        if v not in EXERCISE_PREFS_VALUES or v in out:
+            continue
+        if any((v, j) in _PREFS_OPOSTAS for j in out):
+            continue
+        out.append(v)
+    return out
+
+
 
 def valid_weak_points(values) -> list[str]:
     """Normaliza uma lista de pontos fracos: só grupos válidos, sem repetição e

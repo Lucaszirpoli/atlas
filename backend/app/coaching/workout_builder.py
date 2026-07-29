@@ -95,6 +95,12 @@ def build_and_save(db: Session, user: User) -> dict:
     plan = build_plan(
         db, method, available_days=days, weak_points=wps,
         session_target=session_target, time_efficient=curto,
+        # Preferências marcadas no questionário (máquinas x peso livre, evitar
+        # agachamento livre/acima da cabeça/impacto, unilateral). Chegam até a
+        # escolha de cada exercício — é o que faz a resposta virar treino.
+        exercise_prefs=training_brain.valid_exercise_prefs(
+            getattr(profile, "exercise_prefs", None)
+        ),
     )
 
     # Volume semanal por grupo muscular (regra: sobe/desce série por músculo

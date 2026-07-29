@@ -8,6 +8,7 @@ from app.coaching import chat as coach_chat
 from app.coaching import cycle_state
 from app.coaching import overlays as coach_overlays
 from app.coaching import training_brain
+from app.coaching import user_model
 from app.coaching import volume_landmarks
 from app.coaching import workout_builder
 from app.coaching.engine import analyze, progression_step, weekly_checkin
@@ -195,6 +196,8 @@ def coaching_analysis(
     _inject_transition(result, db, current_user)
     result["metrics"]["pace"] = _pace_block(db, current_user)
     result["metrics"]["training_prefs"] = _training_prefs_block(db, current_user)
+    # O que o coach APRENDEU observando a pessoa — cresce com o tempo de uso.
+    result["metrics"]["user_model"] = user_model.aprender(db, current_user.id).to_dict()
     result["metrics"]["workout"] = _workout_block(db, current_user)
     return result
 
