@@ -124,12 +124,32 @@ def _ensure_food_source_enum() -> None:
         conn.execute(text("ALTER TYPE food_source ADD VALUE IF NOT EXISTS 'fatsecret'"))
 
 
+def _ensure_food_columns() -> None:
+    """ALTER idempotente pra `foods.hidden` (usada pra suprimir o gêmeo
+    perdedor de um alimento duplicado — ver o comentário no modelo). Mesma
+    regra das outras: select(Food)/count(Food) roda logo no boot, então num
+    banco antigo a coluna precisa existir ANTES dessa consulta, senão o boot
+    inteiro morre (502)."""
+    from sqlalchemy import inspect, text
+
+    existentes = {c["name"] for c in inspect(engine).get_columns("foods")}
+    if "hidden" in existentes:
+        return
+    pg = engine.dialect.name == "postgresql"
+    with engine.begin() as conn:
+        if pg:
+            conn.execute(text("ALTER TABLE foods ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT false"))
+        else:
+            conn.execute(text("ALTER TABLE foods ADD COLUMN hidden BOOLEAN NOT NULL DEFAULT 0"))
+
+
 def run() -> None:
     print(f"Criando schema em {engine.url} ...")
     Base.metadata.create_all(bind=engine)
     print("Schema pronto.")
 
     _ensure_food_source_enum()
+    _ensure_food_columns()
 
     # ANTES de qualquer consulta a Exercise, e logo depois do create_all:
     # create_all não adiciona coluna em tabela que já existe, então num banco
