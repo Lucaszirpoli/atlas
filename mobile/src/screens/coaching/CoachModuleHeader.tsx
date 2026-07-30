@@ -13,7 +13,7 @@ function CoachLabel() {
   const { colors, type, spacing } = useTheme();
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: spacing.sm }}>
-      <Ionicons name="compass" size={15} color={colors.primary} />
+      <Ionicons name="compass-outline" size={15} color={colors.primary} />
       <Text style={[type.caption, { color: colors.primary, fontWeight: "800", letterSpacing: 0.6, textTransform: "uppercase" }]}>
         Seu coaching
       </Text>

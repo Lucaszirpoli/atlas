@@ -268,7 +268,7 @@ export function UnitPicker({
                     >
                       {u.id === GRAMAS.id ? "g" : `${u.label} (${gramasLegivel(u.grams)} g)`}
                     </Text>
-                    {u.is_custom ? <Ionicons name="person" size={12} color={colors.textSecondary} /> : null}
+                    {u.is_custom ? <Ionicons name="person-outline" size={12} color={colors.textSecondary} /> : null}
                     {on ? <Ionicons name="checkmark" size={18} color={colors.primary} /> : null}
                   </Pressable>
                 );

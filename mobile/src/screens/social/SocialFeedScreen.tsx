@@ -18,10 +18,13 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
 
-const POST_META: Record<FeedPost["post_type"], { icon: keyof typeof Ionicons.glyphMap; color: string }> = {
-  workout: { icon: "barbell", color: "#FF6B35" },
-  meal: { icon: "restaurant", color: "#1F7A5C" },
-  progress_photo: { icon: "camera", color: "#E8637A" },
+// Cor por tipo de post = a MESMA cor do módulo correspondente no resto do app
+// (treino azul, nutrição verde, social turquesa). Aqui era uma paleta própria,
+// então o mesmo assunto tinha uma cor no dashboard e outra no feed.
+const POST_ICON: Record<FeedPost["post_type"], keyof typeof Ionicons.glyphMap> = {
+  workout: "barbell",
+  meal: "restaurant",
+  progress_photo: "camera",
 };
 
 function describePost(post: FeedPost): string {
@@ -115,7 +118,7 @@ export function SocialFeedScreen() {
           <Text style={[type.h1, { color: colors.textPrimary, fontSize: 26 }]}>Social</Text>
         </View>
         <View style={{ flexDirection: "row", gap: spacing.sm }}>
-          <HeaderIcon icon="people" onPress={() => navigation.navigate("Friends")} />
+          <HeaderIcon icon="people-outline" onPress={() => navigation.navigate("Friends")} />
           <HeaderIcon icon="trophy" onPress={() => navigation.navigate("Challenges")} />
           <HeaderIcon icon="shield-checkmark" onPress={() => navigation.navigate("Privacy")} />
         </View>
@@ -143,7 +146,7 @@ export function SocialFeedScreen() {
                   marginBottom: spacing.md,
                 }}
               >
-                <Ionicons name="people" size={30} color={colors.moduleSocial} />
+                <Ionicons name="people-outline" size={30} color={colors.moduleSocial} />
               </View>
               <Text style={[type.h2, { color: colors.textPrimary, marginBottom: 4 }]}>Seu feed está vazio</Text>
               <Text style={[type.bodySmall, { color: colors.textSecondary, textAlign: "center" }]}>
@@ -153,7 +156,15 @@ export function SocialFeedScreen() {
           </Card>
         }
         renderItem={({ item }) => {
-          const meta = POST_META[item.post_type];
+          const meta = {
+            icon: POST_ICON[item.post_type],
+            color:
+              item.post_type === "workout"
+                ? colors.moduleTraining
+                : item.post_type === "meal"
+                  ? colors.moduleNutrition
+                  : colors.moduleSocial,
+          };
           return (
             <Card style={{ marginBottom: spacing.md }}>
               {/* Autor */}

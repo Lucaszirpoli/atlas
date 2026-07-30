@@ -25,62 +25,76 @@ export type ColorScheme = {
   moduleSocial: string;
 };
 
-// ATLAS — identidade preto + laranja, minimalista. O laranja é o ÚNICO
-// acento de marca; preto/branco/cinza cuidam de toda a estrutura. As cores de
-// módulo são versões harmonizadas (dessaturadas) pra manter o dashboard
-// legível sem poluir a paleta. As cores semânticas (success/warning/danger)
-// existem só pra dar significado a dado, não como acento visual.
+// ATLAS — azul de performance + verde de progresso.
+//
+// A identidade é a mesma nos dois temas, e cada um tem o seu jeito de existir:
+// o CLARO é ar e contorno (fundo gelo, superfície branca, borda fina dando a
+// forma dos cards); o ESCURO é profundidade (azul-noite quase preto, superfície
+// que sobe um degrau e brilho azul no lugar da sombra preta, que some no
+// escuro). Não é o tema claro com as cores invertidas — são dois desenhos.
+//
+// O azul é o acento de marca e carrega ação: botão primário, item ativo, dado
+// em destaque. O verde é reservado a PROGRESSO (evolução, meta batida, série
+// concluída) — ele significa uma coisa só, então quando aparece a pessoa sabe
+// o que aconteceu sem ler. A turquesa é o terceiro tom, pro que é secundário
+// mas não é neutro. Cinza e branco cuidam de toda a estrutura.
+//
+// As cores de módulo são versões harmonizadas da mesma família: o dashboard
+// precisa distinguir nutrição de treino de sono, não virar um arco-íris.
 
 export const lightColors: ColorScheme = {
-  primary: "#FF6B2C",
-  primaryLight: "#FF8A5A",
-  primaryDark: "#D9531C",
-  primarySoft: "#FFE7DA",
-  secondary: "#E85D26",
-  secondarySoft: "#FFE0D0",
+  primary: "#3563FF",
+  primaryLight: "#6A8BFF",
+  primaryDark: "#2246C9",
+  primarySoft: "#E4EAFF",
+  secondary: "#234E70",
+  secondarySoft: "#DCE7F0",
 
-  bg: "#FAFAF8",
+  bg: "#F4F7FB",
   surface: "#FFFFFF",
-  surfaceAlt: "#F1F1ED",
-  textPrimary: "#17181A",
-  textSecondary: "#6E7370",
+  surfaceAlt: "#EDF1F7",
+  textPrimary: "#0F172A",
+  textSecondary: "#64748B",
   textOnPrimary: "#FFFFFF",
-  border: "#E7E7E1",
+  border: "#DDE4EE",
 
-  success: "#2FA37A",
-  warning: "#E8A33D",
+  success: "#22C55E",
+  warning: "#F59E0B",
   danger: "#E5484D",
-  info: "#5E93C9",
+  info: "#2DD4BF",
 
-  moduleNutrition: "#FF6B2C",
-  moduleTraining: "#F59E42",
-  moduleSleep: "#7C86A8",
-  moduleSocial: "#C77A8A",
+  moduleNutrition: "#22C55E",
+  moduleTraining: "#3563FF",
+  moduleSleep: "#6366F1",
+  moduleSocial: "#2DD4BF",
 };
 
 export const darkColors: ColorScheme = {
   ...lightColors,
-  // Preto de verdade com o laranja vibrante por cima — o coração da marca
-  // ATLAS. O acento fica um tom mais aceso pra brilhar sobre o fundo escuro.
-  primary: "#FF6B2C",
-  primaryLight: "#FF8A5A",
-  primaryDark: "#C24E1C",
-  primarySoft: "#2A1509",
-  secondary: "#F26A2E",
-  secondarySoft: "#2A1509",
+  // Azul-noite, não preto puro: o fundo tem a mesma temperatura do acento, o
+  // que faz o azul brilhar em cima dele em vez de vibrar contra um preto neutro.
+  // O acento sobe um tom pra manter contraste sobre superfície escura.
+  primary: "#4F7CFF",
+  primaryLight: "#89A6FF",
+  primaryDark: "#3560DB",
+  primarySoft: "#16224A",
+  secondary: "#26608A",
+  secondarySoft: "#132A3D",
 
-  bg: "#0A0A0B",
-  surface: "#141416",
-  surfaceAlt: "#1D1D21",
-  textPrimary: "#F4F4F2",
-  textSecondary: "#9A9A96",
-  border: "#26262B",
+  bg: "#081020",
+  surface: "#111827",
+  surfaceAlt: "#1B2233",
+  textPrimary: "#E8EDF7",
+  textSecondary: "#94A3B8",
+  border: "#233047",
 
-  success: "#37C08D",
-  info: "#5E93C9",
+  success: "#34D399",
+  warning: "#FBBF24",
+  danger: "#F0575C",
+  info: "#38E0C5",
 
-  moduleNutrition: "#FF7A45",
-  moduleTraining: "#F5A24E",
-  moduleSleep: "#8791B4",
-  moduleSocial: "#D0899A",
+  moduleNutrition: "#34D399",
+  moduleTraining: "#4F7CFF",
+  moduleSleep: "#818CF8",
+  moduleSocial: "#38E0C5",
 };

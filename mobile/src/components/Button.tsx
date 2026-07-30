@@ -30,16 +30,17 @@ export function Button({
   style,
   ...rest
 }: ButtonProps) {
-  const { colors, type, radius, spacing, shadow } = useTheme();
+  const { colors, type, radius, spacing, shadow, isDark } = useTheme();
 
-  const backgroundColor =
-    variant === "primary"
-      ? colors.primary
-      : variant === "secondary"
-        ? colors.secondary
-        : "transparent";
-  const textColor = variant === "ghost" ? colors.primary : colors.textOnPrimary;
-  const isSolid = variant !== "ghost";
+  // As referências têm três pesos bem separados: primário SÓLIDO (a ação da
+  // tela), secundário de CONTORNO (a alternativa, presente sem competir) e
+  // ghost sem caixa nenhuma. O secundário era sólido também, e duas caixas
+  // cheias lado a lado disputavam a mesma atenção — a tela ficava sem foco.
+  const isPrimary = variant === "primary";
+  const isOutline = variant === "secondary";
+
+  const backgroundColor = isPrimary ? colors.primary : "transparent";
+  const textColor = isPrimary ? colors.textOnPrimary : colors.primary;
 
   return (
     <Pressable
@@ -48,13 +49,23 @@ export function Button({
         styles.base,
         {
           backgroundColor,
-          borderRadius: radius.pill,
+          borderRadius: radius.button,
+          borderWidth: isOutline ? 1.5 : 0,
+          borderColor: isOutline ? colors.primary : "transparent",
           paddingVertical: spacing.md - 1,
           paddingHorizontal: compact ? spacing.sm : spacing.lg,
           transform: [{ scale: state.pressed ? 0.98 : 1 }],
           opacity: disabled ? 0.45 : 1,
         },
-        isSolid && !disabled ? shadow.sm : null,
+        // Feedback de toque: o sólido escurece, o de contorno ganha um fundo
+        // suave. Sem isso o único sinal de que o botão respondeu é a escala,
+        // que some em toque rápido.
+        state.pressed && isPrimary ? { backgroundColor: colors.primaryDark } : null,
+        state.pressed && !isPrimary ? { backgroundColor: colors.primarySoft } : null,
+        // Elevação só no primário: é o que o desenho das referências destaca.
+        // No escuro isso vira halo azul (ver makeShadow) — sombra preta sobre
+        // fundo azul-noite não aparece.
+        isPrimary && !disabled ? (isDark ? shadow.md : shadow.sm) : null,
         typeof style === "function" ? style(state) : style,
       ]}
       {...rest}

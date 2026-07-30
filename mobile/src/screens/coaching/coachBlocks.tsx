@@ -376,9 +376,9 @@ export function TrainingPrefsCard({
 
       {expanded ? (
         <View style={{ marginTop: spacing.xs }}>
-          <PrefRow icon="fitness" label="Ponto fraco" value={pontoFracoTxt} onPress={() => setSheet("weak_point")} />
-          <PrefRow icon="calendar" label="Dias por semana" value={diasTxt} onPress={() => setSheet("training_days")} />
-          <PrefRow icon="time" label="Tempo por sessão" value={tempoTxt} onPress={() => setSheet("session_length")} />
+          <PrefRow icon="fitness-outline" label="Ponto fraco" value={pontoFracoTxt} onPress={() => setSheet("weak_point")} />
+          <PrefRow icon="calendar-outline" label="Dias por semana" value={diasTxt} onPress={() => setSheet("training_days")} />
+          <PrefRow icon="time-outline" label="Tempo por sessão" value={tempoTxt} onPress={() => setSheet("session_length")} />
           <PrefRow icon="heart" label="Cardio" value={cardioTxt} onPress={() => setSheet("cardio")} />
           <PrefRow icon="flash" label="Técnicas avançadas" value={tecnicasTxt} onPress={() => setSheet("tecnicas")} />
           <PrefRow icon="repeat" label="Periodização" value={periodTxt} onPress={() => setSheet("periodization")} last />
@@ -471,7 +471,7 @@ export function WorkoutCard({
         activeOpacity={0.7}
         style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
       >
-        <Ionicons name="barbell" size={16} color={colors.primary} />
+        <Ionicons name="barbell-outline" size={16} color={colors.primary} />
         <Text style={[type.caption, { color: colors.primary, fontWeight: "800", letterSpacing: 0.5, textTransform: "uppercase", flex: 1 }]}>
           Seu treino
         </Text>
@@ -496,7 +496,7 @@ export function WorkoutCard({
                 style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 9, borderTopWidth: 1, borderTopColor: colors.border }}
               >
                 <View style={{ width: 26, height: 26, borderRadius: 8, backgroundColor: colors.surfaceAlt, alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name="fitness" size={14} color={colors.primary} />
+                  <Ionicons name="fitness-outline" size={14} color={colors.primary} />
                 </View>
                 <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "600", flex: 1 }]} numberOfLines={1}>
                   {r.name}

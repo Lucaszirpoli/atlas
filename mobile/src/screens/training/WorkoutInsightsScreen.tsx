@@ -69,7 +69,7 @@ export function WorkoutInsightsScreen() {
       {plateaus.length === 0 ? (
         <Card>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Ionicons name="trending-up" size={24} color={colors.success} style={{ marginRight: spacing.sm }} />
+            <Ionicons name="trending-up-outline" size={24} color={colors.success} style={{ marginRight: spacing.sm }} />
             <Text style={[type.bodySmall, { color: colors.textPrimary, flex: 1 }]}>
               Nenhum platô detectado — sua progressão está indo bem.
             </Text>

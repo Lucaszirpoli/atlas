@@ -60,7 +60,7 @@ function filtrarLocal<T>(itens: T[], termo: string, texto: (i: T) => string): T[
 }
 
 export function AddFoodScreen() {
-  const { colors, type, spacing, radius } = useTheme();
+  const { colors, type, spacing, radius, shadow } = useTheme();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const { categoryId, barcodeResult, date } = route.params ?? {};
@@ -364,7 +364,7 @@ export function AddFoodScreen() {
             paddingHorizontal: spacing.lg,
           }}
         >
-          <Ionicons name="calendar" size={15} color={colors.primary} />
+          <Ionicons name="calendar-outline" size={15} color={colors.primary} />
           <Text style={[type.caption, { color: colors.primary, fontWeight: "700" }]}>
             Registrando em {diaLabel(date).toLowerCase()}
           </Text>
@@ -386,7 +386,7 @@ export function AddFoodScreen() {
           marginTop: spacing.md,
         }}
       >
-        <Ionicons name="search" size={19} color={colors.textSecondary} />
+        <Ionicons name="search-outline" size={19} color={colors.textSecondary} />
         <TextInput
           value={query}
           onChangeText={setQuery}
@@ -574,11 +574,7 @@ export function AddFoodScreen() {
             borderWidth: 1,
             borderColor: colors.border,
             paddingHorizontal: spacing.sm,
-            elevation: 6,
-            shadowColor: "#000",
-            shadowOpacity: 0.25,
-            shadowRadius: 10,
-            shadowOffset: { width: 0, height: 4 },
+            ...shadow.md,
           }}
         >
           <AcaoPilula

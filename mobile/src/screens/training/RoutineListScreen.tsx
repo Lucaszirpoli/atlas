@@ -194,15 +194,15 @@ export function RoutineListScreen() {
                   marginRight: spacing.md,
                 }}
               >
-                <Ionicons name="download-outline" size={20} color="#FFFFFF" />
+                <Ionicons name="download-outline" size={20} color={colors.textOnPrimary} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[type.bodySmall, { color: "#FFFFFF", fontWeight: "700" }]}>Importar treino</Text>
+                <Text style={[type.bodySmall, { color: colors.textOnPrimary, fontWeight: "700" }]}>Importar treino</Text>
                 <Text style={[type.caption, { color: "rgba(255,255,255,0.9)" }]} numberOfLines={2}>
                   Traga sua rotina do Hevy ou do Strong
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
+              <Ionicons name="chevron-forward" size={18} color={colors.textOnPrimary} />
             </TouchableOpacity>
           </View>
         }
@@ -225,7 +225,7 @@ export function RoutineListScreen() {
                   </TouchableOpacity>
                 </View>
                 <View style={{ flexDirection: "row", gap: spacing.md, marginBottom: spacing.md }}>
-                  <MetaInfo icon="list" text={`${item.exercises.length} exercícios`} />
+                  <MetaInfo icon="list-outline" text={`${item.exercises.length} exercícios`} />
                   <MetaInfo icon="repeat" text={`${totalSets} séries`} />
                 </View>
               </TouchableOpacity>
@@ -271,7 +271,7 @@ export function RoutineListScreen() {
                     marginBottom: spacing.md,
                   }}
                 >
-                  <Ionicons name="barbell" size={30} color={colors.secondary} />
+                  <Ionicons name="barbell-outline" size={30} color={colors.secondary} />
                 </View>
                 <Text style={[type.h2, { color: colors.textPrimary, marginBottom: 4 }]}>Nenhuma rotina ainda</Text>
                 <Text style={[type.bodySmall, { color: colors.textSecondary, textAlign: "center" }]}>

@@ -89,7 +89,7 @@ export function WeightScreen() {
       {/* Registro rápido */}
       <Card accent={colors.moduleSleep} style={{ marginBottom: spacing.lg }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: spacing.md }}>
-          <Ionicons name="scale" size={20} color={colors.moduleSleep} />
+          <Ionicons name="scale-outline" size={20} color={colors.moduleSleep} />
           <Text style={[type.h2, { color: colors.textPrimary, fontSize: 16, flex: 1 }]}>Seu peso</Text>
           {current ? (
             <Text style={[type.caption, { color: colors.textSecondary }]}>

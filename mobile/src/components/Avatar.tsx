@@ -3,7 +3,10 @@ import { Image, Text, View } from "react-native";
 
 import { useTheme } from "../theme/ThemeProvider";
 
-const PALETTE = ["#1F7A5C", "#FF6B35", "#4A5B8C", "#E8637A", "#3B82C4", "#E8A33D"];
+// Cores de avatar da família da marca (azul -> turquesa -> verde -> índigo), pra
+// a lista de amigos não destoar do resto do app. Todas escuras o bastante pra
+// iniciais brancas ficarem legíveis por cima.
+const PALETTE = ["#3563FF", "#0E9F8C", "#234E70", "#6366F1", "#1E9E52", "#4C6EF5"];
 
 /** Avatar circular: foto (só a do PRÓPRIO usuário, salva no aparelho) quando
  * tem, senão as iniciais do nome com cor estável derivada do handle. */

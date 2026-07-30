@@ -1,7 +1,10 @@
 import React, { useEffect, useRef } from "react";
 import { Animated, Dimensions, Easing, StyleSheet, View } from "react-native";
 
-const COLORS = ["#1F7A5C", "#FF6B35", "#4A5B8C", "#E8637A", "#3B82C4", "#E8A33D", "#2FA37A"];
+// Confete na paleta da marca. Aqui entram os tons CLAROS de propósito: o
+// confete cai sobre a tela cheia e precisa aparecer tanto no fundo gelo quanto
+// no azul-noite.
+const COLORS = ["#3563FF", "#6A8BFF", "#2DD4BF", "#22C55E", "#818CF8", "#38E0C5", "#F59E0B"];
 
 /** Chuva de confete leve e discreta, disparada uma vez ao montar. Usada em
  * momentos de celebração (ex: novo recorde pessoal). Puro Animated, sem

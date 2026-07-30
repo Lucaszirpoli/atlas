@@ -43,7 +43,7 @@ export function WaterScreen() {
     >
       <Card accent={colors.info} style={{ marginBottom: spacing.md, alignItems: "center" }}>
         <View style={{ flexDirection: "row", alignItems: "center", alignSelf: "flex-start", marginBottom: spacing.sm }}>
-          <Ionicons name="water" size={18} color={colors.info} />
+          <Ionicons name="water-outline" size={18} color={colors.info} />
           <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8 }]}>Hoje</Text>
           <HelpDot
             title="Meta de água"

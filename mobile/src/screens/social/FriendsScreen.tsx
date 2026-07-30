@@ -107,7 +107,7 @@ export function FriendsScreen() {
             opacity: isSending ? 0.6 : 1,
           }}
         >
-          <Ionicons name="person-add" size={20} color={colors.textOnPrimary} />
+          <Ionicons name="person-add-outline" size={20} color={colors.textOnPrimary} />
         </TouchableOpacity>
       </View>
 

@@ -306,7 +306,7 @@ function LinhaExercicio({ ex, onPress }: { ex: ImportedExercise; onPress: () => 
           {ex.series}x{ex.reps_max ? `${ex.reps_min}-${ex.reps_max}` : ex.reps_min}
         </Text>
       </View>
-      <Ionicons name="swap-horizontal" size={18} color={colors.textSecondary} />
+      <Ionicons name="swap-horizontal-outline" size={18} color={colors.textSecondary} />
     </Pressable>
   );
 }

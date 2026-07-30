@@ -24,6 +24,7 @@ from app.models.exercise import Exercise, quality_order
 from app.models.routine import Routine, RoutineExercise
 from app.models.user import Plan, User
 from app.models.user_profile import GoalPace
+from app.models.weight_log import WeightLog
 from app.services import goal_service
 from app.schemas.coaching import (
     ApplyActionRequest,
@@ -225,8 +226,29 @@ def _pace_block(db: Session, user: User) -> dict | None:
         "current": (profile.goal_pace.value if profile.goal_pace else "normal"),
         "target_weight_kg": profile.target_weight_kg,
         "current_weight_kg": weight,
+        # O peso de ONDE A PESSOA PARTIU neste plano. Sem ele não dá pra dizer
+        # quanto do caminho já foi andado: "faltam 4 kg" é o mesmo número pra
+        # quem saiu de 79 e pra quem saiu de 100, e a barra de progresso do card
+        # de abertura ficava sempre vazia (o que falta é, por definição, a
+        # distância entre o peso de hoje e o alvo — a régua precisa vir de fora).
+        "start_weight_kg": _peso_inicial_do_plano(db, user.id),
         "options": goal_service.pace_options(profile, weight),
     }
+
+
+def _peso_inicial_do_plano(db: Session, user_id: int) -> float | None:
+    """Primeiro peso registrado DESDE o marco do plano atual (o baseline). Sem
+    baseline, o primeiro peso que a pessoa já registrou."""
+    baseline = db.execute(
+        select(CoachingBaseline.effective_from)
+        .where(CoachingBaseline.user_id == user_id)
+        .order_by(CoachingBaseline.created_at.desc(), CoachingBaseline.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    stmt = select(WeightLog.weight_kg).where(WeightLog.user_id == user_id)
+    if baseline is not None:
+        stmt = stmt.where(WeightLog.recorded_at >= baseline)
+    return db.execute(stmt.order_by(WeightLog.recorded_at).limit(1)).scalar_one_or_none()
 
 
 def _inject_transition(result: dict, db: Session, user: User) -> None:

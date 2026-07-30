@@ -74,7 +74,7 @@ function DietPlanCard({ plan }: { plan: DietPlan }) {
       }}
     >
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
-        <Ionicons name="restaurant" size={16} color={colors.primary} />
+        <Ionicons name="restaurant-outline" size={16} color={colors.primary} />
         <Text style={[type.body, { color: colors.textPrimary, fontWeight: "800", flex: 1 }]}>Sua dieta</Text>
       </View>
       <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.sm }]}>

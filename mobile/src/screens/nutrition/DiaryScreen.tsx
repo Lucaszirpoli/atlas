@@ -350,7 +350,7 @@ export function DiaryScreen() {
             activeOpacity={0.7}
             style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: spacing.sm, paddingBottom: 0 }}
           >
-            <Ionicons name="stats-chart" size={16} color={colors.primary} />
+            <Ionicons name="stats-chart-outline" size={16} color={colors.primary} />
             <Text style={[type.bodySmall, { color: colors.primary, fontWeight: "700" }]}>Histórico</Text>
           </TouchableOpacity>
           {allItems.length > 0 ? (
@@ -384,7 +384,7 @@ export function DiaryScreen() {
       {isToday ? (
       <Card style={{ marginBottom: spacing.lg }}>
         <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
-          <Ionicons name="water" size={18} color={colors.info} />
+          <Ionicons name="water-outline" size={18} color={colors.info} />
           <Text style={[type.h2, { color: colors.textPrimary, fontSize: 16, flex: 1, marginLeft: spacing.xs }]}>
             Água
           </Text>
@@ -604,15 +604,15 @@ export function DiaryScreen() {
             marginRight: spacing.md,
           }}
         >
-          <Ionicons name="restaurant" size={20} color="#FFFFFF" />
+          <Ionicons name="restaurant-outline" size={20} color={colors.textOnPrimary} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={[type.bodySmall, { color: "#FFFFFF", fontWeight: "700" }]}>Dietas prontas</Text>
+          <Text style={[type.bodySmall, { color: colors.textOnPrimary, fontWeight: "700" }]}>Dietas prontas</Text>
           <Text style={[type.caption, { color: "rgba(255,255,255,0.9)" }]} numberOfLines={2}>
             Escolha um cardápio pronto e adapte ao seu dia
           </Text>
         </View>
-        <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
+        <Ionicons name="chevron-forward" size={18} color={colors.textOnPrimary} />
       </TouchableOpacity>
 
       <ConfirmDialog

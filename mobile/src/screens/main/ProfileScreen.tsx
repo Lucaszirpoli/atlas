@@ -14,7 +14,7 @@ import { useTheme, type ThemeMode } from "../../theme/ThemeProvider";
 import { useProfilePhoto } from "../../utils/profilePhoto";
 
 export function ProfileScreen() {
-  const { colors, type, spacing, mode, setMode } = useTheme();
+  const { colors, type, spacing, shadow, mode, setMode } = useTheme();
   const navigation = useNavigation<any>();
   const { user, signOut, refreshUser } = useAuth();
   const profilePhoto = useProfilePhoto();
@@ -184,7 +184,7 @@ export function ProfileScreen() {
             [
               { key: "system", label: "Sistema", icon: "phone-portrait" },
               { key: "light", label: "Claro", icon: "sunny" },
-              { key: "dark", label: "Escuro", icon: "moon" },
+              { key: "dark", label: "Escuro", icon: "moon-outline" },
             ] as { key: ThemeMode; label: string; icon: keyof typeof Ionicons.glyphMap }[]
           ).map((opt) => {
             const active = mode === opt.key;
@@ -202,7 +202,7 @@ export function ProfileScreen() {
                   paddingVertical: 9,
                   borderRadius: 999,
                   backgroundColor: active ? colors.surface : "transparent",
-                  ...(active ? { shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 4, elevation: 1 } : {}),
+                  ...(active ? shadow.sm : {}),
                 }}
               >
                 <Ionicons
@@ -234,8 +234,8 @@ export function ProfileScreen() {
             first
           />
         ) : null}
-        <MenuRow icon="trending-up" label="Evolução" onPress={() => navigation.navigate("Evolution")} first={user?.plan !== "pro"} />
-        <MenuRow icon="moon" label="Sono" onPress={() => navigation.navigate("Sleep")} />
+        <MenuRow icon="trending-up-outline" label="Evolução" onPress={() => navigation.navigate("Evolution")} first={user?.plan !== "pro"} />
+        <MenuRow icon="moon-outline" label="Sono" onPress={() => navigation.navigate("Sleep")} />
         <MenuRow icon="mail" label="E-mail" trailing={user?.email} />
       </Card>
 

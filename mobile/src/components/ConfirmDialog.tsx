@@ -68,7 +68,7 @@ export function ConfirmDialog({
                 backgroundColor: destructive ? colors.danger : colors.primary,
               }}
             >
-              <Text style={[type.body, { color: "#FFFFFF", fontWeight: "700" }]}>{confirmLabel}</Text>
+              <Text style={[type.body, { color: colors.textOnPrimary, fontWeight: "700" }]}>{confirmLabel}</Text>
             </Pressable>
           </View>
         </Pressable>

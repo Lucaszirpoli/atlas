@@ -120,15 +120,15 @@ export function AiDietScreen() {
                   marginRight: spacing.md,
                 }}
               >
-                <Ionicons name="sparkles" size={24} color="#FFFFFF" />
+                <Ionicons name="sparkles" size={24} color={colors.textOnPrimary} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[type.h2, { color: "#FFFFFF", fontSize: 16 }]}>Gerar minha dieta personalizada</Text>
+                <Text style={[type.h2, { color: colors.textOnPrimary, fontSize: 16 }]}>Gerar minha dieta personalizada</Text>
                 <Text style={[type.caption, { color: "rgba(255,255,255,0.9)" }]} numberOfLines={2}>
                   A IA pergunta restrições, refeições e o que você gosta e monta{isPro ? "" : " · Pro"}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
+              <Ionicons name="chevron-forward" size={20} color={colors.textOnPrimary} />
             </View>
           </TouchableOpacity>
 

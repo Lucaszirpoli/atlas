@@ -42,35 +42,178 @@ import { CoachingProgress } from "./CoachingProgress";
 // denso que antes ficava tudo empilhado.
 type CoachingSectionId = "objetivo" | "treino" | "dieta" | "progresso";
 
-// Níveis de constância (gamificação). O nível vem do RECORDE de dias seguidos
-// (só cresce), então "subir de nível" é permanente; o streak atual é a chama viva.
-const CONSISTENCY_LEVELS = [
-  { min: 0, label: "Começando" },
-  { min: 3, label: "Aquecendo" },
-  { min: 7, label: "Constante" },
-  { min: 14, label: "Disciplinado" },
-  { min: 21, label: "Focado" },
-  { min: 30, label: "Imparável" },
-];
+// O NÍVEL de constância ("Nível 0 · Começando", com barra de progresso até o
+// próximo) saiu do card de abertura junto com o redesenho: quem instalou o app
+// pra emagrecer abria e via, em primeiro lugar, o próprio nível NO APP em vez do
+// próprio peso. O que sobreviveu do conceito são os dois números que significam
+// algo fora daqui — o streak atual e o recorde — nas pílulas do HeroCoaching.
 
-function nivelConstancia(bestStreak: number): {
-  level: number;
-  label: string;
-  floor: number;
-  next: number | null;
-} {
-  let idx = 0;
-  for (let i = 0; i < CONSISTENCY_LEVELS.length; i++) {
-    if (bestStreak >= CONSISTENCY_LEVELS[i].min) idx = i;
-  }
-  const next = idx < CONSISTENCY_LEVELS.length - 1 ? CONSISTENCY_LEVELS[idx + 1].min : null;
-  return { level: idx, label: CONSISTENCY_LEVELS[idx].label, floor: CONSISTENCY_LEVELS[idx].min, next };
+/** O card que ABRE o app: onde você está e quanto falta.
+ *
+ * A versão anterior abria com "Nível 0 · Começando" e uma barra de nível de
+ * constância. Era gamificação sobre gamificação: quem instalou pra emagrecer
+ * abria o app e a primeira informação era o próprio nível no app, não o próprio
+ * peso. Aqui o número grande é o que a pessoa veio ver — quanto falta pra meta —
+ * e a constância volta ao tamanho que ela tem: duas pílulas de apoio.
+ *
+ * Sem peso-alvo (manutenção, performance) a manchete vira a constância, que aí
+ * passa a ser o dado principal de verdade em vez de enfeite.
+ */
+function HeroCoaching({
+  meta,
+  semana,
+  alvo,
+  atual,
+  inicial,
+  faltam,
+  streak,
+  best,
+  semConstancia,
+  onOpenChart,
+}: {
+  meta: { label: string; icon: keyof typeof Ionicons.glyphMap };
+  semana: string | null;
+  alvo: number | null;
+  atual: number | null;
+  inicial: number | null;
+  faltam: number | null;
+  streak: number;
+  best: number;
+  semConstancia: boolean;
+  onOpenChart: (chart: CoachingChart) => void;
+}) {
+  const { colors, type, spacing, radius } = useTheme();
+  const temMeta = faltam != null && alvo != null && atual != null && Math.abs(faltam) >= 0.1;
+
+  // Quanto do caminho já foi andado — do peso de PARTIDA até o alvo.
+  //
+  // A régua tem que vir de fora: "o que falta" É, por definição, a distância
+  // entre o peso de hoje e o alvo, então qualquer conta feita só com esses dois
+  // números dá sempre o mesmo resultado (a primeira versão desta barra ficava
+  // permanentemente vazia por isso). Sem peso inicial registrado — pessoa que
+  // acabou de definir a meta — a barra não aparece, em vez de mostrar um
+  // progresso inventado.
+  const percurso = temMeta && inicial != null ? Math.abs(inicial - alvo!) : 0;
+  const progresso = percurso >= 0.1 ? Math.min(Math.max(1 - Math.abs(faltam!) / percurso, 0), 1) : null;
+
+  const fmt = (n: number) => n.toFixed(1).replace(".", ",");
+
+  return (
+    <Card style={{ marginBottom: spacing.md }}>
+      {/* Cabeçalho: quem está falando, sobre o quê, e há quanto tempo */}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <View
+          style={{
+            width: 44, height: 44, borderRadius: radius.chip + 2,
+            backgroundColor: colors.primary + "1F",
+            alignItems: "center", justifyContent: "center",
+          }}
+        >
+          <Ionicons name={meta.icon} size={22} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={[type.caption, { color: colors.textSecondary, letterSpacing: 0.8, textTransform: "uppercase", fontWeight: "700" }]}>
+            Seu coaching
+          </Text>
+          <Text style={[type.h2, { color: colors.textPrimary }]} numberOfLines={1}>{meta.label}</Text>
+          <Text style={[type.caption, { color: colors.textSecondary }]}>Seu plano atual</Text>
+        </View>
+        {semana ? (
+          <View
+            style={{
+              borderWidth: 1, borderColor: colors.primary,
+              borderRadius: radius.pill, paddingVertical: 5, paddingHorizontal: 11,
+            }}
+          >
+            <Text style={[type.caption, { color: colors.primary, fontWeight: "800" }]}>{semana}</Text>
+          </View>
+        ) : null}
+      </View>
+
+      <View style={{ height: 1, backgroundColor: colors.border, marginVertical: spacing.md }} />
+
+      {/* A MANCHETE. O número em destaque é o que a pessoa veio ver. */}
+      {temMeta ? (
+        <TouchableOpacity activeOpacity={0.7} onPress={() => onOpenChart("peso")}>
+          <Text style={[type.h1, { color: colors.textPrimary, textAlign: "center" }]}>
+            Faltam{" "}
+            <Text style={{ color: colors.primary }}>{fmt(Math.abs(faltam!))} kg</Text>
+            {" "}para sua meta
+          </Text>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: spacing.md }}>
+            <Text style={[type.bodySmall, { color: colors.textSecondary }]}>{fmt(atual!)} kg</Text>
+            <Text style={[type.bodySmall, { color: colors.textSecondary }]}>{fmt(alvo!)} kg</Text>
+          </View>
+          <View
+            style={{
+              height: 10, borderRadius: radius.pill, backgroundColor: colors.surfaceAlt,
+              overflow: "hidden", marginTop: 6,
+            }}
+          >
+            {progresso != null ? (
+              <View style={{ width: `${progresso * 100}%`, height: "100%", backgroundColor: colors.primary, borderRadius: radius.pill }} />
+            ) : null}
+          </View>
+        </TouchableOpacity>
+      ) : (
+        <View style={{ alignItems: "center" }}>
+          <Text style={[type.h1, { color: colors.textPrimary, textAlign: "center" }]}>
+            {semConstancia ? (
+              "Comece registrando seu dia"
+            ) : (
+              <>
+                <Text style={{ color: colors.primary }}>{streak}</Text>
+                {streak === 1 ? " dia seguido" : " dias seguidos"}
+              </>
+            )}
+          </Text>
+          <Text style={[type.caption, { color: colors.textSecondary, textAlign: "center", marginTop: 4 }]}>
+            {semConstancia
+              ? "Treino, dieta e sono no dia a dia — é o que constrói sua constância."
+              : "Constância é o que faz o plano funcionar."}
+          </Text>
+        </View>
+      )}
+
+      {/* Constância, no tamanho dela: apoio, não manchete. */}
+      <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.md }}>
+        <PilulaHero icone="flame" texto={`${streak} ${streak === 1 ? "dia seguido" : "dias seguidos"}`} />
+        <PilulaHero icone="trophy" texto={`Recorde: ${best} ${best === 1 ? "dia" : "dias"}`} />
+      </View>
+    </Card>
+  );
+}
+
+/** Pílula de apoio do card-herói — as duas dividem a largura em partes iguais
+ * pra o card ter uma base simétrica, como na referência. */
+function PilulaHero({ icone, texto }: { icone: keyof typeof Ionicons.glyphMap; texto: string }) {
+  const { colors, type, radius, spacing } = useTheme();
+  return (
+    <View
+      style={{
+        flex: 1,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6,
+        backgroundColor: colors.surfaceAlt,
+        borderRadius: radius.pill,
+        paddingVertical: spacing.sm,
+        paddingHorizontal: spacing.sm,
+      }}
+    >
+      <Ionicons name={icone} size={14} color={colors.primary} />
+      <Text style={[type.caption, { color: colors.textPrimary, fontWeight: "700" }]} numberOfLines={1}>
+        {texto}
+      </Text>
+    </View>
+  );
 }
 
 // Objetivo -> rótulo + ícone (a análise gira em torno do objetivo atual).
 const GOAL_META: Record<string, { label: string; icon: keyof typeof Ionicons.glyphMap }> = {
   emagrecimento: { label: "Emagrecimento", icon: "trending-down" },
-  hipertrofia: { label: "Hipertrofia", icon: "barbell" },
+  hipertrofia: { label: "Hipertrofia", icon: "barbell-outline" },
   manutencao: { label: "Manutenção", icon: "remove" },
   recomposicao: { label: "Recomposição", icon: "sync" },
   performance: { label: "Performance", icon: "flash" },
@@ -353,9 +496,9 @@ function SocialPills({ navigation }: { navigation: any }) {
             alignItems: "center",
           }}
         >
-          <Ionicons name="trophy" size={22} color="#FFFFFF" style={{ marginRight: spacing.sm }} />
+          <Ionicons name="trophy" size={22} color={colors.textOnPrimary} style={{ marginRight: spacing.sm }} />
           <View style={{ flex: 1 }}>
-            <Text style={[type.body, { color: "#FFFFFF", fontWeight: "800" }]}>Desafios</Text>
+            <Text style={[type.body, { color: colors.textOnPrimary, fontWeight: "800" }]}>Desafios</Text>
             <Text style={[type.caption, { color: "rgba(255,255,255,0.9)" }]} numberOfLines={1}>
               Dispute com seus amigos
             </Text>
@@ -375,7 +518,7 @@ function SocialPills({ navigation }: { navigation: any }) {
           justifyContent: "center",
         }}
       >
-        <Ionicons name="people" size={18} color={colors.moduleSocial} />
+        <Ionicons name="people-outline" size={18} color={colors.moduleSocial} />
         <Text style={[type.caption, { color: colors.textPrimary, fontWeight: "700", fontSize: 10, marginTop: 2 }]}>
           Amigos e feed
         </Text>
@@ -415,10 +558,10 @@ function FreeHome({ navigation, user }: { navigation: any; user: ReturnType<type
   const { colors, type, spacing, radius } = useTheme();
   const insets = useSafeAreaInsets();
   const tiles = [
-    { icon: "barbell" as const, title: "Treino", subtitle: "Rotinas e métodos", onPress: () => navigation.navigate("TrainingModule") },
-    { icon: "restaurant" as const, title: "Dieta", subtitle: "Refeições e água", onPress: () => navigation.navigate("NutritionModule") },
-    { icon: "scale" as const, title: "Peso", subtitle: "Registrar e acompanhar", onPress: () => navigation.navigate("Weight") },
-    { icon: "moon" as const, title: "Sono", subtitle: "Registrar suas noites", onPress: () => navigation.navigate("Sleep") },
+    { icon: "barbell-outline" as const, title: "Treino", subtitle: "Rotinas e métodos", onPress: () => navigation.navigate("TrainingModule") },
+    { icon: "restaurant-outline" as const, title: "Dieta", subtitle: "Refeições e água", onPress: () => navigation.navigate("NutritionModule") },
+    { icon: "scale-outline" as const, title: "Peso", subtitle: "Registrar e acompanhar", onPress: () => navigation.navigate("Weight") },
+    { icon: "moon-outline" as const, title: "Sono", subtitle: "Registrar suas noites", onPress: () => navigation.navigate("Sleep") },
   ];
   return (
     <ScrollView
@@ -444,7 +587,7 @@ function FreeHome({ navigation, user }: { navigation: any; user: ReturnType<type
         }}
       >
         <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: colors.primary + "26", alignItems: "center", justifyContent: "center" }}>
-          <Ionicons name="compass" size={24} color={colors.primary} />
+          <Ionicons name="compass-outline" size={24} color={colors.primary} />
         </View>
         <View style={{ flex: 1 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -515,7 +658,7 @@ function CoachingHub({
   onAskCoach: () => void;
 }) {
   const { colors, type, spacing, radius } = useTheme();
-  const meta = GOAL_META[analysis.goal ?? ""] ?? { label: "Seu objetivo", icon: "compass" as const };
+  const meta = GOAL_META[analysis.goal ?? ""] ?? { label: "Seu objetivo", icon: "compass-outline" as const };
   const semana = semanaLabel(analysis.metrics.baseline_at);
 
   const rank = (i: CoachingInsight) => (i.adjustment ? 0 : 10) + (i.severity === "action" ? 0 : 1);
@@ -524,13 +667,12 @@ function CoachingHub({
 
   const streak = consistency?.current_streak ?? 0;
   const best = consistency?.best_streak ?? 0;
-  const nv = nivelConstancia(best);
-  const inLevel = nv.next != null ? Math.min(Math.max((best - nv.floor) / (nv.next - nv.floor), 0), 1) : 1;
   const semConstancia = streak === 0 && best === 0;
 
   const pace = analysis.metrics.pace;
   const alvo = pace?.target_weight_kg ?? null;
   const atual = pace?.current_weight_kg ?? analysis.metrics.weight_kg ?? null;
+  const inicial = pace?.start_weight_kg ?? null;
   const faltam = alvo != null && atual != null ? atual - alvo : null;
 
   const workout = analysis.metrics.workout;
@@ -540,118 +682,18 @@ function CoachingHub({
   // condicionais retornam null quando não há o que mostrar.
   const blocks: Record<HomeBlockId, React.ReactNode> = {
     hero: (
-      <Card accent={colors.primary} style={{ marginBottom: spacing.md }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: spacing.sm }}>
-          <View
-            style={{
-              width: 44, height: 44, borderRadius: 14,
-              backgroundColor: colors.primary + "1F",
-              alignItems: "center", justifyContent: "center",
-            }}
-          >
-            <Ionicons name={meta.icon} size={22} color={colors.primary} />
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={[type.caption, { color: colors.textSecondary, letterSpacing: 0.5, textTransform: "uppercase" }]}>
-              Seu coaching
-            </Text>
-            <Text style={[type.h2, { color: colors.textPrimary }]} numberOfLines={1}>{meta.label}</Text>
-          </View>
-          {semana ? (
-            <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: radius.pill, paddingVertical: 5, paddingHorizontal: 11 }}>
-              <Text style={[type.caption, { color: colors.textPrimary, fontWeight: "800" }]}>{semana}</Text>
-            </View>
-          ) : null}
-        </View>
-
-        {/* A "leitura da semana" saiu daqui de propósito: no card de abertura
-            ela repetia em prosa o que os blocos logo abaixo (constância,
-            missões, ritmo) já mostram em número, e roubava a primeira tela.
-            O texto continua no check-in, onde é a resposta do coach. */}
-
-        {/* Constância gamificada */}
-        <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md }}>
-          {semConstancia ? (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <Ionicons name="flame-outline" size={20} color={colors.textSecondary} />
-              <Text style={[type.bodySmall, { color: colors.textSecondary, flex: 1 }]}>
-                Registre treino, dieta e sono no dia a dia pra construir sua constância.
-              </Text>
-            </View>
-          ) : (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-              {/* Chama do streak */}
-              <View style={{ alignItems: "center", minWidth: 66 }}>
-                <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 3 }}>
-                  <Ionicons name="flame" size={22} color={colors.primary} />
-                  <Text style={[type.display, { color: colors.textPrimary, fontSize: 30 }]}>{streak}</Text>
-                </View>
-                <Text style={[type.caption, { color: colors.textSecondary }]}>dias seguidos</Text>
-              </View>
-              {/* Nível de constância + barra */}
-              <View style={{ flex: 1 }}>
-                {/* "Nível X · Rótulo" e "recorde N" ficam em LINHAS separadas.
-                    Na mesma linha os dois disputavam a largura e, em tela
-                    estreita ou com fonte ampliada, "recorde" grudava/cortava o
-                    nome do nível. O recorde agora tem espaço próprio (badge). */}
-                <View style={{ marginBottom: 4 }}>
-                  <Text
-                    style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "800" }]}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                  >
-                    Nível {nv.level} · {nv.label}
-                  </Text>
-                  {best > 0 ? (
-                    <View
-                      style={{
-                        alignSelf: "flex-start",
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 4,
-                        marginTop: 4,
-                        backgroundColor: colors.surfaceAlt,
-                        borderRadius: radius.pill,
-                        paddingVertical: 2,
-                        paddingHorizontal: 8,
-                      }}
-                    >
-                      <Ionicons name="trophy" size={10} color={colors.textSecondary} />
-                      <Text style={[type.caption, { color: colors.textSecondary, fontWeight: "700" }]}>
-                        recorde {best} {best === 1 ? "dia" : "dias"}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-                <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.surfaceAlt, overflow: "hidden" }}>
-                  <View style={{ width: `${inLevel * 100}%`, height: "100%", backgroundColor: colors.primary }} />
-                </View>
-                <Text style={[type.caption, { color: colors.textSecondary, marginTop: 3 }]}>
-                  {nv.next != null ? `Próximo nível ao chegar em ${nv.next} dias seguidos` : "Nível máximo — imparável!"}
-                </Text>
-              </View>
-            </View>
-          )}
-
-          {/* Alvo de peso (quando o objetivo tem peso-alvo) */}
-          {faltam != null && Math.abs(faltam) >= 0.1 ? (
-            <TouchableOpacity
-              onPress={() => onOpenChart("peso")}
-              activeOpacity={0.7}
-              style={{
-                flexDirection: "row", alignItems: "center", gap: 6, marginTop: spacing.md,
-                backgroundColor: colors.surfaceAlt, borderRadius: radius.pill,
-                paddingVertical: 7, paddingHorizontal: 12, alignSelf: "flex-start",
-              }}
-            >
-              <Ionicons name="flag" size={13} color={colors.primary} />
-              <Text style={[type.caption, { color: colors.textPrimary, fontWeight: "700" }]}>
-                Alvo {alvo} kg · faltam {Math.abs(faltam).toFixed(1).replace(".", ",")} kg
-              </Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-      </Card>
+      <HeroCoaching
+        meta={meta}
+        semana={semana}
+        alvo={alvo}
+        atual={atual}
+        inicial={inicial}
+        faltam={faltam}
+        streak={streak}
+        best={best}
+        semConstancia={semConstancia}
+        onOpenChart={onOpenChart}
+      />
     ),
 
     missoes: (
@@ -697,19 +739,19 @@ function CoachingHub({
           tiles={[
             { icon: "flag", title: "Objetivo", subtitle: "Metas e ritmo", onPress: () => onOpenSection("objetivo") },
             {
-              icon: "barbell",
+              icon: "barbell-outline",
               title: "Treino",
               subtitle: workout?.built ? `${workout.count} treino${workout.count === 1 ? "" : "s"}` : "Montar treino",
               onPress: onOpenTrainingModule,
             },
             {
-              icon: "restaurant",
+              icon: "restaurant-outline",
               title: "Dieta",
               subtitle: analysis.metrics.goal_kcal ? `${Math.round(analysis.metrics.goal_kcal)} kcal/dia` : "Definir meta",
               onPress: onOpenDietModule,
             },
-            { icon: "scale", title: "Peso", subtitle: "Registrar e evolução", onPress: onOpenWeight },
-            { icon: "moon", title: "Sono", subtitle: "Noites e recuperação", onPress: onOpenSleep },
+            { icon: "scale-outline", title: "Peso", subtitle: "Registrar e evolução", onPress: onOpenWeight },
+            { icon: "moon-outline", title: "Sono", subtitle: "Noites e recuperação", onPress: onOpenSleep },
           ]}
         />
       </View>
@@ -897,7 +939,7 @@ function CoachingSectionView({
         <>
           <CoachRow icon="book" tint={colors.moduleNutrition} title="Abrir meu diário" subtitle="Registrar refeições e água de hoje" onPress={onOpenDiary} />
           <CoachRow icon="sparkles" tint={colors.primary} title="Gerar dieta com o coach" subtitle="Um cardápio na sua meta, em segundos" onPress={onAskCoach} />
-          <CoachRow icon="restaurant" tint={colors.moduleTraining} title="Dietas prontas" subtitle="Cardápios prontos pra adaptar" onPress={onOpenTemplates} />
+          <CoachRow icon="restaurant-outline" tint={colors.moduleTraining} title="Dietas prontas" subtitle="Cardápios prontos pra adaptar" onPress={onOpenTemplates} />
         </>
       ) : null}
 
@@ -963,7 +1005,7 @@ function StatusPills({
             <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "600" }]}>
               {KEY_LABEL[b.key] ?? b.title}
             </Text>
-            {b.chart ? <Ionicons name="stats-chart" size={13} color={colors.textSecondary} /> : null}
+            {b.chart ? <Ionicons name="stats-chart-outline" size={13} color={colors.textSecondary} /> : null}
           </TouchableOpacity>
         ))}
       </View>
@@ -1083,7 +1125,7 @@ function InsightBar({
               justifyContent: "center",
             }}
           >
-            <Ionicons name="stats-chart" size={15} color={colors.textSecondary} />
+            <Ionicons name="stats-chart-outline" size={15} color={colors.textSecondary} />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -1428,7 +1470,7 @@ function CoachingPaywall() {
             marginBottom: spacing.md,
           }}
         >
-          <Ionicons name="compass" size={38} color={colors.primary} />
+          <Ionicons name="compass-outline" size={38} color={colors.primary} />
         </View>
         <Text style={[type.h1, { color: colors.textPrimary, textAlign: "center" }]}>Coaching é do Pro</Text>
         <Text style={[type.body, { color: colors.textSecondary, textAlign: "center", marginTop: spacing.xs, maxWidth: 320 }]}>

@@ -71,7 +71,7 @@ function AppStack() {
  * parte do app). Aparece em qualquer tela menos na própria execução; um pulso
  * sutil sinaliza que o treino está rolando. Toque volta pro treino. */
 function ActiveWorkoutBadge() {
-  const { colors } = useTheme();
+  const { colors, shadow } = useTheme();
   const { active, onWorkoutScreen } = useActiveWorkout();
   const pulse = React.useRef(new Animated.Value(0)).current;
 
@@ -127,14 +127,10 @@ function ActiveWorkoutBadge() {
           backgroundColor: colors.moduleTraining,
           alignItems: "center",
           justifyContent: "center",
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 3 },
-          shadowOpacity: 0.25,
-          shadowRadius: 6,
-          elevation: 6,
+          ...shadow.md,
         }}
       >
-        <Ionicons name="barbell" size={24} color="#FFFFFF" />
+        <Ionicons name="barbell-outline" size={24} color={colors.textOnPrimary} />
       </TouchableOpacity>
     </View>
   );

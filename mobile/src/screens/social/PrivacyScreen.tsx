@@ -53,7 +53,7 @@ export function PrivacyScreen() {
       </Text>
       <Card padded={false} style={{ marginBottom: spacing.lg }}>
         <ToggleRow
-          icon="barbell"
+          icon="barbell-outline"
           iconColor={colors.moduleTraining}
           label="Treinos concluídos"
           hint="Postados automaticamente ao finalizar"
@@ -62,7 +62,7 @@ export function PrivacyScreen() {
           first
         />
         <ToggleRow
-          icon="restaurant"
+          icon="restaurant-outline"
           iconColor={colors.moduleNutrition}
           label="Refeições"
           hint="Você escolhe compartilhar uma a uma"

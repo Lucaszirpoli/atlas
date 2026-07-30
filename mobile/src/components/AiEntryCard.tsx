@@ -74,15 +74,15 @@ export function AiEntryCard({
             marginRight: spacing.md,
           }}
         >
-          <Ionicons name="sparkles" size={22} color="#FFFFFF" />
+          <Ionicons name="sparkles" size={22} color={colors.textOnPrimary} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={[type.h2, { color: "#FFFFFF", fontSize: 16 }]}>{title}</Text>
+          <Text style={[type.h2, { color: colors.textOnPrimary, fontSize: 16 }]}>{title}</Text>
           <Text style={[type.caption, { color: "rgba(255,255,255,0.88)" }]} numberOfLines={2}>
             {subtitle}
           </Text>
         </View>
-        <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
+        <Ionicons name="chevron-forward" size={20} color={colors.textOnPrimary} />
       </View>
     </TouchableOpacity>
   );

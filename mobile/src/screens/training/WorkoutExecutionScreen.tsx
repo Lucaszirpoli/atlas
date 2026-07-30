@@ -472,7 +472,7 @@ export function WorkoutExecutionScreen() {
                   pré-preenchidos parecem ter saído do nada. */}
               {prefill.find((p) => p.exercise_id === routineExercise.exercise_id)?.inherited_from_name ? (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: spacing.sm }}>
-                  <Ionicons name="git-branch" size={13} color={colors.textSecondary} />
+                  <Ionicons name="git-branch-outline" size={13} color={colors.textSecondary} />
                   <Text style={[type.caption, { color: colors.textSecondary, flex: 1 }]} numberOfLines={2}>
                     Cargas vindas de{" "}
                     {prefill.find((p) => p.exercise_id === routineExercise.exercise_id)?.inherited_from_name} — você
@@ -486,7 +486,7 @@ export function WorkoutExecutionScreen() {
                   esta série for registrada de verdade, vira o novo "anterior". */}
               {prefill.find((p) => p.exercise_id === routineExercise.exercise_id)?.suggested_by_coach ? (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: spacing.sm }}>
-                  <Ionicons name="trending-up" size={13} color={colors.primary} />
+                  <Ionicons name="trending-up-outline" size={13} color={colors.primary} />
                   <Text style={[type.caption, { color: colors.primary, fontWeight: "700", flex: 1 }]} numberOfLines={2}>
                     Carga já ajustada pelo coach — pré-preenchida abaixo.
                   </Text>

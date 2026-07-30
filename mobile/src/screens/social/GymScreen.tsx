@@ -169,7 +169,7 @@ export function GymScreen() {
                   marginRight: spacing.sm,
                 }}
               >
-                <Ionicons name="location" size={22} color={colors.moduleSocial} />
+                <Ionicons name="location-outline" size={22} color={colors.moduleSocial} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[type.caption, { color: colors.textSecondary }]}>Sua academia</Text>
@@ -311,7 +311,7 @@ export function GymScreen() {
                 justifyContent: "center",
               }}
             >
-              <Ionicons name="search" size={20} color={query.trim() ? colors.textOnPrimary : colors.textSecondary} />
+              <Ionicons name="search-outline" size={20} color={query.trim() ? colors.textOnPrimary : colors.textSecondary} />
             </TouchableOpacity>
           </View>
 

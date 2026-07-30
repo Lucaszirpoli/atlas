@@ -33,10 +33,10 @@ type MetricKey = "peso" | "treino" | "sono" | "dieta";
 // "treino" é o VOLUME da sessão (peso × reps somado de todas as séries) — por
 // isso o rótulo é "Volume", não "Treino" (que dava a entender frequência).
 const METRICS: { key: MetricKey; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { key: "peso", label: "Peso", icon: "scale" },
-  { key: "treino", label: "Volume", icon: "barbell" },
-  { key: "sono", label: "Sono", icon: "moon" },
-  { key: "dieta", label: "Dieta", icon: "restaurant" },
+  { key: "peso", label: "Peso", icon: "scale-outline" },
+  { key: "treino", label: "Volume", icon: "barbell-outline" },
+  { key: "sono", label: "Sono", icon: "moon-outline" },
+  { key: "dieta", label: "Dieta", icon: "restaurant-outline" },
 ];
 
 // Uma linha explicando o que cada métrica é e em que unidade — aparece de
@@ -134,7 +134,7 @@ function buildInsights(args: {
   const sonoKcal = sleepEffect(kcalMap);
   if (sonoKcal) {
     out.push({
-      icon: "moon",
+      icon: "moon-outline",
       text: `Nos dias em que você dormiu menos de 7h, comeu em média ${Math.round(Math.abs(sonoKcal.diff))}% ${
         sonoKcal.diff > 0 ? "a mais" : "a menos"
       } do que nos dias de sono bom (média de ${Math.round(sonoKcal.a)} vs ${Math.round(sonoKcal.b)} kcal).`,
@@ -144,7 +144,7 @@ function buildInsights(args: {
   const sonoVol = sleepEffect(volMap);
   if (sonoVol) {
     out.push({
-      icon: "barbell",
+      icon: "barbell-outline",
       text: `Nos dias em que você dormiu menos de 7h, seu treino rendeu em média ${Math.round(Math.abs(sonoVol.diff))}% ${
         sonoVol.diff > 0 ? "mais" : "menos"
       } volume do que nos dias de sono bom (média de ${fmtVol(sonoVol.a)} vs ${fmtVol(sonoVol.b)}).`,
@@ -167,7 +167,7 @@ function buildInsights(args: {
       const diff = (avg(hi) / avg(lo) - 1) * 100;
       if (Math.abs(diff) >= 4) {
         out.push({
-          icon: "restaurant",
+          icon: "restaurant-outline",
           text: `Quando você comeu acima da sua média (~${Math.round(median)} kcal), o treino seguinte rendeu em média ${Math.round(
             Math.abs(diff)
           )}% ${diff > 0 ? "mais" : "menos"} volume (${fmtVol(avg(hi))} vs ${fmtVol(avg(lo))}).`,
@@ -208,7 +208,7 @@ function buildInsights(args: {
     );
   if (strengthParts.length > 0) {
     out.push({
-      icon: "trending-up",
+      icon: "trending-up-outline",
       text: `Sua carga variou em média ${strengthParts.join(" e ")} no período.`,
     });
   }
@@ -218,7 +218,7 @@ function buildInsights(args: {
     const last = args.weightPts[args.weightPts.length - 1].y;
     const delta = last - first;
     out.push({
-      icon: "scale",
+      icon: "scale-outline",
       text:
         Math.abs(delta) >= 0.3
           ? `Seu peso ${delta < 0 ? "caiu" : "subiu"} ${Math.abs(delta).toFixed(1)}kg no período (${first.toFixed(1)} → ${last.toFixed(1)}kg).`
@@ -229,7 +229,7 @@ function buildInsights(args: {
   if (args.sleep.length >= 3) {
     const m = avg(args.sleep.map((s) => s.hours));
     out.push({
-      icon: "moon",
+      icon: "moon-outline",
       text: `Média de sono: ${m.toFixed(1)}h por noite${
         shortNights.length > 0 ? ` — ${shortNights.length} ${shortNights.length === 1 ? "noite" : "noites"} abaixo de 7h` : ""
       }.`,
@@ -625,7 +625,7 @@ export function EvolutionScreen() {
           isso (diferente de sono/água que têm tela própria). */}
       <Card style={{ marginTop: spacing.md }}>
         <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
-          <Ionicons name="scale" size={18} color={colors.primary} />
+          <Ionicons name="scale-outline" size={18} color={colors.primary} />
           <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8, fontSize: 16 }]}>Registrar peso</Text>
         </View>
         <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}>

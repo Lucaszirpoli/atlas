@@ -9,12 +9,15 @@ import { useTheme } from "../theme/ThemeProvider";
 // determinístico (livre, sem custo de token): responde sobre os dados do
 // usuário e dúvidas de treino/dieta.
 export function AiFab() {
-  const { colors } = useTheme();
+  const { colors, shadow } = useTheme();
   const navigation = useNavigation<any>();
 
   return (
-    <Pressable onPress={() => navigation.navigate("Assistant")} style={[styles.fab, { backgroundColor: colors.secondary }]}>
-      <Ionicons name="sparkles" size={26} color="#FFFFFF" />
+    <Pressable
+      onPress={() => navigation.navigate("Assistant")}
+      style={[styles.fab, { backgroundColor: colors.primary }, shadow.md]}
+    >
+      <Ionicons name="sparkles" size={26} color={colors.textOnPrimary} />
     </Pressable>
   );
 }
@@ -29,11 +32,6 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
   },
   badge: {
     position: "absolute",

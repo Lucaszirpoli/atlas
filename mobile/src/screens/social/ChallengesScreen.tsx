@@ -17,18 +17,18 @@ const METRIC_META: Record<
   workout_count: { label: "Nº de treinos", icon: "checkbox", hint: "Quem treinar mais vezes no período vence." },
   total_volume: {
     label: "Carga total",
-    icon: "barbell",
+    icon: "barbell-outline",
     hint: "Soma de peso × reps das séries válidas (aquecimento e preparatória não contam).",
   },
   pr_count: { label: "Recordes", icon: "trophy", hint: "Quem bater mais recordes pessoais de carga vence." },
   streak_days: { label: "Sequência de dias", icon: "flame", hint: "A maior sequência de dias seguidos treinando." },
   gym_checkin: {
     label: "Idas à academia",
-    icon: "location",
+    icon: "location-outline",
     hint: "Cada um cadastra a academia e faz check-in estando lá — a localização é a prova de presença.",
   },
-  sleep_nights: { label: "Noites bem dormidas", icon: "moon", hint: "Quantas noites com 7h ou mais de sono." },
-  water_goal_days: { label: "Dias batendo a água", icon: "water", hint: "Dias em que bateu a meta de água." },
+  sleep_nights: { label: "Noites bem dormidas", icon: "moon-outline", hint: "Quantas noites com 7h ou mais de sono." },
+  water_goal_days: { label: "Dias batendo a água", icon: "water-outline", hint: "Dias em que bateu a meta de água." },
   protein_goal_days: {
     label: "Dias batendo proteína",
     icon: "nutrition",
@@ -36,7 +36,7 @@ const METRIC_META: Record<
   },
   diet_logged_days: {
     label: "Dias com dieta anotada",
-    icon: "restaurant",
+    icon: "restaurant-outline",
     hint: "Dias em que registrou a alimentação — vale a constância, não a restrição.",
   },
   weight_loss_percent: {
@@ -127,7 +127,7 @@ export function ChallengesScreen() {
           marginBottom: spacing.lg,
         }}
       >
-        <Ionicons name="location" size={22} color={colors.moduleSocial} />
+        <Ionicons name="location-outline" size={22} color={colors.moduleSocial} />
         <View style={{ flex: 1, marginLeft: spacing.sm }}>
           <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "700" }]}>Minha academia</Text>
           <Text style={[type.caption, { color: colors.textSecondary }]} numberOfLines={1}>

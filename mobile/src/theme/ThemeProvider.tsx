@@ -3,7 +3,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from "
 import { useColorScheme } from "react-native";
 
 import { darkColors, lightColors, type ColorScheme } from "./colors";
-import { radius, shadow, spacing } from "./spacing";
+import { makeShadow, radius, spacing, type Elevation } from "./spacing";
 import { typeScale } from "./typography";
 
 export type ThemeMode = "system" | "light" | "dark";
@@ -15,7 +15,8 @@ type Theme = {
   type: typeof typeScale;
   spacing: typeof spacing;
   radius: typeof radius;
-  shadow: typeof shadow;
+  /** Elevação do tema ATIVO — no escuro é halo azul, não sombra preta. */
+  shadow: { sm: Elevation; md: Elevation };
   isDark: boolean;
   /** Preferência do usuário: acompanhar o sistema, ou forçar claro/escuro. */
   mode: ThemeMode;
@@ -54,7 +55,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       type: typeScale,
       spacing,
       radius,
-      shadow,
+      shadow: makeShadow(isDark),
       isDark,
       mode,
       setMode,

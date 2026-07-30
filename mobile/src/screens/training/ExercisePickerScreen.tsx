@@ -222,7 +222,7 @@ export function ExercisePickerScreen() {
           marginBottom: spacing.sm,
         }}
       >
-        <Ionicons name="search" size={18} color={colors.textSecondary} />
+        <Ionicons name="search-outline" size={18} color={colors.textSecondary} />
         <TextInput
           value={query}
           onChangeText={setQuery}

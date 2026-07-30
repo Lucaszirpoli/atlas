@@ -309,7 +309,7 @@ export function ObjectiveScreen({
               alignItems: "center", justifyContent: "center", marginBottom: spacing.md,
             }}
           >
-            <Ionicons name="compass" size={26} color={colors.primary} />
+            <Ionicons name="compass-outline" size={26} color={colors.primary} />
           </View>
           <Text style={[type.h1, { color: colors.textPrimary, fontSize: 24 }]}>
             Vamos montar sua estratégia
@@ -587,8 +587,8 @@ export function ObjectiveScreen({
 
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginTop: spacing.sm }}>
           <Pill icon="flag" text={`Meta ${formatAnswer(campoPorChave("target_weight_kg"), a.target_weight_kg)}`} />
-          <Pill icon="calendar" text={`${formatAnswer(campoPorChave("training_days_per_week"), a.training_days_per_week)}/semana`} />
-          <Pill icon="time" text={formatAnswer(campoPorChave("session_length"), a.session_length)} />
+          <Pill icon="calendar-outline" text={`${formatAnswer(campoPorChave("training_days_per_week"), a.training_days_per_week)}/semana`} />
+          <Pill icon="time-outline" text={formatAnswer(campoPorChave("session_length"), a.session_length)} />
           <Pill icon="speedometer" text={formatAnswer(campoPorChave("goal_pace"), a.goal_pace)} />
         </View>
 
@@ -619,7 +619,7 @@ export function ObjectiveScreen({
           activeOpacity={0.7}
           style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
         >
-          <Ionicons name="restaurant" size={16} color={colors.primary} />
+          <Ionicons name="restaurant-outline" size={16} color={colors.primary} />
           <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "700", flex: 1 }]}>
             Ver metas nutricionais
           </Text>
@@ -662,7 +662,7 @@ export function ObjectiveScreen({
           activeOpacity={0.7}
           style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
         >
-          <Ionicons name="list" size={16} color={colors.primary} />
+          <Ionicons name="list-outline" size={16} color={colors.primary} />
           <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "700", flex: 1 }]}>
             Ver respostas do questionário
           </Text>
@@ -714,7 +714,7 @@ export function ObjectiveScreen({
             activeOpacity={0.7}
             style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
           >
-            <Ionicons name="time" size={16} color={colors.primary} />
+            <Ionicons name="time-outline" size={16} color={colors.primary} />
             <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "700", flex: 1 }]}>
               Histórico de planos · {state.history.length}
             </Text>
@@ -949,7 +949,7 @@ function PlanComponents({ plan }: { plan: PlanSummary }) {
   const itens: { icon: keyof typeof Ionicons.glyphMap; texto: string }[] = [];
   if (w) {
     itens.push({
-      icon: "barbell",
+      icon: "barbell-outline",
       texto: `${w.method_name} · ${w.days} ${w.days === 1 ? "treino" : "treinos"} · ${w.total_exercises} exercícios`,
     });
   }
@@ -979,7 +979,7 @@ function ChangeRow({ change, field }: { change: PendingChange; field?: QuestionF
   const { colors, type } = useTheme();
   return (
     <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, paddingVertical: 4 }}>
-      <Ionicons name="swap-horizontal" size={12} color={colors.textSecondary} style={{ marginTop: 3 }} />
+      <Ionicons name="swap-horizontal-outline" size={12} color={colors.textSecondary} style={{ marginTop: 3 }} />
       <Text style={[type.caption, { color: colors.textSecondary, flex: 1, lineHeight: 17 }]}>
         <Text style={{ fontWeight: "700", color: colors.textPrimary }}>{change.label}: </Text>
         {formatAnswer(field, change.from)} → {formatAnswer(field, change.to)}

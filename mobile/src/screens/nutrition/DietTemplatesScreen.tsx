@@ -140,7 +140,7 @@ export function DietTemplatesScreen() {
               <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm }}>
                 <Pill icon="flame" text={`${t.scaled_kcal} kcal`} color={colors.primary} colors={colors} type={type} radius={radius} />
                 <Pill
-                  icon="barbell"
+                  icon="barbell-outline"
                   text={`${Math.round(t.scaled_protein_g)}g proteína`}
                   color={colors.moduleTraining}
                   colors={colors}

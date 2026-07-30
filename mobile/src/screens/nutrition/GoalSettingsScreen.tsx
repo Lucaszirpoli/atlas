@@ -130,7 +130,7 @@ function ProRedirectCard() {
           alignItems: "center", justifyContent: "center", marginBottom: spacing.md,
         }}
       >
-        <Ionicons name="compass" size={28} color={colors.primary} />
+        <Ionicons name="compass-outline" size={28} color={colors.primary} />
       </View>
       <Text style={[type.h2, { color: colors.textPrimary, textAlign: "center" }]}>
         Isso agora fica na aba Objetivo

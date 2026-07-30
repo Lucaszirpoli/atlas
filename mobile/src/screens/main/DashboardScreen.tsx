@@ -141,7 +141,7 @@ export function DashboardScreen() {
             <Text style={[type.h1, { color: colors.textPrimary, fontSize: 22, flex: 1, marginLeft: spacing.sm }]}>
               {greeting()}, {firstName}
             </Text>
-            <IconButton icon="people" tint={colors.moduleSocial} onPress={() => navigation.navigate("Social")} />
+            <IconButton icon="people-outline" tint={colors.moduleSocial} onPress={() => navigation.navigate("Social")} />
             <TouchableOpacity onPress={() => navigation.navigate("Profile")}>
               <Avatar name={user?.display_name ?? "?"} handle={user?.handle ?? "?"} size={44} />
             </TouchableOpacity>
@@ -172,9 +172,9 @@ export function DashboardScreen() {
                 alignItems: "center",
               }}
             >
-              <Ionicons name="trophy" size={22} color="#FFFFFF" style={{ marginRight: spacing.sm }} />
+              <Ionicons name="trophy" size={22} color={colors.textOnPrimary} style={{ marginRight: spacing.sm }} />
               <View style={{ flex: 1 }}>
-                <Text style={[type.body, { color: "#FFFFFF", fontWeight: "800" }]}>Desafios</Text>
+                <Text style={[type.body, { color: colors.textOnPrimary, fontWeight: "800" }]}>Desafios</Text>
                 <Text style={[type.caption, { color: "rgba(255,255,255,0.9)" }]} numberOfLines={1}>
                   Dispute com seus amigos
                 </Text>
@@ -194,7 +194,7 @@ export function DashboardScreen() {
               justifyContent: "center",
             }}
           >
-            <Ionicons name="people" size={18} color={colors.moduleSocial} />
+            <Ionicons name="people-outline" size={18} color={colors.moduleSocial} />
             <Text style={[type.caption, { color: colors.textPrimary, fontWeight: "700", fontSize: 10, marginTop: 2 }]}>
               Amigos e feed
             </Text>
@@ -222,7 +222,7 @@ export function DashboardScreen() {
                   justifyContent: "center",
                 }}
               >
-                <Ionicons name="compass" size={18} color={colors.primary} />
+                <Ionicons name="compass-outline" size={18} color={colors.primary} />
               </View>
               {/* flexShrink deixa o título truncar antes de empurrar o selo pra
                   fora do card (era o "PRO" saindo do quadrado em telas estreitas). */}
@@ -255,7 +255,7 @@ export function DashboardScreen() {
                   justifyContent: "center",
                 }}
               >
-                <Ionicons name="compass" size={Math.min(tile - 130, 46)} color={colors.primary} />
+                <Ionicons name="compass-outline" size={Math.min(tile - 130, 46)} color={colors.primary} />
               </View>
               <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm, textAlign: "center" }]}>
                 Seu acompanhamento personalizado
@@ -281,7 +281,7 @@ export function DashboardScreen() {
 
           {/* Calorias — anel circular */}
           <Tile minH={tile} onPress={() => navigation.navigate("NutritionModule")}>
-            <TileHeader icon="restaurant" tint={colors.moduleNutrition} title="Calorias" />
+            <TileHeader icon="restaurant-outline" tint={colors.moduleNutrition} title="Calorias" />
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
               <ProgressRing
                 progress={kcalPct}
@@ -301,7 +301,7 @@ export function DashboardScreen() {
 
           {/* Treino — treino de hoje */}
           <Tile minH={tile} onPress={() => navigation.navigate("TrainingModule")}>
-            <TileHeader icon="barbell" tint={colors.moduleTraining} title="Treino" />
+            <TileHeader icon="barbell-outline" tint={colors.moduleTraining} title="Treino" />
             <View style={{ flex: 1, justifyContent: "center" }}>
               <Text style={[type.caption, { color: colors.textSecondary, marginBottom: 2 }]}>
                 {todayRoutine ? "Treino de hoje" : "Sem rotina ainda"}
@@ -359,7 +359,7 @@ export function DashboardScreen() {
                   justifyContent: "center",
                 }}
               >
-                <Ionicons name="moon" size={19} color={colors.moduleSleep} />
+                <Ionicons name="moon-outline" size={19} color={colors.moduleSleep} />
               </View>
               <Text style={[type.h2, { color: colors.textPrimary, fontSize: 16, flex: 1 }]}>Sono</Text>
               <Text style={[type.caption, { color: colors.textSecondary }]}>
@@ -433,7 +433,7 @@ function WeightTile({ logs, onLogged, minH }: { logs: WeightLog[]; onLogged: () 
             justifyContent: "center",
           }}
         >
-          <Ionicons name="scale" size={19} color={colors.moduleSleep} />
+          <Ionicons name="scale-outline" size={19} color={colors.moduleSleep} />
         </View>
         <Text style={[type.h2, { color: colors.textPrimary, fontSize: 16 }]}>Peso</Text>
       </View>

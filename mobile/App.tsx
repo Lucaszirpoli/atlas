@@ -42,7 +42,10 @@ export default function App() {
     // nativo BRANCO — indistinguível de um crash. Uma View escura mantém o
     // splash coerente e garante que "branco total" só possa significar erro
     // de verdade, não "fontes carregando".
-    return <View style={{ flex: 1, backgroundColor: "#0A0A0B" }} />;
+    //
+    // A cor é a MESMA do splash nativo em app.json (darkColors.bg): é o que faz
+    // a passagem splash nativo -> app não ter um pisca de cor no meio.
+    return <View style={{ flex: 1, backgroundColor: "#081020" }} />;
   }
 
   return (

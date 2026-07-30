@@ -13,9 +13,9 @@ import { useTheme } from "../../theme/ThemeProvider";
 const METRICS: { key: CoachingChart; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: "peso", label: "Peso", icon: "trending-down" },
   { key: "calorias", label: "Calorias", icon: "flame" },
-  { key: "macros", label: "Macros", icon: "restaurant" },
-  { key: "sono", label: "Sono", icon: "moon" },
-  { key: "carga", label: "Carga", icon: "barbell" },
+  { key: "macros", label: "Macros", icon: "restaurant-outline" },
+  { key: "sono", label: "Sono", icon: "moon-outline" },
+  { key: "carga", label: "Carga", icon: "barbell-outline" },
 ];
 
 /** UM gráfico por vez, limpo — o oposto da tela de Evolução antiga (mistura de

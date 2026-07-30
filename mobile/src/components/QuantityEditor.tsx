@@ -174,7 +174,7 @@ export function QuantityEditor({
                 {u.id === GRAMAS.id ? "Gramas" : `1 ${u.label} · ${gramasLegivel(u.grams)}g`}
               </Text>
               {u.is_custom ? (
-                <Ionicons name="person" size={11} color={on ? colors.textOnPrimary : colors.textSecondary} />
+                <Ionicons name="person-outline" size={11} color={on ? colors.textOnPrimary : colors.textSecondary} />
               ) : null}
             </Pressable>
           );

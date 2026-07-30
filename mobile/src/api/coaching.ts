@@ -48,6 +48,10 @@ export type CoachingMetrics = {
     current: "slow" | "normal" | "fast";
     target_weight_kg: number | null;
     current_weight_kg: number | null;
+    /** Peso de onde a pessoa PARTIU neste plano. É a régua da barra de
+     * progresso do card de abertura: sem ele, "faltam 4 kg" é o mesmo número
+     * pra quem saiu de 79 e pra quem saiu de 100. */
+    start_weight_kg: number | null;
     options: { pace: "slow" | "normal" | "fast"; kcal: number; rate_kg_per_week: number; weeks: number | null }[];
   } | null;
   // Preferências de treino do Coaching ("Como eu monto seu treino") + opções.

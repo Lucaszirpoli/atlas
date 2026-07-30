@@ -74,8 +74,8 @@ export function WorkoutSummaryScreen() {
 
       {/* Stats */}
       <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md }}>
-        <StatBox icon="time" label="Duração" value={formatDuration(summary.duration_seconds)} />
-        <StatBox icon="barbell" label="Exercícios" value={String(uniqueExercises)} />
+        <StatBox icon="time-outline" label="Duração" value={formatDuration(summary.duration_seconds)} />
+        <StatBox icon="barbell-outline" label="Exercícios" value={String(uniqueExercises)} />
         <StatBox icon="repeat" label="Séries" value={String(summary.session.sets.length)} />
       </View>
 

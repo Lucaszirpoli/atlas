@@ -113,7 +113,7 @@ export function SleepScreen() {
 
       <Card accent={colors.moduleSleep} style={{ marginBottom: spacing.lg }}>
         <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.md }}>
-          <Ionicons name="moon" size={20} color={colors.moduleSleep} />
+          <Ionicons name="moon-outline" size={20} color={colors.moduleSleep} />
           <Text style={[type.h2, { color: colors.textPrimary, marginLeft: 8 }]}>Como foi sua noite?</Text>
         </View>
 

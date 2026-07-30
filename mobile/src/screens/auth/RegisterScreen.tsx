@@ -109,7 +109,7 @@ export function RegisterScreen() {
               shadow.md,
             ]}
           >
-            <Ionicons name="fitness" size={32} color={colors.textOnPrimary} />
+            <Ionicons name="fitness-outline" size={32} color={colors.textOnPrimary} />
           </View>
           <Text style={[type.h1, { color: colors.textPrimary }]}>Criar conta</Text>
           <Text style={[type.bodySmall, { color: colors.textSecondary }]}>Leva menos de um minuto</Text>

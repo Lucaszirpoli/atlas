@@ -207,7 +207,7 @@ export function WorkoutPreviewScreen() {
                       opacity: emTroca !== null ? 0.4 : 1,
                     }}
                   >
-                    <Ionicons name="swap-horizontal" size={19} color={colors.textSecondary} />
+                    <Ionicons name="swap-horizontal-outline" size={19} color={colors.textSecondary} />
                   </TouchableOpacity>
                 )}
               </View>

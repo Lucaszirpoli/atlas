@@ -85,7 +85,7 @@ export function ExerciseThumb({
           style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.85)", alignItems: "center", justifyContent: "center", padding: spacing.lg }}
         >
           {name ? (
-            <Text style={[type.h2, { color: "#FFFFFF", marginBottom: spacing.md, textAlign: "center" }]}>{name}</Text>
+            <Text style={[type.h2, { color: colors.textOnPrimary, marginBottom: spacing.md, textAlign: "center" }]}>{name}</Text>
           ) : null}
           <Image
             source={{ uri: mediaUrl }}
