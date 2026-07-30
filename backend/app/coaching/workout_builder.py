@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai import methods_engine, plan_review
+from app.ai.exercise_taxonomy import Pattern
 from app.ai.methods import coach_custom_spec
 from app.ai.methods_engine import build_plan
 from app.coaching import cycle_state, training_brain, volume_landmarks
@@ -39,6 +40,15 @@ _MAX_EXERCICIOS_POR_SESSAO = 9
 # manda acrescentar exercício, mas todas trabalham perto da falha — em exercício
 # demais viram fadiga que não recupera, e aí o volume extra não vira estímulo.
 _MAX_TECNICAS_POR_SESSAO = 3
+
+# Vagas mínimas por músculo na semana. É a regra 6 do produto (frequência mínima
+# de 2×/semana por grupo muscular, sem bro-split) em forma de trava: nem a
+# equalização mais agressiva pode deixar um músculo com um treino só na semana.
+_MIN_VAGAS_POR_MUSCULO = 2
+
+# Trava do laço de poda (como _MAX_VAGAS_EXTRAS é a do laço de preenchimento).
+# Quem para o laço de verdade é não sobrar excesso.
+_MAX_VAGAS_PODADAS = 24
 
 
 def _first_int(s, default: int) -> int:
@@ -164,6 +174,11 @@ def build_and_save(db: Session, user: User) -> dict:
         # agachamento livre/acima da cabeça/impacto, unilateral). Chegam até a
         # escolha de cada exercício — é o que faz a resposta virar treino.
         exercise_prefs=prefs_exercicio,
+        # O id da pessoa. Duas pessoas que responderam a mesma coisa continuam
+        # recebendo o mesmo PLANO (mesma divisão, mesmas prioridades, mesmo
+        # volume) — o que muda é qual dos exercícios equivalentes preenche cada
+        # vaga, pra o treino ser reconhecivelmente dela. Ver methods_engine.seed.
+        seed=user.id,
     )
 
     # --- REGRA DE COERÊNCIA GLOBAL ------------------------------------------
@@ -220,6 +235,72 @@ def build_and_save(db: Session, user: User) -> dict:
     # O alvo semanal SOBE ao longo do mesociclo (volume_landmarks._progress), o
     # que faz o número de exercícios subir junto — que é o que fase de
     # acumulação significa. No início do ciclo quase nada é acrescentado.
+    # --- PODA: VAGA DEMAIS PRO ALVO ----------------------------------------
+    # Antes de acrescentar exercício pra quem está devendo, TIRAR de quem está
+    # sobrando. Uma vaga entrega no mínimo PER_EXERCISE_MIN séries, então um
+    # músculo com mais vagas do que o alvo comporta não entrega o alvo: ele
+    # entrega o piso vezes o número de vagas.
+    #
+    # É AQUI que a equalização do §6.1 ganhava e perdia no mesmo passo. O alvo do
+    # financiador caía pra 5, e logo depois costas com 5 vagas saía com 10 séries
+    # (2 por vaga) — o dobro do alvo, mais volume que o próprio ponto fraco. A
+    # pessoa trocava o ponto fraco no questionário e via o treino não mudar nada,
+    # porque de fato não mudava: os dois lados da conta eram desfeitos pelo clamp.
+    #
+    # Podar é o que LIBERA a vaga (e o tempo de sessão) que o ponto fraco vai
+    # ocupar logo abaixo. Duas travas: frequência mínima de 2×/semana por grupo
+    # nunca é violada, e o equilíbrio da semana não pode sair da tolerância —
+    # financiar braço não pode custar a simetria empurrar/puxar do treino.
+    empurrar_puxar = plan_review.desequilibrio_empurrar_puxar(plan)
+    joelho_quadril = plan_review.desequilibrio_joelho_quadril(plan)
+
+    def _mantem_equilibrio(sl) -> bool:
+        direcao = plan_review.direcao_do_slot(sl)
+        depois_ep = empurrar_puxar - (1 if direcao == "empurrar" else -1 if direcao == "puxar" else 0)
+        depois_jq = joelho_quadril
+        if sl.pattern == Pattern.KNEE.value:
+            depois_jq -= 1
+        elif sl.pattern == Pattern.HIP.value:
+            depois_jq += 1
+        return (
+            abs(depois_ep) < plan_review.TOLERANCIA_EQUILIBRIO
+            and abs(depois_jq) < plan_review.TOLERANCIA_EQUILIBRIO
+        )
+
+    limite_de_vagas = {
+        m: max(_MIN_VAGAS_POR_MUSCULO, volume_landmarks.slot_range(plano_semanal[m])[1])
+        for m in musculos
+    }
+    exercicios_podados: list[str] = []
+    travados: set[MuscleGroup] = set()
+    # UMA vaga por vez, sempre do músculo com maior excesso — e não um músculo
+    # até o fim antes de passar pro próximo. A diferença importa por causa do
+    # guarda de equilíbrio: podando costas até o fim primeiro, a semana ficava
+    # com 2 puxadas a menos que empurradas na terceira remoção e o guarda travava
+    # costas ali, com o excesso quase inteiro ainda de pé — e peito, que ia
+    # devolver o equilíbrio, só seria podado depois. Alternando, os dois lados
+    # descem juntos e a semana nunca sai da tolerância.
+    for _ in range(_MAX_VAGAS_PODADAS):
+        excessos = [
+            (slot_count_by_muscle.get(m.value, 0) - limite_de_vagas[m], m.value, m)
+            for m in musculos
+            if m not in travados and slot_count_by_muscle.get(m.value, 0) > limite_de_vagas[m]
+        ]
+        if not excessos:
+            break
+        _, _, muscle = max(excessos, key=lambda e: (e[0], e[1]))
+        removida = methods_engine.drop_surplus_slot(plan, muscle, pode_remover=_mantem_equilibrio)
+        if removida is None:
+            # Tudo que sobrava nesse músculo é protegido (região exigida,
+            # abertura do dia, equilíbrio da semana). O excesso fica e é
+            # consciente — mas o laço continua servindo os outros músculos.
+            travados.add(muscle)
+            continue
+        slot_count_by_muscle[muscle.value] -= 1
+        exercicios_podados.append(removida.exercise_name)
+        empurrar_puxar = plan_review.desequilibrio_empurrar_puxar(plan)
+        joelho_quadril = plan_review.desequilibrio_joelho_quadril(plan)
+
     exercicios_extras: list[str] = []
     ids_extras: set[int] = set()
     for _ in range(_MAX_VAGAS_EXTRAS):
@@ -230,11 +311,17 @@ def build_and_save(db: Session, user: User) -> dict:
         ]
         if not faltas:
             break
-        _, _, muscle = max(faltas, key=lambda f: (f[0], f[1]))
+        # PONTO FRACO PRIMEIRO. Antes a fila era só "quem está devendo mais", e o
+        # ponto fraco disputava as vagas livres da sessão (teto de 9 exercícios)
+        # em pé de igualdade com quem não é prioridade nenhuma — quando a sessão
+        # enchia, quem ficava sem era justamente ele. Prioridade que só vale
+        # enquanto sobra espaço não é prioridade.
+        _, _, muscle = max(faltas, key=lambda f: (f[2] in wps, f[0], f[1]))
         slot = methods_engine.add_accessory_slot(
             db, plan, muscle, prefer_machines=curto,
             exercise_prefs=prefs_exercicio,
             max_per_session=_MAX_EXERCICIOS_POR_SESSAO,
+            seed=user.id,
         )
         if slot is None:
             # Sem exercício novo desse músculo na base (ou sessões cheias): o
@@ -310,6 +397,11 @@ def build_and_save(db: Session, user: User) -> dict:
             if remainder_by_muscle.get(sl.muscle_group, 0) > 0:
                 sets += 1
                 remainder_by_muscle[sl.muscle_group] -= 1
+            # Trava de segurança, não regra de distribuição: depois da poda e do
+            # preenchimento acima, o número de vagas já cabe no alvo e a divisão
+            # cai naturalmente entre 2 e 3. Ela só morde quando a poda não
+            # conseguiu tirar a vaga excedente (região exigida, equilíbrio da
+            # semana) — e aí o excesso é assumido, não escondido.
             sets = max(volume_landmarks.PER_EXERCISE_MIN, min(sets, volume_landmarks.PER_EXERCISE_MAX))
             routine_exercise = RoutineExercise(
                 routine_id=routine.id, exercise_id=sl.exercise_id, sort_order=i,
@@ -414,6 +506,34 @@ def build_and_save(db: Session, user: User) -> dict:
 
     weak_labels = [training_brain.WEAK_POINT_LABEL[w] for w in weak_values]
     weak_label = ", ".join(weak_labels) if weak_labels else None
+
+    # A priorização precisa ser VISÍVEL. A queixa não era só que o ponto fraco
+    # recebia pouco — era que trocar o ponto fraco não parecia mudar nada. Mesmo
+    # depois de consertado o volume, uma diferença que a pessoa não consegue ler
+    # continua sendo invisível pra ela. Aqui sai o número, dos dois lados da
+    # troca: quanto o prioritário ganhou e quem pagou por isso.
+    priority_note = None
+    if wps:
+        def _label(m: MuscleGroup) -> str:
+            return training_brain.WEAK_POINT_LABEL.get(m.value, m.value)
+
+        ganhos = ", ".join(
+            f"{_label(m)} {plano_semanal[m]} séries/semana" for m in wps if m in plano_semanal
+        )
+        financiadores = sorted(
+            (m for m in musculos if m not in wps),
+            key=lambda m: (-slot_count_by_muscle.get(m.value, 0), m.value),
+        )[:3]
+        if ganhos:
+            priority_note = f"Seu ponto fraco puxa o volume da semana: {ganhos}."
+            if financiadores:
+                nomes = ", ".join(_label(m) for m in financiadores)
+                priority_note += (
+                    f" Pra isso eu segurei {nomes} em {volume_landmarks.BASE_MIN} séries — "
+                    "manter um músculo custa muito menos que fazer ele crescer, e a recuperação "
+                    "é do corpo inteiro, não de um grupo por vez."
+                )
+            priority_note += " Nos dias que treinam seu ponto fraco, ele abre o treino, descansado."
     # A sessão cresceu por um motivo específico — dizer qual, senão a pessoa
     # abre o treino e só vê "ficou mais longo".
     extra_note = None
@@ -439,6 +559,7 @@ def build_and_save(db: Session, user: User) -> dict:
         "routines": nomes,
         "total_exercises": total_ex,
         "weak_point_label": weak_label,
+        "priority_note": priority_note,
         "session_range": training_brain.session_range_text(profile.session_length),
         "cardio_note": cardio_note,
         "technique_note": technique_note,

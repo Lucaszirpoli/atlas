@@ -191,12 +191,17 @@ def test_recorte_corta_o_acessorio_antes_do_essencial():
         assert len(recortado) == min(5, len(blueprint)), foco
 
 
-def test_recorte_agressivo_preserva_o_composto_prioritario():
-    """Mesmo num alvo absurdo, a vaga 1 sobrevive e a ordem é preservada."""
+def test_recorte_agressivo_preserva_a_abertura_do_treino():
+    """Mesmo num alvo absurdo, a vaga 1 sobrevive e a ordem é preservada.
+
+    Quem abre é o composto prioritário na maioria dos dias e a vaga de prioridade
+    no dia de membros (onde o braço — o motivo da divisão Torso/Limbs existir —
+    abre o treino descansado). As duas são aberturas legítimas; o que o recorte
+    não pode fazer é entregar um dia que começa por um acessório."""
     for foco, blueprint in bp.BLUEPRINTS.items():
         recortado = bp.fit_to_target(blueprint, 1)
         assert recortado == [blueprint[0]], foco
-        assert recortado[0].role == bp.ROLE_PRIMARY, foco
+        assert recortado[0].role in (bp.ROLE_PRIMARY, bp.ROLE_PRIORITY_OPEN), foco
 
 
 def test_recorte_preserva_a_ordem_original():
@@ -377,6 +382,95 @@ def test_desligar_tecnica_reverte_dicas_ativas(db):
         assert r2.get("technique_note") is None, "não pode montar técnica com allow_advanced_techniques=False"
     finally:
         limpar()
+
+
+# --- Ponto fraco: ORDEM ---------------------------------------------------
+def test_ponto_fraco_sem_composto_abre_a_sessao(db):
+    """O bug principal relatado: trocar o ponto fraco não mudava o treino.
+
+    Bíceps e tríceps não aparecem em vaga de COMPOSTO em blueprint nenhum, e a
+    promoção só acontecia entre compostos — então marcar braço como ponto fraco
+    não mexia uma vírgula na ordem. Agora o melhor isolador dele sobe pra
+    abertura nos dias que treinam o músculo.
+    """
+    _, plan = _plan(db, dias=6, weak_points=[M.BICEPS])
+    dias_de_biceps = [s for s in plan.sessions if any(sl.muscle_group == M.BICEPS.value for sl in s.slots)]
+    assert dias_de_biceps, "pré-condição: algum dia tem que treinar bíceps"
+    for s in dias_de_biceps:
+        assert s.slots[0].muscle_group == M.BICEPS.value, (
+            f"{s.focus} abre com {s.slots[0].exercise_name}; o ponto fraco tinha que abrir"
+        )
+        assert s.slots[0].priority_opener, "a abertura por prioridade precisa se declarar pro validador"
+
+
+def test_abertura_por_prioridade_passa_na_coerencia(db):
+    """Abrir com isolador é exceção, não buraco: o resto da regra mestra continua
+    valendo no mesmo treino."""
+    for fraco in (M.BICEPS, M.TRICEPS):
+        spec, plan = _plan(db, dias=6, weak_points=[fraco])
+        assert plan_review.review(plan, method=spec) == [], fraco
+
+
+def test_dia_de_membros_abre_pelo_braco(db):
+    """A divisão Torso/Limbs existe pra dar volume a músculo menor. Deixar o
+    braço atrás de agachamento e terra entrega o contrário do que ela promete."""
+    _, plan = _plan(db, dias=4, weak_points=[M.BICEPS])
+    membros = [s for s in plan.sessions if s.focus.startswith("membros")]
+    assert membros
+    for s in membros:
+        assert s.slots[0].muscle_group in (M.BICEPS.value, M.TRICEPS.value), (
+            f"{s.focus} abre com {s.slots[0].exercise_name}, esperado um exercício de braço"
+        )
+
+
+# --- Variação por pessoa ---------------------------------------------------
+def test_pessoas_diferentes_recebem_exercicios_diferentes(db):
+    """Duas pessoas com respostas idênticas recebiam o treino idêntico, exercício
+    por exercício. O treino estava certo, mas não parecia dela."""
+    def nomes(seed):
+        _, plan = _plan(db, dias=4, seed=seed)
+        return [sl.exercise_name for s in plan.sessions for sl in s.slots]
+
+    a, b = nomes(101), nomes(202)
+    assert a != b, "o sorteio por pessoa não produziu nenhuma diferença"
+
+
+def test_variacao_e_estavel_para_a_mesma_pessoa(db):
+    """A variação é por PESSOA, não por montagem: remontar o treino não pode
+    trocar os exercícios do nada."""
+    _, p1 = _plan(db, dias=4, seed=101)
+    _, p2 = _plan(db, dias=4, seed=101)
+    assert [sl.exercise_name for s in p1.sessions for sl in s.slots] == [
+        sl.exercise_name for s in p2.sessions for sl in s.slots
+    ]
+
+
+def test_variacao_nao_rebaixa_o_tier(db):
+    """A variação não pode custar qualidade: ninguém pode ficar com o treino pior
+    por sorteio. Vaga a vaga, o tier escolhido é o mesmo pra todo mundo."""
+    def tiers(seed):
+        _, plan = _plan(db, dias=4, seed=seed)
+        return [
+            [_tier_de(db, sl.exercise_id) for sl in s.slots]
+            for s in plan.sessions
+        ]
+
+    base = tiers(None)
+    for seed in (7, 42, 101, 999):
+        assert tiers(seed) == base, f"a semente {seed} mudou o tier de alguma vaga"
+
+
+def _tier_de(db, exercise_id: int) -> Tier:
+    from app.ai.exercise_taxonomy import taxon_for_exercise
+
+    return taxon_for_exercise(db.get(Exercise, exercise_id)).tier
+
+
+def test_variacao_passa_na_coerencia(db):
+    """Sortear entre equivalentes não pode quebrar a estrutura da semana."""
+    for seed in (7, 42, 101, 999):
+        spec, plan = _plan(db, dias=4, seed=seed)
+        assert plan_review.review(plan, method=spec) == [], seed
 
 
 def test_determinismo(db):

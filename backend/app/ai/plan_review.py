@@ -33,7 +33,8 @@ from app.models.exercise import MuscleGroup
 # Quanto os dois lados de um par podem desequilibrar antes de virar problema.
 # 1 vaga de diferença é normal (número ímpar de exercícios); 2 já é um treino
 # torto de propósito.
-_TOLERANCIA_EQUILIBRIO = 2
+TOLERANCIA_EQUILIBRIO = 2
+_TOLERANCIA_EQUILIBRIO = TOLERANCIA_EQUILIBRIO
 
 def _padrao(slot) -> Pattern | None:
     if not slot.pattern:
@@ -116,6 +117,13 @@ def _direcao(slot) -> str | None:
     return None
 
 
+def direcao_do_slot(slot) -> str | None:
+    """'empurrar', 'puxar' ou None — pública porque quem MEXE no plano (o
+    preenchimento de volume do workout_builder) precisa saber o efeito de tirar
+    uma vaga antes de tirar, e não depois que o validador já reprovou."""
+    return _direcao(slot)
+
+
 def desequilibrio_empurrar_puxar(plan) -> int:
     """Diferença (empurrar - puxar) na semana. 0 é o ideal; o sinal diz pra que
     lado está torto."""
@@ -175,12 +183,18 @@ def problemas_de_ordem(plan) -> list[str]:
     de referência tem hip thrust (composto) na 5ª posição, depois da mesa flexora
     (isolador), e está certo — o hip thrust não disputa fadiga com o que veio
     antes.
+
+    A abertura com isolador tem UMA exceção, e ela é declarada na vaga
+    (`priority_opener`): quando o músculo prioritário da pessoa não tem composto
+    próprio — braço — abrir com o isolador dele é o que priorizar significa. Sem
+    essa exceção, marcar bíceps como ponto fraco não mudava nada na ordem do
+    treino, porque a única promoção possível era entre compostos.
     """
     problemas: list[str] = []
     for s in plan.sessions:
         if not s.slots:
             continue
-        if not s.slots[0].is_compound:
+        if not s.slots[0].is_compound and not getattr(s.slots[0], "priority_opener", False):
             problemas.append(
                 f"Sessão '{s.focus}' abre com '{s.slots[0].exercise_name}', que não é composto — "
                 "o movimento prioritário perde desempenho se não vier primeiro."

@@ -52,6 +52,7 @@ ROLE_COMPLEMENT = "composto complementar"
 ROLE_SECOND = "segundo estímulo do grupo prioritário"
 ROLE_ISO = "isolador estratégico"
 ROLE_MINOR = "músculo menor"
+ROLE_PRIORITY_OPEN = "prioridade — abre o treino descansado"
 
 
 @dataclass(frozen=True)
@@ -71,10 +72,21 @@ class SlotSpec:
     # são volume de bíceps. Nos compostos fica False — é exatamente ali que a
     # redundância desperdiça volume (os 3 supinos retos do Princípio 4).
     allow_repeat_function: bool = False
+    # Vaga que abre a sessão POR PRIORIDADE, e não por ser o movimento mais
+    # pesado do dia. É a exceção consciente à regra "a sessão abre com composto"
+    # (`plan_review.problemas_de_ordem`): quando o músculo prioritário não tem
+    # composto próprio — braço é o caso — abrir com o isolador dele é o preço da
+    # priorização, e o validador precisa saber que foi de propósito.
+    opener: bool = False
 
 
 def _iso(muscle: MuscleGroup, region: str | None = None, priority: int = 1, repeat: bool = False) -> SlotSpec:
     return SlotSpec(ROLE_ISO, P.ISO, muscle, region, priority, repeat)
+
+
+def _abre(muscle: MuscleGroup, region: str | None = None) -> SlotSpec:
+    """Isolador que ABRE a sessão por prioridade (ver `SlotSpec.opener`)."""
+    return SlotSpec(ROLE_PRIORITY_OPEN, P.ISO, muscle, region, priority=1, opener=True)
 
 
 def _second(pattern: Pattern, muscle: MuscleGroup, region: str | None = None) -> SlotSpec:
@@ -273,27 +285,36 @@ TORSO_B: list[SlotSpec] = [
     _iso(M.CHEST, CLAVICULAR, priority=2),
 ]
 
-# Panturrilha e abdutor ficam nas ÚLTIMAS posições: aqui é o único blueprint em
-# que sobra vaga de braço depois delas, e músculo menor tem que FECHAR o treino
-# (o validador cobra isso, e cobrou — a primeira versão punha a panturrilha na
-# 6ª posição com duas roscas depois).
+# O BRAÇO ABRE O DIA DE MEMBROS. A divisão Torso/Limbs só é escolhida quando o
+# ponto fraco é justamente um músculo menor (braço ou panturrilha) — ela existe
+# pra "permitir maior volume para músculos menores". Deixar o braço no fim, atrás
+# de agachamento e levantamento terra, entrega justamente o contrário: a pessoa
+# chega no motivo do dia já fatigada, e o volume prioritário sai pior que o
+# volume que não é prioridade nenhuma.
+#
+# Abrir com isolador é exceção à regra "a sessão abre com composto", e é por isso
+# que estas vagas são `opener=True` (ver `SlotSpec.opener`): o validador aceita a
+# abertura porque ela é uma decisão de priorização, não um blueprint torto.
+#
+# Panturrilha e abdutor continuam nas ÚLTIMAS posições — músculo menor fecha o
+# treino, e o validador cobra isso.
 MEMBROS_A: list[SlotSpec] = [
+    _abre(M.BICEPS),
+    _abre(M.TRICEPS),
     SlotSpec(ROLE_PRIMARY, P.KNEE, M.QUADS),
     SlotSpec(ROLE_COMPLEMENT, P.HIP, M.HAMSTRINGS, POST_EXT_QUADRIL),
     SlotSpec(ROLE_ISO, P.KNEE_FLEX, M.HAMSTRINGS, POST_FLEX_JOELHO),
-    _iso(M.BICEPS),
-    _iso(M.TRICEPS),
     _iso(M.BICEPS, priority=2, repeat=True),
     _iso(M.TRICEPS, priority=3, repeat=True),
     _minor(P.CALF, M.CALVES),
 ]
 
 MEMBROS_B: list[SlotSpec] = [
+    _abre(M.TRICEPS),
+    _abre(M.BICEPS),
     SlotSpec(ROLE_PRIMARY, P.KNEE, M.QUADS),
     SlotSpec(ROLE_COMPLEMENT, P.HIP, M.GLUTES, GLUTEO_MAXIMO),
     _iso(M.QUADS),
-    _iso(M.TRICEPS),
-    _iso(M.BICEPS),
     _iso(M.TRICEPS, priority=2, repeat=True),
     _minor(P.CALF, M.CALVES),
     _minor(P.ABDUCTION, M.GLUTES, GLUTEO_MEDIO, priority=3),
@@ -364,11 +385,12 @@ def fit_to_target(blueprint: list[SlotSpec], target: int | None) -> list[SlotSpe
     1) e, dentro da mesma prioridade, as que estão mais perto do FIM do treino —
     que são as que a pessoa já ia cortar por cansaço.
 
-    A ÚNICA garantia absoluta é a vaga 1: o composto prioritário nunca sai. As
-    de `priority=1` são as últimas a cair, mas caem se o alvo for menor que o
-    número delas — o tempo é uma restrição física, e entregar 7 exercícios pra
-    quem tem tempo de 5 só faz a pessoa não terminar o treino. Nesse caso o que
-    sobra são os compostos do começo, que é a escolha certa.
+    A ÚNICA garantia absoluta é a vaga 1: quem ABRE o treino nunca sai — seja o
+    composto prioritário (a maioria dos dias) ou a vaga de prioridade do dia de
+    membros. As de `priority=1` são as últimas a cair, mas caem se o alvo for
+    menor que o número delas — o tempo é uma restrição física, e entregar 7
+    exercícios pra quem tem tempo de 5 só faz a pessoa não terminar o treino.
+    Nesse caso o que sobra é o começo do treino, que é a escolha certa.
 
     Alvo maior que o blueprint não acrescenta vaga aqui: quem faz o treino
     crescer é o volume semanal (workout_builder.add_accessory_slot), que sabe

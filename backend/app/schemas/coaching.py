@@ -216,6 +216,9 @@ class BuildWorkoutResult(BaseModel):
     routines: list[str]
     total_exercises: int
     weak_point_label: str | None = None
+    # O que a priorização do ponto fraco fez com o volume da semana, em número —
+    # quanto o prioritário recebe e quem foi segurado pra pagar por isso.
+    priority_note: str | None = None
     session_range: str | None = None
     cardio_note: str | None = None
     technique_note: str | None = None

@@ -57,6 +57,20 @@ BASE_MAX = 12
 WEAK_MIN = 8
 WEAK_MAX = 16
 
+# Onde a faixa COMEÇA na semana 1 do mesociclo, em fração da própria faixa.
+#
+# Existia um bug silencioso aqui: as duas faixas partiam do piso (0.0), então na
+# semana 1 TODO músculo tinha alvo 5 e o ponto fraco tinha 8. Como o blueprint
+# entrega naturalmente 4 a 5 vagas por músculo grande, e vaga nenhuma vai abaixo
+# de PER_EXERCISE_MIN séries, o alvo de 5 virava 10 séries entregues — e o ponto
+# fraco, com alvo 8 e 3 vagas, saía com MENOS volume que costas e ombro. A
+# priorização existia no papel e não chegava no treino.
+#
+# Partindo do meio da faixa, o alvo passa a bater com o que a estrutura da semana
+# realmente entrega, e a diferença entre "faixa-base" e "ponto fraco" aparece já
+# na primeira semana, não só no fim do ciclo.
+BAND_START = 0.5
+
 # Excepcional — só com prioridade máxima, em 1 ou 2 músculos, cortando o resto.
 EXCEPTIONAL_MIN = 20
 EXCEPTIONAL_MAX = 22
@@ -113,6 +127,12 @@ def _progress(weeks_accumulating: float | None) -> float:
     return min(1.0, max(0.0, (weeks_accumulating or 0.0) / training_brain.MESOCYCLE_WEEKS))
 
 
+def _dentro_da_faixa(piso: float, topo: float, p: float) -> float:
+    """Posição dentro de uma faixa na semana `p` do mesociclo — começando em
+    BAND_START da faixa (não no piso) e chegando ao topo no fim do ciclo."""
+    return piso + (topo - piso) * (BAND_START + (1.0 - BAND_START) * p)
+
+
 # Extremos de MRV entre todos os músculos — usados pra posicionar cada um
 # DENTRO da faixa-base em vez de dar o mesmo número pra todo mundo.
 _MRV_MIN = min(mrv for _, mrv in _LANDMARKS.values() if mrv > 0)
@@ -160,16 +180,17 @@ def weekly_target_sets(
     fator = _LEVEL_FACTOR.get(level or "intermediario", 1.0)
 
     if priority == "baixa":
-        # Ponto forte / já desenvolvido: manter custa pouco — fica perto de 5.
+        # Ponto forte / já desenvolvido / FINANCIADOR de um ponto fraco: manter
+        # custa pouco — fica no piso da faixa.
         alvo = BASE_MIN
     elif priority == "alta":
-        alvo = WEAK_MIN + (WEAK_MAX - WEAK_MIN) * p
+        alvo = _dentro_da_faixa(WEAK_MIN, WEAK_MAX, p)
     elif priority == "excepcional":
-        alvo = EXCEPTIONAL_MIN + (EXCEPTIONAL_MAX - EXCEPTIONAL_MIN) * p
+        alvo = _dentro_da_faixa(EXCEPTIONAL_MIN, EXCEPTIONAL_MAX, p)
     else:
         # Faixa-base, com o TOPO próprio de cada músculo (§6.1: nada de mesmo
         # volume pro corpo inteiro).
-        alvo = BASE_MIN + (_band_top(muscle) - BASE_MIN) * p
+        alvo = _dentro_da_faixa(BASE_MIN, _band_top(muscle), p)
 
     alvo = round(alvo * fator)
     teto = mrv if priority == "excepcional" else min(mrv, EXCEPTIONAL_MAX)
@@ -201,27 +222,38 @@ def weekly_plan(
             return "excepcional"
         if m in weak:
             return "alta"
-        return "normal"
+        # --- EQUALIZAÇÃO ----------------------------------------------------
+        # Havendo ponto fraco, quem NÃO é prioridade vira financiador e desce pro
+        # piso da faixa (§6.1: "o coach reduz os outros grupos"). Não é
+        # penalidade: manter um músculo custa muito menos que fazer ele crescer,
+        # e a recuperação é sistêmica — sem essa troca a pessoa só acumula fadiga
+        # e para de progredir em tudo ao mesmo tempo.
+        #
+        # A versão anterior fazia isso como um rodízio que cedia séries só até
+        # cobrir o EXCESSO do ponto fraco. Como os dois lados partiam do piso da
+        # faixa, não havia excesso nenhum pra cobrir: o rodízio rodava zero vezes
+        # e trocar o ponto fraco não mudava volume nenhum. Agora a redução é o
+        # próprio alvo de quem não é prioridade.
+        return "baixa" if weak else "normal"
 
-    plano = {m: weekly_target_sets(m, level, weeks_accumulating, priority=prioridade(m)) for m in muscles}
-    if not weak:
-        return plano
+    return {
+        m: weekly_target_sets(m, level, weeks_accumulating, priority=prioridade(m)) for m in muscles
+    }
 
-    # --- Equalização --------------------------------------------------------
-    # Orçamento: o que a semana custaria se ninguém fosse prioridade. O extra
-    # gasto nos pontos fracos sai dos demais, um set por vez, em rodízio — o
-    # músculo mais volumoso cede primeiro. Piso: BASE_MIN (a regra é "podem
-    # permanecer PRÓXIMOS de 5", não "podem sumir do treino").
-    orcamento = sum(
-        weekly_target_sets(m, level, weeks_accumulating, priority="normal") for m in muscles
-    )
-    ajustaveis = [m for m in muscles if m not in weak]
-    guarda = 0
-    while sum(plano.values()) > orcamento and ajustaveis and guarda < 500:
-        guarda += 1
-        candidatos = [m for m in ajustaveis if plano[m] > BASE_MIN]
-        if not candidatos:
-            break  # já estão todos no piso — a fadiga extra é assumida e consciente
-        alvo = max(candidatos, key=lambda m: plano[m])
-        plano[alvo] -= 1
-    return plano
+
+def slot_range(target_sets: int) -> tuple[int, int]:
+    """(mínimo, máximo) de EXERCÍCIOS que entregam `target_sets` séries semanais.
+
+    Uma vaga entrega de PER_EXERCISE_MIN a PER_EXERCISE_MAX séries de trabalho
+    efetivas, então o alvo semanal define uma faixa de quantos exercícios daquele
+    músculo a semana comporta. Vagas a mais que o máximo NÃO conseguem entregar o
+    alvo: elas empurram o volume pra cima (nenhuma vaga vai abaixo do mínimo), que
+    era exatamente como a redução dos financiadores era desfeita — costas com
+    alvo 5 e 5 vagas saía com 10 séries.
+
+    O mínimo de 2 vagas nunca é violado por quem chama isto: frequência de 2×/
+    semana por grupo muscular é regra do produto, não consequência de volume.
+    """
+    minimo = max(1, -(-target_sets // PER_EXERCISE_MAX))  # ceil
+    maximo = max(minimo, target_sets // PER_EXERCISE_MIN)
+    return minimo, maximo

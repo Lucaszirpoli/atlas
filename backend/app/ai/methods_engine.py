@@ -31,6 +31,7 @@ existe na base (o motor nunca inventa exercício).
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import asdict, dataclass, field, replace
 
 from sqlalchemy import select
@@ -39,6 +40,7 @@ from sqlalchemy.orm import Session
 from app.ai import session_blueprints as bp
 from app.ai.exercise_taxonomy import (
     ORDER_MINOR,
+    REQUIRED_REGIONS,
     Pattern,
     Taxon,
     order_class_for_pattern,
@@ -72,6 +74,51 @@ _PREF_UNILATERAL = ("unilateral", "um braco", "uma perna", "afundo", "avanco", "
 
 _ESTAVEIS = (Equipment.MACHINE, Equipment.CABLE, Equipment.SMITH_MACHINE)
 _LIVRES = (Equipment.BARBELL, Equipment.DUMBBELL, Equipment.KETTLEBELL)
+
+# Quantos candidatos EQUIVALENTES entram no sorteio de variação por pessoa.
+#
+# Duas pessoas que respondem exatamente a mesma coisa no questionário recebiam
+# exatamente o mesmo treino, exercício por exercício — o motor é determinístico e
+# o desempate final era a ordem de qualidade, que é global. O treino estava
+# certo, mas não parecia dela.
+#
+# A variação não pode custar qualidade: o sorteio acontece só DENTRO da classe de
+# equivalência (mesmo tier, mesma aderência às preferências da pessoa, mesma
+# função), e ainda assim só entre os `_POOL_VARIACAO` melhores por ordem de
+# qualidade. Ninguém troca um tier S consagrado por um tier S obscuro sem GIF —
+# a escolha continua sendo entre opções que a regra considera igualmente boas.
+_POOL_VARIACAO = 3
+
+
+def _sorteio_estavel(seed: int, *partes: object) -> int:
+    """Número estável a partir da semente + identificadores da vaga.
+
+    blake2b em vez de `hash()`: o hash de string do Python é aleatorizado por
+    processo (PYTHONHASHSEED), o que faria o treino da MESMA pessoa mudar a cada
+    reinício do servidor. Aqui a mesma entrada dá sempre o mesmo número — em
+    qualquer máquina, em qualquer deploy.
+    """
+    texto = "|".join(str(p) for p in (seed, *partes))
+    return int.from_bytes(hashlib.blake2b(texto.encode("utf-8"), digest_size=8).digest(), "big")
+
+
+def _escolher_com_variacao(
+    ordenados: list[_Cand], equivalencia, seed: int | None, *partes: object
+) -> _Cand:
+    """O melhor candidato — com sorteio por pessoa entre os que empatam com ele.
+
+    `ordenados` já vem na ordem de decisão do motor (tier -> preferências ->
+    qualidade). Sem semente, devolve o primeiro: é o comportamento determinístico
+    de sempre, que os testes de estrutura dependem.
+    """
+    melhor = ordenados[0]
+    if seed is None:
+        return melhor
+    chave = equivalencia(melhor)
+    empatados = [c for c in ordenados if equivalencia(c) == chave][:_POOL_VARIACAO]
+    if len(empatados) < 2:
+        return melhor
+    return min(empatados, key=lambda c: _sorteio_estavel(seed, *partes, c.ex.name))
 
 
 def _ordenar_por_preferencia(nome_norm: str, equipamento, prefs: frozenset[str]) -> int:
@@ -113,6 +160,9 @@ class PlannedSlot:
     pattern: str | None = None
     region: str | None = None
     role: str | None = None
+    # Abre a sessão por PRIORIDADE (ponto fraco / dia de membros) em vez de por
+    # ser o movimento mais pesado. Ver `session_blueprints.SlotSpec.opener`.
+    priority_opener: bool = False
 
 
 @dataclass
@@ -241,6 +291,7 @@ def _pick_for_slot(
     funcoes_na_sessao: set[tuple[Pattern, str]],
     prefs: frozenset[str],
     prefer_machines: bool,
+    seed: int | None = None,
 ) -> _Cand | None:
     """O exercício certo pra uma vaga, ou None quando a base não tem nada que
     sirva. Ordem de decisão: tier, preferência da pessoa, qualidade da imagem.
@@ -251,6 +302,9 @@ def _pick_for_slot(
       1ª: região exigida + função inédita no dia + exercício inédito na semana
       2ª: solta a região (mantém padrão e músculo)
       3ª: solta a variação semanal (permite repetir exercício de OUTRO dia)
+
+    `seed`: identificador da pessoa. Só desempata entre candidatos EQUIVALENTES
+    (ver `_escolher_com_variacao`) — nunca troca a ordem de decisão acima.
     """
     base = [
         c
@@ -263,16 +317,19 @@ def _pick_for_slot(
     if not base:
         return None
 
-    def ordenar(cands: list[_Cand]) -> list[_Cand]:
-        return sorted(
-            cands,
-            key=lambda c: (
-                tier_rank(c.taxon.tier),
-                _ordenar_por_preferencia(c.nome_norm, c.ex.equipment, prefs),
-                0 if (prefer_machines and c.ex.equipment in _ESTAVEIS) else 1,
-                c.qualidade,
-            ),
+    # A classe de EQUIVALÊNCIA: dois candidatos com a mesma chave cumprem a vaga
+    # igualmente bem pelas regras do motor. É só entre eles que o sorteio por
+    # pessoa acontece; a qualidade fica FORA da chave (ela é o desempate final) e
+    # continua limitando o sorteio aos melhores do grupo.
+    def equivalencia(c: _Cand) -> tuple:
+        return (
+            tier_rank(c.taxon.tier),
+            _ordenar_por_preferencia(c.nome_norm, c.ex.equipment, prefs),
+            0 if (prefer_machines and c.ex.equipment in _ESTAVEIS) else 1,
         )
+
+    def ordenar(cands: list[_Cand]) -> list[_Cand]:
+        return sorted(cands, key=lambda c: (*equivalencia(c), c.qualidade))
 
     def funcao_livre(c: _Cand) -> bool:
         return spec.allow_repeat_function or c.taxon.function_key not in funcoes_na_sessao
@@ -285,7 +342,10 @@ def _pick_for_slot(
         [c for c in base if funcao_livre(c)],
     ):
         if tentativa:
-            return ordenar(tentativa)[0]
+            return _escolher_com_variacao(
+                ordenar(tentativa), equivalencia, seed,
+                spec.muscle.value, spec.pattern.value, spec.region or "-",
+            )
     return None
 
 
@@ -295,38 +355,60 @@ def _pick_for_slot(
 def _priorizar_ponto_fraco(
     blueprint: list[bp.SlotSpec], weak_points: list[MuscleGroup]
 ) -> list[bp.SlotSpec]:
-    """Ponto fraco primeiro, DENTRO do bloco de compostos.
+    """O ponto fraco ABRE todo dia que treina ele.
 
     A regra mestra manda preservar desempenho nos movimentos prioritários — e se
-    o músculo é prioridade da pessoa, ele é que tem que pegar a pessoa inteira.
-    Mas não vale jogar um isolador de bíceps pra abrir o treino: a troca só
-    acontece entre vagas de composto (ordem 1), então a sessão continua abrindo
-    com um movimento pesado.
+    o músculo é prioridade da pessoa, ele é que tem que pegar a pessoa inteira,
+    descansada. Duas rotas, nesta ordem:
+
+    1. **O músculo tem composto no dia** (costas, peito, quadríceps...): promove
+       esse composto pra 1ª posição. A sessão continua abrindo com movimento
+       pesado, e os PAPÉIS trocam junto com as posições — sem isso a vaga
+       promovida chegava em 1º ainda rotulada "composto complementar", e esse
+       rótulo é texto que a pessoa lê na rotina.
+
+    2. **O músculo não tem composto nenhum** — braço é o caso, e era o buraco:
+       bíceps e tríceps não aparecem em vaga de composto em blueprint nenhum,
+       então marcar braço como ponto fraco não mexia UMA VÍRGULA na ordem do
+       treino. Aqui o melhor isolador dele sobe pra abertura, marcado como
+       `opener` pra o validador saber que a abertura sem composto é intencional.
+
+    O custo é real e consciente: abrir com isolador tira um pouco de desempenho
+    do composto que vem depois. É exatamente o que priorizar um músculo significa,
+    e só acontece quando o músculo não tem composto próprio pra promover.
     """
     if not weak_points:
         return blueprint
+    if blueprint and blueprint[0].muscle in weak_points:
+        return blueprint  # o dia já abre no ponto fraco (ex.: braço no dia de membros)
+
     compostos = [i for i, s in enumerate(blueprint) if s.pattern in _PADROES_COMPOSTOS]
-    if len(compostos) < 2:
-        return blueprint
-    alvo = next(
-        (i for i in compostos if blueprint[i].muscle in weak_points),
+    alvo = next((i for i in compostos if blueprint[i].muscle in weak_points), None)
+
+    if alvo is not None:
+        if len(compostos) < 2 or alvo == compostos[0]:
+            return blueprint
+        primeiro = compostos[0]
+        novo = list(blueprint)
+        novo.insert(primeiro, novo.pop(alvo))
+        promovida, rebaixada = novo[primeiro], novo[primeiro + 1]
+        novo[primeiro] = replace(promovida, role=rebaixada.role)
+        novo[primeiro + 1] = replace(rebaixada, role=promovida.role)
+        return novo
+
+    # Rota 2: nenhum composto do ponto fraco neste dia. Promove o primeiro
+    # isolador dele — se o dia treina o músculo. Dia que não treina o ponto fraco
+    # segue como está (não vale enfiar rosca no dia de perna só pra abrir com o
+    # ponto fraco: o volume dele é resolvido por VAGA, não por sequestro de dia).
+    iso = next(
+        (i for i, s in enumerate(blueprint) if s.muscle in weak_points and s.pattern is Pattern.ISO),
         None,
     )
-    primeiro = compostos[0]
-    if alvo is None or alvo == primeiro:
+    if iso is None or iso == 0:
         return blueprint
     novo = list(blueprint)
-    vaga = novo.pop(alvo)
-    novo.insert(primeiro, vaga)
-    # Os PAPÉIS trocam junto com as posições. Sem isto, a vaga promovida chegava
-    # em 1º lugar ainda rotulada "composto complementar" e a rebaixada aparecia
-    # em 2º como "composto prioritário" — e esse rótulo é texto que a pessoa lê na
-    # rotina (vira a nota do exercício). Quem abre o treino tem que ver o
-    # primeiro exercício explicado como o prioritário, que é o que ele passou a
-    # ser de fato.
-    promovida, rebaixada = novo[primeiro], novo[primeiro + 1]
-    novo[primeiro] = replace(promovida, role=rebaixada.role)
-    novo[primeiro + 1] = replace(rebaixada, role=promovida.role)
+    vaga = novo.pop(iso)
+    novo.insert(0, replace(vaga, role=bp.ROLE_PRIORITY_OPEN, priority=1, opener=True))
     return novo
 
 
@@ -345,6 +427,7 @@ def build_plan(
     session_target: int | None = None,
     time_efficient: bool = False,
     exercise_prefs: list[str] | None = None,
+    seed: int | None = None,
 ) -> WorkoutPlan:
     """Monta a semana inteira preenchendo os blueprints de cada dia.
 
@@ -359,6 +442,13 @@ def build_plan(
     time_efficient: sessão CURTA. Prioriza máquinas e cabos, que rendem mais
     estímulo por minuto e permitem a técnica avançada (myo-reps) que o coach
     prescreve nesse caso.
+
+    seed: identificador da PESSOA (o id do usuário). Duas pessoas com respostas
+    idênticas recebiam o treino idêntico, exercício por exercício. Com a semente,
+    cada uma recebe a sua versão — sorteada só entre exercícios que a regra
+    considera equivalentes (mesmo tier, mesmas preferências atendidas), então
+    ninguém fica com treino melhor ou pior. Sem semente, a montagem é a
+    determinística de sempre.
 
     phase_index existe só por compatibilidade de assinatura — o plano do coach
     não tem fases (a periodização dele é conduzida pelo ciclo, em cycle_state).
@@ -405,6 +495,7 @@ def build_plan(
                 funcoes_na_sessao=funcoes_na_sessao,
                 prefs=prefs,
                 prefer_machines=time_efficient or "maquinas" in prefs,
+                seed=seed,
             )
             escolhido = escolher(spec)
             if escolhido is None:
@@ -439,6 +530,10 @@ def build_plan(
                     pattern=escolhido.taxon.pattern.value,
                     region=escolhido.taxon.region,
                     role=spec.role,
+                    # Só a PRIMEIRA vaga do dia abre a sessão. Uma vaga marcada
+                    # como `opener` que acabou em 2ª posição (porque a de cima
+                    # sobreviveu ao recorte de tempo) é isolador comum.
+                    priority_opener=spec.opener and not session.slots,
                 )
             )
         plan.sessions.append(session)
@@ -455,6 +550,7 @@ def add_accessory_slot(
     exercise_prefs: list[str] | None = None,
     max_per_session: int = 9,
     region: str | None = None,
+    seed: int | None = None,
 ) -> PlannedSlot | None:
     """Acrescenta UMA vaga do `muscle` ao plano e devolve a vaga criada (None se
     não houver exercício novo, nenhuma sessão que treine o músculo, ou todas as
@@ -515,7 +611,7 @@ def add_accessory_slot(
     if not pool:
         return None
 
-    def chave(c: _Cand) -> tuple:
+    def equivalencia(c: _Cand) -> tuple:
         return (
             # 1) função que o dia ainda não tem — é o que faz a vaga ser volume
             #    novo e não repetição.
@@ -528,10 +624,12 @@ def add_accessory_slot(
             tier_rank(c.taxon.tier),
             _ordenar_por_preferencia(c.nome_norm, c.ex.equipment, prefs),
             0 if (prefer_machines and c.ex.equipment in _ESTAVEIS) else 1,
-            c.qualidade,
         )
 
-    escolhido = min(pool, key=chave)
+    ordenados = sorted(pool, key=lambda c: (*equivalencia(c), c.qualidade))
+    escolhido = _escolher_com_variacao(
+        ordenados, equivalencia, seed, "acessorio", muscle.value, region or "-", len(sessao.slots)
+    )
     modelo = sessao.slots[-1]
     slot = PlannedSlot(
         order=0,  # reordenado abaixo
@@ -564,6 +662,70 @@ def add_accessory_slot(
     for i, sl in enumerate(sessao.slots, start=1):
         sl.order = i
     return slot
+
+
+def drop_surplus_slot(
+    plan: WorkoutPlan,
+    muscle: MuscleGroup,
+    *,
+    pode_remover=None,
+) -> PlannedSlot | None:
+    """Tira UMA vaga do `muscle` e devolve a que saiu (None se não dá pra tirar).
+
+    É o inverso de `add_accessory_slot`, e existe pelo mesmo motivo: uma vaga
+    entrega no mínimo PER_EXERCISE_MIN séries de trabalho. Quando o alvo semanal
+    do músculo é MENOR do que as vagas dele conseguem entregar, o volume não cai —
+    ele estoura por baixo. Era assim que a redução dos músculos financiadores era
+    silenciosamente desfeita: costas com alvo 5 e 5 vagas saía com 10 séries, o
+    dobro, e o ponto fraco ficava com menos volume que quem não era prioridade.
+
+    O que NUNCA sai:
+      - a vaga que ABRE a sessão (composto prioritário ou abertura do ponto
+        fraco) — é ela que define o dia;
+      - a última vaga de uma REGIÃO exigida na semana (Princípio 6): tirar o
+        único exercício de peito clavicular economiza série e descobre a região;
+      - o que `pode_remover` vetar — é por onde quem chama protege o equilíbrio
+        empurrar/puxar e joelho/quadril da semana, que só ele sabe medir.
+
+    Ordem de saída, do mais descartável pro menos: a vaga acrescentada por volume
+    ('volume semanal'), depois a que está mais perto do FIM do treino — que é a
+    que a pessoa já ia cortar por cansaço — na sessão que tem mais exercícios.
+    """
+    regioes_unicas = {
+        regiao
+        for regiao in REQUIRED_REGIONS.get(muscle, ())
+        if sum(
+            1
+            for s in plan.sessions
+            for sl in s.slots
+            if sl.muscle_group == muscle.value and sl.region == regiao
+        )
+        <= 1
+    }
+
+    candidatas: list[tuple[tuple, PlannedSession, int]] = []
+    for sessao in plan.sessions:
+        for i, sl in enumerate(sessao.slots):
+            if sl.muscle_group != muscle.value or i == 0:
+                continue
+            if sl.region in regioes_unicas:
+                continue
+            if pode_remover is not None and not pode_remover(sl):
+                continue
+            peso = (
+                0 if sl.role == "volume semanal" else 1,  # acessório de volume sai primeiro
+                -len(sessao.slots),                        # da sessão mais cheia
+                -i,                                        # do fim do treino pro começo
+            )
+            candidatas.append((peso, sessao, i))
+    if not candidatas:
+        return None
+
+    _, sessao, indice = min(candidatas, key=lambda c: c[0])
+    removida = sessao.slots.pop(indice)
+    for i, sl in enumerate(sessao.slots, start=1):
+        sl.order = i
+    return removida
 
 
 def _ordem_da_vaga(slot: PlannedSlot) -> int:
