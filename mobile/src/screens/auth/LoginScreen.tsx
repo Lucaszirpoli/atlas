@@ -2,8 +2,9 @@ import { useNavigation } from "@react-navigation/native";
 import React, { useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
 
-import { AtlasLogo } from "../../components/AtlasLogo";
+import { ATLAS_SLOGAN, AtlasLogo } from "../../components/AtlasLogo";
 import { Button } from "../../components/Button";
+import { Checkbox } from "../../components/Checkbox";
 import { InfoDialog } from "../../components/InfoDialog";
 import { TextField } from "../../components/TextField";
 import { useAuth } from "../../context/AuthContext";
@@ -18,6 +19,9 @@ export function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Ligado por padrão: é o comportamento que o app sempre teve, e o que quase
+  // todo mundo quer. A caixa existe pra quem entrou no aparelho de outra pessoa.
+  const [manterConectado, setManterConectado] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
   async function handleSubmit() {
@@ -28,7 +32,7 @@ export function LoginScreen() {
     }
     setIsSubmitting(true);
     try {
-      await signIn(login, password);
+      await signIn(login, password, manterConectado);
     } catch (err: any) {
       // Alert.alert nativo (a "tela feia") -> InfoDialog com o visual do ATLAS.
       // mensagemDeErro garante que um 422 (detail em lista) nunca vire tela
@@ -62,8 +66,13 @@ export function LoginScreen() {
           >
             ATLAS
           </Text>
-          <Text style={[type.body, { color: colors.textSecondary, marginTop: 4 }]}>
-            Treino, dieta e evolução num lugar só
+          <Text
+            style={[
+              type.bodySmall,
+              { color: colors.textSecondary, marginTop: 6, textAlign: "center", maxWidth: 300, lineHeight: 21 },
+            ]}
+          >
+            {ATLAS_SLOGAN}
           </Text>
         </View>
 
@@ -95,6 +104,12 @@ export function LoginScreen() {
             placeholder="••••••••"
             value={password}
             onChangeText={setPassword}
+          />
+
+          <Checkbox
+            checked={manterConectado}
+            onChange={setManterConectado}
+            label="Manter conectado neste aparelho"
           />
 
           <View style={{ marginTop: spacing.sm }}>

@@ -5,15 +5,27 @@ import * as authApi from "../api/auth";
 import { TOKEN_STORAGE_KEY } from "../api/client";
 import { reportDeviceTimezone } from "../api/profile";
 
+/** "Manter conectado" — a escolha da pessoa na tela de entrada.
+ *
+ * O token sempre foi gravado e sempre sobreviveu ao fechamento do app, sem
+ * ninguém perguntar. Isso é o certo pra quase todo mundo (e continua sendo o
+ * padrão), mas não pra quem entrou no aparelho de outra pessoa: pra essa pessoa
+ * a sessão tem que morrer quando o app fecha.
+ *
+ * Guardado FORA do token, como bandeira própria: no boot, um token sem a
+ * bandeira ligada é descartado antes de ser usado. */
+const KEEP_SIGNED_IN_KEY = "appfit.auth.keepSignedIn";
+
 type AuthContextValue = {
   isLoading: boolean;
   user: authApi.UserRead | null;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (email: string, password: string, keepSignedIn?: boolean) => Promise<void>;
   signUp: (payload: {
     email: string;
     password: string;
     handle: string;
     display_name: string;
+    keepSignedIn?: boolean;
   }) => Promise<void>;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<authApi.UserRead | null>;
@@ -50,6 +62,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(false);
       return;
     }
+    // Quem desmarcou "manter conectado" não volta logado: o token existe (foi
+    // gravado no login), mas a bandeira diz que ele não valia pra além daquela
+    // sessão. Descartar aqui, ANTES de usar, é o que faz a escolha valer mesmo
+    // se o app tiver sido fechado à força.
+    if ((await AsyncStorage.getItem(KEEP_SIGNED_IN_KEY)) === "false") {
+      await AsyncStorage.multiRemove([TOKEN_STORAGE_KEY, KEEP_SIGNED_IN_KEY]);
+      setIsLoading(false);
+      return;
+    }
     try {
       const currentUser = await authApi.fetchCurrentUser();
       setUser(currentUser);
@@ -77,17 +98,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // a tela de assinatura nunca toca nesse SDK. Ver purchases.ts e
   // ProfileScreen/PaywallScreen para onde isso agora roda.
 
-  async function persistTokenAndLoadUser(accessToken: string) {
-    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, accessToken);
+  async function persistTokenAndLoadUser(accessToken: string, keepSignedIn: boolean) {
+    // O token é gravado nos dois casos — é dele que as chamadas desta sessão
+    // dependem. O que a bandeira decide é se ele SOBREVIVE ao fechamento do app
+    // (ver loadFromStoredToken).
+    await AsyncStorage.multiSet([
+      [TOKEN_STORAGE_KEY, accessToken],
+      [KEEP_SIGNED_IN_KEY, keepSignedIn ? "true" : "false"],
+    ]);
     const currentUser = await authApi.fetchCurrentUser();
     setUser(currentUser);
     // Não dá await: o app não espera infra pra abrir.
     reportDeviceTimezone();
   }
 
-  async function signIn(email: string, password: string) {
+  async function signIn(email: string, password: string, keepSignedIn = true) {
     const { access_token } = await authApi.login({ email, password });
-    await persistTokenAndLoadUser(access_token);
+    await persistTokenAndLoadUser(access_token, keepSignedIn);
   }
 
   async function signUp(payload: {
@@ -95,13 +122,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     password: string;
     handle: string;
     display_name: string;
+    keepSignedIn?: boolean;
   }) {
-    const { access_token } = await authApi.register(payload);
-    await persistTokenAndLoadUser(access_token);
+    const { keepSignedIn = true, ...credenciais } = payload;
+    const { access_token } = await authApi.register(credenciais);
+    await persistTokenAndLoadUser(access_token, keepSignedIn);
   }
 
   async function signOut() {
-    await AsyncStorage.removeItem(TOKEN_STORAGE_KEY);
+    await AsyncStorage.multiRemove([TOKEN_STORAGE_KEY, KEEP_SIGNED_IN_KEY]);
     setUser(null);
   }
 

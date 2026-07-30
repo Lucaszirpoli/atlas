@@ -851,7 +851,7 @@ export function WorkoutExecutionScreen() {
 
         {/* Concluir em destaque (largura cheia) e Descartar embaixo, discreto —
             lado a lado o "Descartar" ficava espremido e quebrava em 2 linhas. */}
-        <Button title="Concluir treino" variant="secondary" onPress={handleFinishWorkout} loading={isCompleting} />
+        <Button title="Concluir treino" onPress={handleFinishWorkout} loading={isCompleting} />
         <TouchableOpacity
           onPress={() => setConfirmDiscard(true)}
           disabled={isCompleting}

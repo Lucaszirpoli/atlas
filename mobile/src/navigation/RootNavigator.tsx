@@ -18,6 +18,7 @@ import { SleepScreen } from "../screens/sleep/SleepScreen";
 import { WaterScreen } from "../screens/water/WaterScreen";
 import { WeightScreen } from "../screens/weight/WeightScreen";
 import { useTheme } from "../theme/ThemeProvider";
+import { BrandSplash } from "../components/BrandSplash";
 import { AuthStack } from "./AuthStack";
 import { navigationRef } from "./navigationRef";
 import { NutritionStack } from "./NutritionStack";
@@ -139,21 +140,29 @@ function ActiveWorkoutBadge() {
 export function RootNavigator() {
   const { colors } = useTheme();
   const { isLoading, user } = useAuth();
-
-  if (isLoading) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.bg }}>
-        <ActivityIndicator color={colors.primary} size="large" />
-      </View>
-    );
-  }
+  // A abertura da marca some sozinha quando a animação termina. Ela NÃO segura o
+  // app: fica por cima enquanto a sessão é verificada e sai quando as duas
+  // coisas acabaram — o que estiver mais lento manda. Antes, o app abria num
+  // corte seco (ícone -> tela), e num boot rápido dava um pisca de spinner.
+  const [aberturaVisivel, setAberturaVisivel] = React.useState(true);
 
   // Sem onboarding de entrada: criou a conta, cai direto no app. O objetivo é
   // definido depois, quando a pessoa entra no Coaching (fluxo sob demanda lá).
   return (
-    <NavigationContainer ref={navigationRef}>
-      {!user ? <AuthStack /> : <AppStack />}
-      {user ? <ActiveWorkoutBadge /> : null}
-    </NavigationContainer>
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      {isLoading ? (
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <ActivityIndicator color={colors.primary} size="large" />
+        </View>
+      ) : (
+        <NavigationContainer ref={navigationRef}>
+          {!user ? <AuthStack /> : <AppStack />}
+          {user ? <ActiveWorkoutBadge /> : null}
+        </NavigationContainer>
+      )}
+      {aberturaVisivel ? (
+        <BrandSplash pronto={!isLoading} onDone={() => setAberturaVisivel(false)} />
+      ) : null}
+    </View>
   );
 }

@@ -229,7 +229,7 @@ export function RoutineListScreen() {
                   <MetaInfo icon="repeat" text={`${totalSets} séries`} />
                 </View>
               </TouchableOpacity>
-              <Button title="Treinar agora" variant="secondary" onPress={() => handleStart(item)} />
+              <Button title="Treinar agora" onPress={() => handleStart(item)} />
             </Card>
           );
         }}
