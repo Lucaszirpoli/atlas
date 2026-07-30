@@ -284,6 +284,24 @@ def test_segunda_passagem_do_ppl_varia_os_exercicios(db):
         assert not (por_foco[a] & por_foco[b]), f"{a} e {b} repetem exercício: {por_foco[a] & por_foco[b]}"
 
 
+def test_acessorio_de_volume_respeita_o_teto_de_funcao(db):
+    """Regressão de um bug que só aparecia com ponto fraco em músculo de pool
+    magro. Posterior de coxa tem 3 flexoras na base e bíceps tem 10 roscas todas
+    da mesma função; ao encher o volume desses pontos fracos, add_accessory_slot
+    acrescentava um TERCEIRO exercício da mesma função e o revisor reprovava o
+    treino que o próprio montador tinha acabado de montar. O teto de 2 do
+    add_accessory_slot é o que faz montador e revisor concordarem.
+    """
+    from app.ai.methods_engine import add_accessory_slot
+
+    spec, plan = _plan(db, dias=4, weak_points=[M.BICEPS, M.HAMSTRINGS])
+    for _ in range(24):  # muito mais vagas do que qualquer volume real pediria
+        for musculo in (M.BICEPS, M.HAMSTRINGS, M.QUADS, M.BACK, M.CHEST):
+            add_accessory_slot(db, plan, musculo, max_per_session=9)
+    assert plan_review.redundancias(plan) == []
+    assert plan_review.review(plan, method=spec) == []
+
+
 def test_determinismo(db):
     """Mesma entrada, mesmo treino — o produto não pode sortear."""
     _, p1 = _plan(db, dias=4)

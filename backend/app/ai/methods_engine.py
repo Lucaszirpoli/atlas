@@ -31,7 +31,7 @@ existe na base (o motor nunca inventa exercício).
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -312,11 +312,21 @@ def _priorizar_ponto_fraco(
         (i for i in compostos if blueprint[i].muscle in weak_points),
         None,
     )
-    if alvo is None or alvo == compostos[0]:
+    primeiro = compostos[0]
+    if alvo is None or alvo == primeiro:
         return blueprint
     novo = list(blueprint)
     vaga = novo.pop(alvo)
-    novo.insert(compostos[0], vaga)
+    novo.insert(primeiro, vaga)
+    # Os PAPÉIS trocam junto com as posições. Sem isto, a vaga promovida chegava
+    # em 1º lugar ainda rotulada "composto complementar" e a rebaixada aparecia
+    # em 2º como "composto prioritário" — e esse rótulo é texto que a pessoa lê na
+    # rotina (vira a nota do exercício). Quem abre o treino tem que ver o
+    # primeiro exercício explicado como o prioritário, que é o que ele passou a
+    # ser de fato.
+    promovida, rebaixada = novo[primeiro], novo[primeiro + 1]
+    novo[primeiro] = replace(promovida, role=rebaixada.role)
+    novo[primeiro + 1] = replace(rebaixada, role=promovida.role)
     return novo
 
 
@@ -477,7 +487,20 @@ def add_accessory_slot(
         return None
     sessao = min(candidatas, key=lambda s: len(s.slots))
 
-    funcoes = {(sl.pattern, sl.region) for sl in sessao.slots}
+    from collections import Counter
+
+    # Quantas vagas da sessão cada função já ocupa. O TETO é 2, o mesmo que
+    # plan_review.redundancias cobra — assim o montador e o revisor concordam por
+    # construção. Sem este teto, o preenchimento de volume de um ponto fraco
+    # criava um TERCEIRO exercício da mesma função (com ponto fraco em posterior
+    # de coxa, a sessão saía com as 3 flexoras da base; com bíceps, 3 roscas) e o
+    # revisor reprovava o treino que o próprio montador tinha acabado de montar.
+    #
+    # Bater no teto e não achar alternativa é melhor que furá-lo: a 3ª vaga da
+    # mesma função não é volume novo, é a mesma coisa de novo. O déficit de volume
+    # que sobra é reportado pelo workout_builder em vez de virar redundância.
+    ocupacao = Counter((sl.pattern, sl.region) for sl in sessao.slots)
+    funcoes = set(ocupacao)
     ids_sessao = {sl.exercise_id for sl in sessao.slots if sl.exercise_id is not None}
     prefs = frozenset(exercise_prefs or ())
     pool = [
@@ -487,6 +510,7 @@ def add_accessory_slot(
         and c.ex.id not in ids_sessao
         and not _proibido_por_preferencia(c.nome_norm, prefs)
         and (region is None or c.taxon.region == region)
+        and ocupacao[(c.taxon.pattern.value, c.taxon.region)] < 2
     ]
     if not pool:
         return None
