@@ -1,16 +1,32 @@
-"""Motor DETERMINÍSTICO de montagem de treino por metodologia.
+"""Motor DETERMINÍSTICO de montagem de treino, guiado pela REGRA MESTRA.
 
-Recebe uma MethodSpec (app/ai/methods.py) + o perfil do usuário e constrói o
-esqueleto do treino já respeitando as regras do método: frequência/agenda,
-split, número de exercícios, PROPORÇÃO composto/isolado dentro de cada sessão,
-séries/reps/cadência/descanso da fase ativa, ordem (compostos antes) e
-proibições de segurança. Uma validação (`validate_plan`) rejeita qualquer
-plano que viole as regras — é o que garante a fidelidade que a IA sozinha não
-dava. A camada de IA (methods_ai) depois pode trocar a SELEÇÃO de exercícios
-de cada vaga, mas nunca as regras.
+Recebe uma MethodSpec (os números da sessão: reps, RIR, descanso) + o perfil da
+pessoa, e monta o treino da semana preenchendo os BLUEPRINTS de sessão
+(`session_blueprints`): cada dia é uma sequência explícita de vagas, e cada vaga
+declara o papel que cumpre, o padrão de movimento e a região muscular.
 
-A seleção aqui é determinística (mesma entrada → mesmo plano), então o produto
-já é válido mesmo sem a IA; a IA só personaliza dentro dos trilhos.
+O que o motor decide é só QUAL exercício entra em cada vaga, e ele decide por
+regra, não por sorteio:
+
+  1. TIER (Princípio 2 / regra de substituição). Tier S primeiro, sempre. Só
+     desce pra A, depois B, depois C quando não sobrou opção — e nunca "porque
+     deu na veneta": desce porque o tier de cima acabou.
+  2. FUNÇÃO ÚNICA (Princípio 4). Duas vagas do mesmo dia não recebem exercícios
+     de mesma função (padrão + região). É o que impede supino reto barra +
+     supino reto Smith + chest press no mesmo treino.
+  3. VARIAÇÃO NA SEMANA. Exercício já usado em outro dia só volta quando o pool
+     fresco acabou — aí é melhor repetir um bom exercício do que deixar a vaga
+     vazia ou raspar um tier C.
+  4. PREFERÊNCIA DA PESSOA. Máquinas x peso livre, evitar agachamento livre /
+     acima da cabeça / impacto, priorizar unilateral. Exclusão vira filtro;
+     preferência vira ordenação.
+
+`validate_plan` é a "Regra de coerência global": roda antes de entregar e
+reprova o treino que fura cobertura, equilíbrio ou ordem — ver o módulo
+`plan_review`, que é quem faz as perguntas.
+
+A montagem é determinística: mesma entrada, mesmo treino. Só usa exercício que
+existe na base (o motor nunca inventa exercício).
 """
 
 from __future__ import annotations
@@ -20,106 +36,24 @@ from dataclasses import asdict, dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai.methods import MethodSpec, Phase
+from app.ai import session_blueprints as bp
+from app.ai.exercise_taxonomy import (
+    ORDER_MINOR,
+    Pattern,
+    Taxon,
+    order_class_for_pattern,
+    taxon_for_exercise,
+    tier_rank,
+)
+from app.ai.methods import MethodSpec, coach_split_for
 from app.core.text import normalize_search_text
 from app.models.exercise import (
-    EXTENDED_STRENGTH_CATEGORIES,
     STRENGTH_CATEGORIES,
+    Equipment,
     Exercise,
     MuscleGroup,
     quality_order,
 )
-
-# Grupos musculares treinados por cada rótulo de "foco" usado nos splits.
-_FOCUS_MUSCLES: dict[str, list[MuscleGroup]] = {
-    "peito": [MuscleGroup.CHEST],
-    "costas": [MuscleGroup.BACK],
-    "pernas": [MuscleGroup.QUADS, MuscleGroup.HAMSTRINGS, MuscleGroup.GLUTES, MuscleGroup.CALVES],
-    "ombros": [MuscleGroup.SHOULDERS],
-    "bracos": [MuscleGroup.BICEPS, MuscleGroup.TRICEPS],
-    "peito/costas": [MuscleGroup.CHEST, MuscleGroup.BACK],
-    "ombros/bracos": [MuscleGroup.SHOULDERS, MuscleGroup.BICEPS, MuscleGroup.TRICEPS],
-    "push": [MuscleGroup.CHEST, MuscleGroup.SHOULDERS, MuscleGroup.TRICEPS],
-    "pull": [MuscleGroup.BACK, MuscleGroup.BICEPS],
-    "superior": [MuscleGroup.CHEST, MuscleGroup.BACK, MuscleGroup.SHOULDERS, MuscleGroup.BICEPS, MuscleGroup.TRICEPS],
-    "inferior": [MuscleGroup.QUADS, MuscleGroup.HAMSTRINGS, MuscleGroup.GLUTES, MuscleGroup.CALVES],
-    # A/B do superior/inferior (split de 4 dias do coach): mesmos músculos nos
-    # dois dias (2×/semana por grupo — regra 6), mas ÊNFASE diferente pela ordem
-    # do rodízio. REGRA: os GRANDES (peito, costas, pernas) vêm SEMPRE primeiro na
-    # lista — assim, numa sessão curta com poucas vagas, quem é cortado é sempre um
-    # músculo pequeno (ombro/braço), nunca costas ou peito (o bug do "upper curto
-    # que saía sem costas"). A ênfase A/B se dá por QUAL grande lidera.
-    "superior a": [MuscleGroup.CHEST, MuscleGroup.BACK, MuscleGroup.SHOULDERS, MuscleGroup.TRICEPS, MuscleGroup.BICEPS],
-    "superior b": [MuscleGroup.BACK, MuscleGroup.CHEST, MuscleGroup.SHOULDERS, MuscleGroup.BICEPS, MuscleGroup.TRICEPS],
-    "inferior a": [MuscleGroup.QUADS, MuscleGroup.GLUTES, MuscleGroup.HAMSTRINGS, MuscleGroup.CALVES],
-    "inferior b": [MuscleGroup.HAMSTRINGS, MuscleGroup.GLUTES, MuscleGroup.QUADS, MuscleGroup.CALVES],
-    "full body": [MuscleGroup.CHEST, MuscleGroup.BACK, MuscleGroup.QUADS, MuscleGroup.SHOULDERS, MuscleGroup.BICEPS],
-    "full body a": [MuscleGroup.CHEST, MuscleGroup.BACK, MuscleGroup.QUADS, MuscleGroup.SHOULDERS],
-    "full body b": [MuscleGroup.BACK, MuscleGroup.HAMSTRINGS, MuscleGroup.SHOULDERS, MuscleGroup.BICEPS, MuscleGroup.TRICEPS],
-    "a": [MuscleGroup.CHEST, MuscleGroup.QUADS, MuscleGroup.SHOULDERS, MuscleGroup.TRICEPS],
-    "b": [MuscleGroup.BACK, MuscleGroup.HAMSTRINGS, MuscleGroup.BICEPS, MuscleGroup.CALVES],
-    # --- Métodos de FORÇA -------------------------------------------------
-    # 5/3/1 e Juggernaut nomeiam o dia pelo levantamento principal; Westside
-    # usa ME/DE (esforço máximo / dinâmico) por metade do corpo. Sem estes
-    # mapeamentos eles caíam em "full body" e o motor sorteava exercício
-    # genérico (burpee, kettlebell swing) num treino de powerlifting.
-    "agachamento": [MuscleGroup.QUADS, MuscleGroup.GLUTES, MuscleGroup.HAMSTRINGS],
-    "supino": [MuscleGroup.CHEST, MuscleGroup.TRICEPS, MuscleGroup.SHOULDERS],
-    # BICEPS no dia de terra: é o dia de puxada, e tanto o 5/3/1 (assistência
-    # "Boring But Big"/Triumvirate) quanto o Juggernaut prescrevem rosca como
-    # acessório. Sem isto, os dois métodos inteiros saíam sem um exercício de
-    # bíceps em nenhum dos 4 dias.
-    "terra": [MuscleGroup.BACK, MuscleGroup.HAMSTRINGS, MuscleGroup.GLUTES, MuscleGroup.BICEPS],
-    "desenvolvimento": [MuscleGroup.SHOULDERS, MuscleGroup.TRICEPS, MuscleGroup.TRAPS],
-    "me inferior": [MuscleGroup.QUADS, MuscleGroup.GLUTES, MuscleGroup.HAMSTRINGS],
-    "de inferior": [MuscleGroup.QUADS, MuscleGroup.GLUTES, MuscleGroup.HAMSTRINGS],
-    # BICEPS entra aqui de propósito: sem ele, o Westside inteiro (4 dias)
-    # saía sem UM exercício de bíceps sequer — e "acessório pra ponto fraco"
-    # é justamente o que o método prega. Mesmo motivo pra TRAPS no ME/DE.
-    "me superior": [
-        MuscleGroup.CHEST,
-        MuscleGroup.BACK,
-        MuscleGroup.SHOULDERS,
-        MuscleGroup.TRICEPS,
-        MuscleGroup.BICEPS,
-    ],
-    "de superior": [
-        MuscleGroup.CHEST,
-        MuscleGroup.BACK,
-        MuscleGroup.SHOULDERS,
-        MuscleGroup.TRICEPS,
-        MuscleGroup.BICEPS,
-    ],
-}
-
-# Levantamento PRINCIPAL de cada dia, quando o método define o dia por ele
-# (5/3/1, Juggernaut) ou pede um esforço máximo naquele padrão (Westside ME).
-# O motor força este exercício como o 1º da sessão — é o que faz o método ser
-# ele mesmo: um "dia de agachamento" tem que começar agachando.
-_FOCUS_PRIMARY_LIFT: dict[str, str] = {
-    "agachamento": "agachamento livre com barra",
-    "supino": "supino reto com barra",
-    "terra": "levantamento terra",
-    "desenvolvimento": "desenvolvimento militar com barra",
-    "me inferior": "agachamento livre com barra",
-    "me superior": "supino reto com barra",
-    "de inferior": "agachamento livre com barra",
-    "de superior": "supino reto com barra",
-}
-
-# Splits padrão por nº de dias, quando o método não fixa um.
-_DEFAULT_SPLITS: dict[int, list[str]] = {
-    2: ["full body a", "full body b"],
-    3: ["push", "pull", "pernas"],
-    4: ["superior", "inferior", "superior", "inferior"],
-    5: ["peito", "costas", "pernas", "ombros", "bracos"],
-    6: ["push", "pull", "pernas", "push", "pull", "pernas"],
-    7: ["push", "pull", "pernas", "push", "pull", "pernas", "full body"],
-}
-
-# Lifts compostos pesados proibidos em certas fases (Y3T infernal, FST-7
-# finalizador). Casados por palavra-chave no nome normalizado.
-_HEAVY_COMPOUND_KEYWORDS = ("agachamento", "supino", "terra", "levantamento terra")
 
 # Preferências de exercício que a pessoa marcou no questionário
 # (training_brain.EXERCISE_PREFS). Cada uma vira EXCLUSÃO ou PRIORIDADE aqui —
@@ -136,17 +70,18 @@ _PREF_EXCLUI = {
 }
 _PREF_UNILATERAL = ("unilateral", "um braco", "uma perna", "afundo", "avanco", "bulgaro", "serrote", "alternado")
 
+_ESTAVEIS = (Equipment.MACHINE, Equipment.CABLE, Equipment.SMITH_MACHINE)
+_LIVRES = (Equipment.BARBELL, Equipment.DUMBBELL, Equipment.KETTLEBELL)
+
 
 def _ordenar_por_preferencia(nome_norm: str, equipamento, prefs: frozenset[str]) -> int:
-    """Chave de ordenação (menor = mais cedo no treino) pelas preferências.
-    Só REORDENA — nunca deixa o músculo sem exercício."""
-    from app.models.exercise import Equipment
-
+    """Peso de ordenação (menor = mais cedo) pelas preferências da pessoa.
+    Só REORDENA — nunca deixa a vaga sem exercício."""
     peso = 0
     if "maquinas" in prefs:
-        peso += 0 if equipamento in (Equipment.MACHINE, Equipment.CABLE, Equipment.SMITH_MACHINE) else 2
+        peso += 0 if equipamento in _ESTAVEIS else 2
     elif "peso_livre" in prefs:
-        peso += 0 if equipamento in (Equipment.BARBELL, Equipment.DUMBBELL, Equipment.KETTLEBELL) else 2
+        peso += 0 if equipamento in _LIVRES else 2
     if "unilateral" in prefs:
         peso += 0 if any(k in nome_norm for k in _PREF_UNILATERAL) else 1
     return peso
@@ -173,6 +108,11 @@ class PlannedSlot:
     rest_seconds: str | None
     rir: str | None
     note: str | None = None
+    # Vocabulário da regra mestra. `note` carrega o papel em texto (é o que a
+    # pessoa lê na rotina); estes dois são pro validador e pro motor.
+    pattern: str | None = None
+    region: str | None = None
+    role: str | None = None
 
 
 @dataclass
@@ -202,9 +142,8 @@ class WorkoutPlan:
 
 
 def resolve_days(method: MethodSpec, available_days: int | None) -> int:
-    """Casa a disponibilidade do usuário com os dias suportados pelo método —
-    escolhe o maior nº suportado que não passa da disponibilidade; se a pessoa
-    tem menos dias que o mínimo do método, usa o mínimo (com aviso)."""
+    """Casa a disponibilidade da pessoa com as frequências suportadas — o maior
+    nº suportado que não passa da disponibilidade."""
     supported = sorted(method.days_per_week) or [3]
     if available_days is None:
         return supported[0]
@@ -212,180 +151,178 @@ def resolve_days(method: MethodSpec, available_days: int | None) -> int:
     return feasible[-1] if feasible else supported[0]
 
 
-def _split_for(method: MethodSpec, days: int) -> list[str]:
-    """Foco de cada dia da semana. Vários métodos descrevem o split como um
-    CICLO curto que se repete (ex: DC Training = A/B alternando, então 4 dias =
-    A,B,A,B). Antes devolvíamos só as entradas do ciclo (2), e o app criava 2
-    rotinas em vez de 4 — o resto dos dias sumia. Agora o ciclo é repetido até
-    cobrir todos os dias pedidos."""
-    if days in method.split_by_days:
-        base = [normalize_search_text(x) for x in method.split_by_days[days]]
-    else:
-        base = list(_DEFAULT_SPLITS.get(days, _DEFAULT_SPLITS[3]))
-    if not base:
-        base = list(_DEFAULT_SPLITS[3])
-    return [base[i % len(base)] for i in range(days)]
+# ---------------------------------------------------------------------------
+# Pool de candidatos
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class _Cand:
+    """Um exercício da base + sua taxonomia, já resolvidos juntos."""
+
+    ex: Exercise
+    taxon: Taxon
+    nome_norm: str
+    qualidade: int  # posição na ordenação de qualidade (menor = melhor)
 
 
-def _active_phase(method: MethodSpec, phase_index: int) -> Phase | None:
-    if method.phases and 0 <= phase_index < len(method.phases):
-        return method.phases[phase_index]
-    return None
+def _load_pool(db: Session) -> list[_Cand]:
+    """TODOS os exercícios visíveis de musculação, uma consulta só.
 
-
-def _exercises_per_session(method: MethodSpec) -> int:
-    # Heurística por família; fiel ao "poucos exercícios" dos métodos HIT.
-    if method.key in ("mentzer_hit", "dc_training"):
-        return 4
-    if method.key in ("wendler_531", "juggernaut", "westside"):
-        return 5  # 1 principal + acessórios
-    if method.key == "fst7":
-        return 4  # composto pesado + secundário + isolamento + finalizador
-    return 6
-
-
-def _pick(
-    db: Session,
-    muscles: list[MuscleGroup],
-    want_compound: bool,
-    count: int,
-    used_ids: set[int],
-    forbid_heavy: bool,
-    equipment_pref_machines: bool,
-    covered: frozenset[MuscleGroup] = frozenset(),
-    session_ids: frozenset[int] = frozenset(),
-    user_prefs: frozenset[str] = frozenset(),
-) -> list[Exercise]:
-    """Escolhe `count` exercícios (determinístico) dos músculos dados, do tipo
-    composto/isolado pedido, evitando repetição e respeitando proibições.
-
-    `session_ids`: ids já escolhidos NESTA sessão (das vagas anteriores). Serve
-    pro fallback de reuso: quando o pool de exercícios NUNCA usados na semana não
-    enche a sessão (grupos com poucos exercícios na base — posterior/glúteo/
-    panturrilha têm 1–2), é melhor REPETIR um bom exercício de outro dia do que
-    deixar o músculo de fora ou raspar um exercício obscuro. O reuso nunca traz
-    de volta algo já presente na própria sessão.
+    A biblioteca curada tem ~119 linhas, então carregar tudo e decidir em Python
+    é mais rápido (e muito mais legível) do que uma consulta por vaga — e é o
+    que permite a taxonomia, que vive em Python, mandar na escolha.
     """
-    if count <= 0 or not muscles:
-        return []
-    # Prefere exercícios COM foto de demonstração (video_url != NULL) — assim
-    # o treino gerado mostra a imagem de cada exercício. Empate: por id.
     stmt = (
         select(Exercise)
         .where(
-            Exercise.primary_muscle_group.in_(muscles),
-            Exercise.is_compound.is_(want_compound),
             Exercise.is_custom.is_(False),
             Exercise.is_hidden.is_(False),
-            # Só musculação. Sem isto, a base importada devolvia alongamento
-            # ("All Fours Quad Stretch"), mobilidade ("Ankle Circles") e
-            # levantamento olímpico como se fossem exercício de rotina — foi
-            # o que gerou o "treino de perna" com três alongamentos dentro.
+            # Só musculação: sem isto a base devolvia alongamento e mobilidade
+            # como se fossem exercício de rotina.
             Exercise.category.in_(STRENGTH_CATEGORIES),
         )
         .order_by(*quality_order())
     )
-    candidates = list(db.execute(stmt).scalars())
-    out: list[Exercise] = []
-
-    def _bucketize(exclude: set[int]) -> dict[MuscleGroup, list[Exercise]]:
-        # Distribui entre os músculos do foco em rodízio, pra não empilhar num só.
-        by_muscle: dict[MuscleGroup, list[Exercise]] = {m: [] for m in muscles}
-        for ex in candidates:
-            if ex.id in exclude:
-                continue
-            nome_norm = normalize_search_text(ex.name)
-            if forbid_heavy and any(k in nome_norm for k in _HEAVY_COMPOUND_KEYWORDS):
-                continue
-            # Preferência de EVITAR: sai do pool antes de qualquer escolha.
-            if _proibido_por_preferencia(nome_norm, user_prefs):
-                continue
-            if ex.primary_muscle_group in by_muscle:
-                by_muscle[ex.primary_muscle_group].append(ex)
-        # preferência por máquinas quando o método pede (FST-7 finalizador, Kuba)
-        if equipment_pref_machines:
-            from app.models.exercise import Equipment
-
-            for m in by_muscle:
-                by_muscle[m].sort(key=lambda e: 0 if e.equipment in (Equipment.MACHINE, Equipment.CABLE) else 1)
-        # A preferência da PESSOA vem depois da do método: quem pediu máquinas
-        # recebe máquinas mesmo num método que não pede.
-        if user_prefs:
-            for m in by_muscle:
-                by_muscle[m].sort(
-                    key=lambda e: _ordenar_por_preferencia(normalize_search_text(e.name), e.equipment, user_prefs)
-                )
-        return by_muscle
-
-    def _rotate_fill(by_muscle: dict[MuscleGroup, list[Exercise]]) -> None:
-        # Músculo que AINDA não tem exercício nesta sessão vem primeiro. Girar a
-        # lista por contagem (o que eu fazia antes) não bastava: bíceps não tem
-        # exercício COMPOSTO nenhum, então ele era pulado na passada dos compostos
-        # e o deslocamento da passada dos isolados caía no lugar errado — o dia de
-        # "ombros/braços" do Mentzer e o A/B do DC saíam sem UMA rosca sequer.
-        # sorted é estável, então quem está descoberto mantém a ordem original.
-        muscle_cycle = sorted(muscles, key=lambda m: m in covered)
-        idx = 0
-        while len(out) < count and any(by_muscle[m] for m in muscle_cycle):
-            m = muscle_cycle[idx % len(muscle_cycle)]
-            if by_muscle[m]:
-                ex = by_muscle[m].pop(0)
-                out.append(ex)
-                used_ids.add(ex.id)
-            idx += 1
-            if idx > 500:
-                break
-
-    # 1) Fresco: nunca usados na semana (dá variação real entre os dias).
-    _rotate_fill(_bucketize(used_ids))
-    # 2) Fallback: quando o pool fresco não encheu, reusa de OUTRO dia (nunca da
-    #    própria sessão) — completa o treino com um bom exercício em vez de deixar
-    #    o músculo de fora. É o que evita o "segundo inferior" sair sem posterior.
-    if len(out) < count:
-        na_sessao = set(session_ids) | {e.id for e in out}
-        _rotate_fill(_bucketize(na_sessao))
-    return out
+    return [
+        _Cand(ex, taxon_for_exercise(ex), normalize_search_text(ex.name), i)
+        for i, ex in enumerate(db.execute(stmt).scalars())
+    ]
 
 
-def _so_existe_isolado(db: Session, muscles: list[MuscleGroup]) -> bool:
-    """True se algum músculo do foco não tem NENHUM exercício composto — caso
-    do bíceps. Serve pra garantir uma vaga de isolado quando o método pediria
-    só composto, senão esse músculo nunca é treinado."""
-    for m in muscles:
-        tem = db.execute(
-            select(Exercise.id)
-            .where(
-                Exercise.primary_muscle_group == m,
-                Exercise.is_compound.is_(True),
-                Exercise.is_custom.is_(False),
-                Exercise.is_hidden.is_(False),
-                Exercise.category.in_(STRENGTH_CATEGORIES),
-            )
-            .limit(1)
-        ).first()
-        if tem is None:
-            return True
-    return False
+# REGRA DE SUBSTITUIÇÃO (a da spec, item 1-3): quando a base não tem NADA que
+# preencha a vaga — porque a preferência da pessoa excluiu tudo, ou porque a
+# biblioteca não cobre aquele padrão pra aquele músculo — a vaga não pode
+# simplesmente desaparecer. Estes são os substitutos que "preservam o mesmo
+# objetivo mecânico" e mantêm o equilíbrio da sessão.
+#
+# O caso que motivou: quem marca "evitar exercícios acima da cabeça" perde TODO
+# desenvolvimento, então a vaga de empurrar vertical do superior B ficava vazia —
+# a sessão saía com 6 exercícios e a semana com 2 empurradas a menos que
+# puxadas, e o validador reprovava um treino que era só consequência de uma
+# preferência legítima. A substituição certa é a que um treinador faria: se não
+# pode empurrar acima da cabeça, empurra na horizontal.
+_SUBSTITUTO: dict[tuple[Pattern, MuscleGroup], tuple[Pattern, MuscleGroup]] = {
+    (Pattern.PUSH_V, MuscleGroup.SHOULDERS): (Pattern.PUSH_H, MuscleGroup.CHEST),
+    (Pattern.PUSH_H, MuscleGroup.CHEST): (Pattern.PUSH_V, MuscleGroup.SHOULDERS),
+    (Pattern.PULL_V, MuscleGroup.BACK): (Pattern.PULL_H, MuscleGroup.BACK),
+    (Pattern.PULL_H, MuscleGroup.BACK): (Pattern.PULL_V, MuscleGroup.BACK),
+    # Perna: quem não pode agachar faz extensora; quem não pode dobradiça de
+    # quadril faz flexora (e vice-versa) — continua sendo posterior.
+    (Pattern.KNEE, MuscleGroup.QUADS): (Pattern.ISO, MuscleGroup.QUADS),
+    (Pattern.HIP, MuscleGroup.HAMSTRINGS): (Pattern.KNEE_FLEX, MuscleGroup.HAMSTRINGS),
+    (Pattern.KNEE_FLEX, MuscleGroup.HAMSTRINGS): (Pattern.HIP, MuscleGroup.HAMSTRINGS),
+    (Pattern.HIP, MuscleGroup.GLUTES): (Pattern.ISO, MuscleGroup.GLUTES),
+}
 
 
-def _find_exercise(db: Session, name_query: str) -> Exercise | None:
-    """Acha um exercício específico pelo nome (levantamento principal do dia).
-    Prefere o de menor id — a base curada (nomes limpos) vem antes da importada.
+def _substituto(spec: bp.SlotSpec) -> bp.SlotSpec | None:
+    """A vaga equivalente, quando a original não tem candidato. Sem região
+    exigida (a substituição já é o plano B — cobrar região por cima dela deixaria
+    a vaga vazia de novo) e aceitando repetir função."""
+    alvo = _SUBSTITUTO.get((spec.pattern, spec.muscle))
+    if alvo is None:
+        return None
+    padrao, musculo = alvo
+    return bp.SlotSpec(
+        role=spec.role,
+        pattern=padrao,
+        muscle=musculo,
+        region=None,
+        priority=spec.priority,
+        allow_repeat_function=True,
+    )
 
-    Aceita o pool ampliado (olímpico/strongman/pliometria) de propósito: alguns
-    métodos pedem esses levantamentos pelo nome (5/3/1 usa terra e
-    desenvolvimento; Westside usa trenó). O que nunca entra é alongamento/cardio.
+
+def _pick_for_slot(
+    spec: bp.SlotSpec,
+    pool: list[_Cand],
+    *,
+    used_na_semana: set[int],
+    ids_na_sessao: set[int],
+    funcoes_na_sessao: set[tuple[Pattern, str]],
+    prefs: frozenset[str],
+    prefer_machines: bool,
+) -> _Cand | None:
+    """O exercício certo pra uma vaga, ou None quando a base não tem nada que
+    sirva. Ordem de decisão: tier, preferência da pessoa, qualidade da imagem.
+
+    A busca é feita em três passadas cada vez mais permissivas, e é ISSO que
+    implementa a regra de substituição: só relaxa uma exigência quando a
+    anterior não deixou candidato nenhum.
+      1ª: região exigida + função inédita no dia + exercício inédito na semana
+      2ª: solta a região (mantém padrão e músculo)
+      3ª: solta a variação semanal (permite repetir exercício de OUTRO dia)
     """
-    return db.execute(
-        select(Exercise)
-        .where(
-            Exercise.name.ilike(f"%{name_query}%"),
-            Exercise.is_custom.is_(False),
-            Exercise.is_hidden.is_(False),
-            Exercise.category.in_(EXTENDED_STRENGTH_CATEGORIES),
+    base = [
+        c
+        for c in pool
+        if c.ex.primary_muscle_group == spec.muscle
+        and c.taxon.pattern is spec.pattern
+        and not _proibido_por_preferencia(c.nome_norm, prefs)
+        and c.ex.id not in ids_na_sessao
+    ]
+    if not base:
+        return None
+
+    def ordenar(cands: list[_Cand]) -> list[_Cand]:
+        return sorted(
+            cands,
+            key=lambda c: (
+                tier_rank(c.taxon.tier),
+                _ordenar_por_preferencia(c.nome_norm, c.ex.equipment, prefs),
+                0 if (prefer_machines and c.ex.equipment in _ESTAVEIS) else 1,
+                c.qualidade,
+            ),
         )
-        .order_by(*quality_order())
-    ).scalars().first()
+
+    def funcao_livre(c: _Cand) -> bool:
+        return spec.allow_repeat_function or c.taxon.function_key not in funcoes_na_sessao
+
+    com_regiao = [c for c in base if spec.region is None or c.taxon.region == spec.region]
+
+    for tentativa in (
+        [c for c in com_regiao if funcao_livre(c) and c.ex.id not in used_na_semana],
+        [c for c in base if funcao_livre(c) and c.ex.id not in used_na_semana],
+        [c for c in base if funcao_livre(c)],
+    ):
+        if tentativa:
+            return ordenar(tentativa)[0]
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Montagem
+# ---------------------------------------------------------------------------
+def _priorizar_ponto_fraco(
+    blueprint: list[bp.SlotSpec], weak_points: list[MuscleGroup]
+) -> list[bp.SlotSpec]:
+    """Ponto fraco primeiro, DENTRO do bloco de compostos.
+
+    A regra mestra manda preservar desempenho nos movimentos prioritários — e se
+    o músculo é prioridade da pessoa, ele é que tem que pegar a pessoa inteira.
+    Mas não vale jogar um isolador de bíceps pra abrir o treino: a troca só
+    acontece entre vagas de composto (ordem 1), então a sessão continua abrindo
+    com um movimento pesado.
+    """
+    if not weak_points:
+        return blueprint
+    compostos = [i for i, s in enumerate(blueprint) if s.pattern in _PADROES_COMPOSTOS]
+    if len(compostos) < 2:
+        return blueprint
+    alvo = next(
+        (i for i in compostos if blueprint[i].muscle in weak_points),
+        None,
+    )
+    if alvo is None or alvo == compostos[0]:
+        return blueprint
+    novo = list(blueprint)
+    vaga = novo.pop(alvo)
+    novo.insert(compostos[0], vaga)
+    return novo
+
+
+_PADROES_COMPOSTOS = frozenset(
+    {Pattern.PUSH_H, Pattern.PUSH_V, Pattern.PULL_H, Pattern.PULL_V, Pattern.KNEE, Pattern.HIP}
+)
 
 
 def build_plan(
@@ -399,55 +336,35 @@ def build_plan(
     time_efficient: bool = False,
     exercise_prefs: list[str] | None = None,
 ) -> WorkoutPlan:
-    """weak_point / weak_points: músculo(s) a priorizar nos acessórios (até 2).
-    `weak_points` (lista) tem precedência; `weak_point` (singular) é mantido pros
-    chamadores antigos (Hub de IA). Quando informado, o(s) músculo(s) entra(m) no
-    início do rodízio de TODO dia que o(s) treine — é o que faz a escolha mudar o
-    treino de verdade em vez de virar enfeite na tela.
+    """Monta a semana inteira preenchendo os blueprints de cada dia.
 
-    session_target: nº-alvo de exercícios por sessão (vem do tempo disponível da
-    pessoa — Curto/Médio/Longo). Sobrepõe o padrão do método, mas dentro de um
-    limite seguro (3–9) pra não descaracterizar métodos minimalistas nem estourar
-    a proporção composto/isolado que a validação cobra.
+    weak_points: músculo(s) a priorizar (até 2). Muda a ORDEM (o composto do
+    ponto fraco abre a sessão) e, via workout_builder, o VOLUME e a divisão de 4
+    dias (Torso/Limbs quando o ponto fraco é músculo menor).
 
-    time_efficient: sessão CURTA. Com pouco tempo, prioriza exercícios
-    MULTIARTICULARES e máquinas que pegam vários músculos de uma vez (chest
-    press, leg press, puxada) — mais estímulo por minuto. Sobe a proporção de
-    compostos e a preferência por máquina/cabo também nos compostos."""
-    # Lista efetiva de pontos fracos (a plural manda; a singular é o fallback).
+    session_target: nº-alvo de exercícios por sessão, vindo do tempo disponível
+    (Curto 5 / Médio 6 / Longo 8). Recorta o blueprint tirando as vagas de menor
+    prioridade — panturrilha/abdutor/core saem antes; composto prioritário nunca.
+
+    time_efficient: sessão CURTA. Prioriza máquinas e cabos, que rendem mais
+    estímulo por minuto e permitem a técnica avançada (myo-reps) que o coach
+    prescreve nesse caso.
+
+    phase_index existe só por compatibilidade de assinatura — o plano do coach
+    não tem fases (a periodização dele é conduzida pelo ciclo, em cycle_state).
+    """
     wp_list = list(weak_points) if weak_points else ([weak_point] if weak_point else [])
     days = resolve_days(method, available_days)
-    split = _split_for(method, days)
-    phase = _active_phase(method, phase_index)
-    per_session = _exercises_per_session(method)
-    if session_target is not None:
-        per_session = max(3, min(int(session_target), 9))
+    split = coach_split_for(days, [m.value for m in wp_list])
 
-    # Proporção composto/isolado (default 0.5 quando o método não fixa).
-    ratio = method.compound_ratio if method.compound_ratio is not None else 0.5
-    # Tempo curto: mais compostos multiarticulares pra render por minuto. Só
-    # empurra pra cima (nunca abaixo do que o método pede).
-    if time_efficient:
-        ratio = max(ratio, 0.6)
+    sets = method.sets_per_exercise or "—"
+    reps = method.reps or "—"
+    tempo = method.tempo
+    rest = method.rest_seconds
+    rir = method.rir
 
-    # Parâmetros da fase ativa (ou base do método).
-    sets = (phase.sets if phase else None) or method.sets_per_exercise or "—"
-    reps = (phase.reps if phase else None) or method.reps or "—"
-    tempo = (phase.tempo if phase else None) or method.tempo
-    rest = (phase.rest_seconds if phase else None) or method.rest_seconds
-    rir = (phase.rir if phase else None) or method.rir
-
-    # Proibição de composto pesado: Y3T semana infernal (fase index 2) e o
-    # finalizador do FST-7 (tratado no builder de fase por sessão).
-    forbid_heavy_week = method.key == "y3t" and phase_index == 2
-
-    schedule = method.schedule_suggestions.get(days, [])
-    # Máquinas/cabo primeiro: métodos que pedem (Kuba/FST-7) OU sessão curta
-    # (multiarticular de máquina rende mais estímulo por minuto).
-    prefer_machines = method.key in ("kuba", "fst7") or time_efficient
-    # Preferências de exercício da PESSOA (questionário). Chegam até _pick e
-    # viram exclusão/prioridade real na escolha — ver _proibido_por_preferencia.
     prefs = frozenset(exercise_prefs or ())
+    pool = _load_pool(db)
 
     plan = WorkoutPlan(
         method_key=method.key,
@@ -457,118 +374,63 @@ def build_plan(
         mesocycle=method.mesocycle_weeks,
         deload_rule=method.deload_rule,
         progression_rule=method.progression_rule,
-        phase_context=phase.name if phase else None,
+        phase_context=None,
     )
-    if available_days is not None and days > available_days:
-        plan.notes.append(
-            f"Você informou {available_days} dia(s), mas {method.name} pede no mínimo {days}. "
-            "Ajuste a agenda ou considere um método de menor frequência."
-        )
 
-    # Métodos HIT prescrevem UMA série de trabalho de propósito — sem explicar,
-    # o treino parece incompleto/quebrado ("só 1 série?"). Deixa explícito.
-    if str(sets).strip().startswith("1"):
-        plan.notes.append(
-            f"1 série de trabalho por exercício é intencional no {method.name}: a série é levada ao "
-            "limite, então volume extra atrapalharia a recuperação. Faça séries de aquecimento antes, "
-            "sem falhar — elas não contam como série de trabalho."
-        )
-
-    used_ids: set[int] = set()
-    # Um foco que se repete na semana (ex: A,B,A,B do DC) é o MESMO treino nos
-    # métodos consagrados — a seleção é feita UMA vez por foco e reaproveitada
-    # (method.repeat_same_session=True, o padrão). O plano do coach desliga
-    # isso (repeat_same_session=False): cada ocorrência escolhe de novo, dentro
-    # do que ainda não foi usado — dá variação real de exercício/equipamento
-    # entre as repetições do mesmo foco na semana.
-    picked_by_focus: dict[str, list[tuple[Exercise, bool]]] = {}
-
+    used_na_semana: set[int] = set()
     for i, focus in enumerate(split):
-        reuse_cached = method.repeat_same_session and focus in picked_by_focus
-        if not reuse_cached:
-            muscles = _FOCUS_MUSCLES.get(focus, [MuscleGroup.FULL_BODY])
-            # Ponto(s) fraco(s) primeiro no rodízio, nos dias que já treinam esse
-            # músculo. Não o enfia num dia que não é dele (perna no dia de
-            # supino não vira "prioridade", vira treino incoerente).
-            prioridade = [m for m in wp_list if m in muscles]
-            if prioridade:
-                muscles = prioridade + [m for m in muscles if m not in prioridade]
-            n_compound = round(per_session * ratio)
-            n_isolation = per_session - n_compound
+        blueprint = bp.fit_to_target(bp.blueprint_for(focus), session_target)
+        blueprint = _priorizar_ponto_fraco(blueprint, wp_list)
 
-            # Bíceps não existe como exercício COMPOSTO. Num método de
-            # proporção quase toda composta (Mentzer HIT: 0.9 -> 4 compostos e
-            # 0 isolados em 4 vagas), ele fica matematicamente inalcançável e o
-            # dia de "ombros/braços" sai sem uma rosca sequer — sendo que é
-            # justamente o dia mais isolado do Heavy Duty original. Reservar
-            # UMA vaga cabe na tolerância de 1 da validate_plan, então o método
-            # continua fiel.
-            if n_isolation == 0 and n_compound > 1 and _so_existe_isolado(db, muscles):
-                n_compound -= 1
-                n_isolation = 1
+        session = PlannedSession(day_index=i, day_label=f"Dia {i + 1}", focus=focus, phase_name=None)
+        ids_na_sessao: set[int] = set()
+        funcoes_na_sessao: set[tuple[Pattern, str]] = set()
 
-            # Levantamento principal do dia primeiro (5/3/1: dia de agachamento
-            # começa agachando). Só quando o método define o dia pelo lift e a
-            # fase não proíbe composto pesado.
-            compounds: list[Exercise] = []
-            primary_query = _FOCUS_PRIMARY_LIFT.get(focus)
-            if primary_query and not forbid_heavy_week and n_compound > 0:
-                primary = _find_exercise(db, primary_query)
-                if primary is not None and primary.id not in used_ids:
-                    compounds.append(primary)
-                    used_ids.add(primary.id)
-
-            # Cada passada mira o que ainda está descoberto, em vez de recomeçar
-            # a lista do zero. Sem isso os músculos do fim morriam de fome: em
-            # "me superior" ([peito, costas, ombro, tríceps, bíceps]) os
-            # compostos pegavam peito/costas/ombro e os isolados voltavam pro
-            # peito — o dia saía com três peitos e zero braço.
-            compounds += _pick(
-                db,
-                muscles,
-                True,
-                n_compound - len(compounds),
-                used_ids,
-                forbid_heavy_week,
-                # Compostos de máquina (leg press, chest press, puxada) primeiro
-                # só quando o tempo é curto — nos demais, barra/livre lidera.
-                time_efficient,
-                covered=frozenset(e.primary_muscle_group for e in compounds),
-                session_ids=frozenset(e.id for e in compounds),
-                user_prefs=prefs,
+        for spec in blueprint:
+            escolher = lambda s: _pick_for_slot(  # noqa: E731
+                s,
+                pool,
+                used_na_semana=used_na_semana,
+                ids_na_sessao=ids_na_sessao,
+                funcoes_na_sessao=funcoes_na_sessao,
+                prefs=prefs,
+                prefer_machines=time_efficient or "maquinas" in prefs,
             )
-            isolations = _pick(
-                db,
-                muscles,
-                False,
-                n_isolation,
-                used_ids,
-                False,
-                prefer_machines,
-                covered=frozenset(e.primary_muscle_group for e in compounds),
-                session_ids=frozenset(e.id for e in compounds),
-                user_prefs=prefs,
-            )
-            selected = [(ex, True) for ex in compounds] + [(ex, False) for ex in isolations]
-            if method.repeat_same_session:
-                picked_by_focus[focus] = selected
-        else:
-            selected = picked_by_focus[focus]
-
-        session = PlannedSession(
-            day_index=i,
-            day_label=schedule[i] if i < len(schedule) else f"Dia {i + 1}",
-            focus=focus,
-            phase_name=phase.name if phase else None,
-        )
-        order = 1
-        for ex, is_compound in selected:
+            escolhido = escolher(spec)
+            if escolhido is None:
+                # Regra de substituição: nada na base preenche esta vaga (a
+                # preferência da pessoa pode ter excluído todos os candidatos).
+                # Tenta o equivalente que preserva a função no treino antes de
+                # desistir da vaga.
+                alternativa = _substituto(spec)
+                if alternativa is not None:
+                    escolhido = escolher(alternativa)
+            if escolhido is None:
+                # Nem o substituto serviu. A vaga não existe — melhor um treino
+                # com uma vaga a menos do que um exercício que não cumpre o
+                # papel. O validador global registra a lacuna que sobrar.
+                continue
+            ids_na_sessao.add(escolhido.ex.id)
+            used_na_semana.add(escolhido.ex.id)
+            funcoes_na_sessao.add(escolhido.taxon.function_key)
             session.slots.append(
                 PlannedSlot(
-                    order, ex.primary_muscle_group.value, is_compound, ex.id, ex.name, sets, reps, tempo, rest, rir
+                    order=len(session.slots) + 1,
+                    muscle_group=escolhido.ex.primary_muscle_group.value,
+                    is_compound=escolhido.taxon.is_compound,
+                    exercise_id=escolhido.ex.id,
+                    exercise_name=escolhido.ex.name,
+                    sets=sets,
+                    reps=reps,
+                    tempo=tempo,
+                    rest_seconds=rest,
+                    rir=rir,
+                    note=spec.role,
+                    pattern=escolhido.taxon.pattern.value,
+                    region=escolhido.taxon.region,
+                    role=spec.role,
                 )
             )
-            order += 1
         plan.sessions.append(session)
 
     return plan
@@ -582,86 +444,115 @@ def add_accessory_slot(
     prefer_machines: bool = False,
     exercise_prefs: list[str] | None = None,
     max_per_session: int = 9,
+    region: str | None = None,
 ) -> PlannedSlot | None:
     """Acrescenta UMA vaga do `muscle` ao plano e devolve a vaga criada (None se
     não houver exercício novo, nenhuma sessão que treine o músculo, ou todas as
-    candidatas já estarem no teto de vagas).
+    candidatas já no teto de vagas).
 
     Existe porque o volume semanal de um músculo pode não caber nas vagas que
     ele tem: a saída certa é outro EXERCÍCIO, não mais séries empilhadas na
-    mesma vaga (uma vaga tem teto de séries de trabalho efetivas, e passar dele
-    é fadiga sem estímulo novo).
+    mesma vaga (passar do teto por vaga é fadiga sem estímulo novo).
 
-    A vaga entra no FIM da sessão que já treina esse músculo — nunca num dia que
-    não é dele (peito no dia de perna não vira volume, vira treino incoerente).
+    A vaga entra na sessão que já treina esse músculo e tem menos exercícios —
+    nunca num dia que não é dele. E busca uma FUNÇÃO que aquele dia ainda não
+    tem: acrescentar um terceiro supino reto não é volume novo, é redundância
+    (Princípio 4). Por isso o acessório é preferencialmente isolador de uma
+    região descoberta.
 
-    Isolada por padrão, o que mantém de graça a regra de ordem "nenhum isolado
-    antes de um composto" (validate_plan, item 3). Quando a sessão precisa de
-    composto pra não furar a proporção do método, entra um composto — e aí a
-    vaga é inserida ANTES do primeiro isolado, não no fim.
+    `region`: restringe a escolha a uma região específica. É como o reparo de
+    cobertura do Princípio 6 funciona — quando a revisão global aponta que a
+    semana não tem, por exemplo, 'peito clavicular', quem repara pede exatamente
+    essa região em vez de "mais um exercício de peito", que poderia sair esternal
+    de novo e não consertar nada.
     """
     usados = {sl.exercise_id for s in plan.sessions for sl in s.slots if sl.exercise_id is not None}
 
-    # A sessão com MENOS vagas entre as que já treinam o músculo e ainda cabem —
-    # assim o dia que já está cheio não é o que cresce.
     candidatas = [
-        s for s in plan.sessions
-        if len(s.slots) < max_per_session
-        and any(sl.muscle_group == muscle.value for sl in s.slots)
+        s
+        for s in plan.sessions
+        if len(s.slots) < max_per_session and any(sl.muscle_group == muscle.value for sl in s.slots)
     ]
     if not candidatas:
         return None
     sessao = min(candidatas, key=lambda s: len(s.slots))
 
-    # Composto ou isolado? Mantém a proporção do método dentro da tolerância de
-    # 1 vaga que validate_plan cobra — encher a sessão só de isolado furaria a
-    # proporção e o plano deixaria de ser fiel ao método.
-    ratio = plan_compound_ratio(plan)
-    n_compostos = sum(1 for sl in sessao.slots if sl.is_compound)
-    quer_composto = (n_compostos + 1) <= round((len(sessao.slots) + 1) * ratio)
-
+    funcoes = {(sl.pattern, sl.region) for sl in sessao.slots}
+    ids_sessao = {sl.exercise_id for sl in sessao.slots if sl.exercise_id is not None}
     prefs = frozenset(exercise_prefs or ())
-    escolhidos = _pick(db, [muscle], quer_composto, 1, usados, False, prefer_machines, user_prefs=prefs)
-    if not escolhidos and quer_composto:
-        # Vários músculos não têm composto próprio (bíceps, panturrilha) — cai
-        # pro isolado em vez de desistir da vaga.
-        quer_composto = False
-        escolhidos = _pick(db, [muscle], False, 1, usados, False, prefer_machines, user_prefs=prefs)
-    if not escolhidos:
+    pool = [
+        c
+        for c in _load_pool(db)
+        if c.ex.primary_muscle_group == muscle
+        and c.ex.id not in ids_sessao
+        and not _proibido_por_preferencia(c.nome_norm, prefs)
+        and (region is None or c.taxon.region == region)
+    ]
+    if not pool:
         return None
-    ex = escolhidos[0]
 
-    # Herda os parâmetros (séries/reps/descanso) das vagas da própria sessão —
-    # o método continua mandando; o que muda é só existir mais uma vaga.
+    def chave(c: _Cand) -> tuple:
+        return (
+            # 1) função que o dia ainda não tem — é o que faz a vaga ser volume
+            #    novo e não repetição.
+            0 if (c.taxon.pattern.value, c.taxon.region) not in funcoes else 1,
+            # 2) exercício que a semana ainda não usou.
+            0 if c.ex.id not in usados else 1,
+            # 3) isolador antes de composto: acessório de volume não deve
+            #    acrescentar fadiga sistêmica no fim do treino.
+            0 if not c.taxon.is_compound else 1,
+            tier_rank(c.taxon.tier),
+            _ordenar_por_preferencia(c.nome_norm, c.ex.equipment, prefs),
+            0 if (prefer_machines and c.ex.equipment in _ESTAVEIS) else 1,
+            c.qualidade,
+        )
+
+    escolhido = min(pool, key=chave)
     modelo = sessao.slots[-1]
     slot = PlannedSlot(
         order=0,  # reordenado abaixo
         muscle_group=muscle.value,
-        is_compound=quer_composto,
-        exercise_id=ex.id,
-        exercise_name=ex.name,
+        is_compound=escolhido.taxon.is_compound,
+        exercise_id=escolhido.ex.id,
+        exercise_name=escolhido.ex.name,
         sets=modelo.sets,
         reps=modelo.reps,
         tempo=modelo.tempo,
         rest_seconds=modelo.rest_seconds,
         rir=modelo.rir,
-        note=modelo.note,
+        note="volume semanal",
+        pattern=escolhido.taxon.pattern.value,
+        region=escolhido.taxon.region,
+        role="volume semanal",
     )
-    if quer_composto:
-        primeiro_isolado = next(
-            (i for i, sl in enumerate(sessao.slots) if not sl.is_compound), len(sessao.slots)
-        )
-        sessao.slots.insert(primeiro_isolado, slot)
-    else:
+
+    # Onde inserir: um COMPOSTO nunca entra depois de um músculo menor
+    # (panturrilha/abdutor/core fecham o treino). Isolador entra antes dos
+    # menores; menor entra no fim.
+    if escolhido.taxon.order_class >= ORDER_MINOR:
         sessao.slots.append(slot)
+    else:
+        primeiro_menor = next(
+            (i for i, sl in enumerate(sessao.slots) if _ordem_da_vaga(sl) >= ORDER_MINOR),
+            len(sessao.slots),
+        )
+        sessao.slots.insert(primeiro_menor, slot)
     for i, sl in enumerate(sessao.slots, start=1):
         sl.order = i
     return slot
 
 
+def _ordem_da_vaga(slot: PlannedSlot) -> int:
+    """Classe de ordem de uma vaga já montada, a partir do padrão gravado nela."""
+    try:
+        padrao = Pattern(slot.pattern) if slot.pattern else None
+    except ValueError:
+        padrao = None
+    return order_class_for_pattern(padrao)
+
+
 def plan_compound_ratio(plan: WorkoutPlan) -> float:
-    """Proporção composto/total que o plano JÁ pratica — serve de alvo pra
-    qualquer vaga acrescentada depois manter o método fiel."""
+    """Proporção composto/total que o plano pratica."""
     total = sum(len(s.slots) for s in plan.sessions)
     if total == 0:
         return 0.5
@@ -669,45 +560,12 @@ def plan_compound_ratio(plan: WorkoutPlan) -> float:
 
 
 def validate_plan(method: MethodSpec, plan: WorkoutPlan) -> list[str]:
-    """Devolve a lista de violações das regras do método. Vazia = plano fiel."""
-    problems: list[str] = []
+    """Violações da regra mestra. Vazia = treino aprovado.
 
-    # 1) Proporção composto/isolado dentro de CADA sessão (tolerância de 1 vaga).
-    if method.compound_ratio is not None:
-        for s in plan.sessions:
-            total = len(s.slots)
-            if total == 0:
-                continue
-            comp = sum(1 for sl in s.slots if sl.is_compound)
-            expected = round(total * method.compound_ratio)
-            if abs(comp - expected) > 1:
-                problems.append(
-                    f"Sessão '{s.focus}': {comp}/{total} compostos, esperado ~{expected} "
-                    f"(proporção {int(method.compound_ratio * 100)}% do método)."
-                )
+    Delegado a `plan_review.review`, que é a "Regra de coerência global" da spec
+    (as 8 perguntas). Esta função continua existindo com a assinatura antiga
+    porque é o que o resto do código chama.
+    """
+    from app.ai.plan_review import review
 
-    # 2) Frequência: nº de sessões bate com os dias suportados.
-    if plan.days_per_week not in method.days_per_week and method.days_per_week:
-        problems.append(
-            f"{plan.days_per_week} dias não é uma frequência suportada por {method.name} "
-            f"({', '.join(map(str, method.days_per_week))})."
-        )
-
-    # 3) Ordem: nenhum isolado antes de um composto na mesma sessão.
-    for s in plan.sessions:
-        seen_iso = False
-        for sl in s.slots:
-            if not sl.is_compound:
-                seen_iso = True
-            elif seen_iso:
-                problems.append(f"Sessão '{s.focus}': composto '{sl.exercise_name}' veio depois de um isolado (ordem incorreta).")
-                break
-
-    # 4) Proibições: Y3T semana infernal sem composto pesado.
-    if method.key == "y3t" and plan.phase_context and "infernal" in plan.phase_context.lower():
-        for s in plan.sessions:
-            for sl in s.slots:
-                if any(k in normalize_search_text(sl.exercise_name) for k in _HEAVY_COMPOUND_KEYWORDS):
-                    problems.append(f"Semana infernal (Y3T) não pode ter composto pesado: '{sl.exercise_name}'.")
-
-    return problems
+    return review(plan, method=method)

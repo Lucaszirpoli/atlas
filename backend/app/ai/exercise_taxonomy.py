@@ -157,6 +157,15 @@ _ORDER_BY_PATTERN: dict[Pattern, int] = {
 }
 
 
+def order_class_for_pattern(pattern: Pattern | None) -> int:
+    """Classe de ordem de um padrão. Padrão desconhecido/ausente conta como
+    isolador — nunca como músculo menor, pra não parecer que pode fechar o
+    treino sem ser."""
+    if pattern is None:
+        return ORDER_ISOLATION
+    return _ORDER_BY_PATTERN.get(pattern, ORDER_ISOLATION)
+
+
 @dataclass(frozen=True)
 class Taxon:
     tier: Tier
@@ -412,11 +421,18 @@ def is_known(name: str) -> bool:
 # "Não basta trabalhar um músculo": estas são as regiões que a SEMANA precisa
 # cobrir quando o músculo é treinado. O validador global cobra isto.
 #
-# Peito inferior fica FORA de propósito: a spec diz "fibras inferiores quando
-# necessário" — é opcional, então exigi-lo reprovaria treino bom.
+# Duas exclusões de propósito:
+#
+# - PEITO INFERIOR: a spec diz "fibras inferiores quando necessário" — é
+#   opcional, então exigir reprovaria treino bom.
+# - DELTOIDE ANTERIOR: a própria análise do usuário sobre o treino de
+#   referência diz "apenas o deltoide lateral recebe trabalho direto, enquanto o
+#   anterior é suficientemente estimulado pelos supinos". Cobrar trabalho direto
+#   de anterior geraria elevação frontal (tier B) em treino que já tem 2 ou 3
+#   empurradas — volume desperdiçado, exatamente o que o Princípio 4 combate.
 REQUIRED_REGIONS: dict[MuscleGroup, tuple[str, ...]] = {
     MuscleGroup.CHEST: (CLAVICULAR, ESTERNAL),
     MuscleGroup.BACK: (DORSAIS, UPPER_BACK),
-    MuscleGroup.SHOULDERS: (DELT_ANTERIOR, DELT_LATERAL, DELT_POSTERIOR),
+    MuscleGroup.SHOULDERS: (DELT_LATERAL, DELT_POSTERIOR),
     MuscleGroup.HAMSTRINGS: (POST_EXT_QUADRIL, POST_FLEX_JOELHO),
 }

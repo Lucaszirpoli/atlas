@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai import methods_engine
+from app.ai import methods_engine, plan_review
 from app.ai.methods import coach_custom_spec
 from app.ai.methods_engine import build_plan
 from app.coaching import cycle_state, training_brain, volume_landmarks
@@ -59,6 +59,40 @@ def _parse_reps(s) -> tuple[int, int]:
     return 8, 12
 
 
+def _reparar_cobertura(
+    db: Session,
+    plan,
+    pendencias: list[str],
+    *,
+    prefer_machines: bool,
+    exercise_prefs: list[str],
+) -> list[str]:
+    """Tenta CONSERTAR o que a revisão global apontou, e devolve o que sobrou.
+
+    A regra mestra manda reestruturar o treino quando a validação reprova, e a
+    lacuna que dá pra consertar mecanicamente é a de cobertura regional
+    (Princípio 6): falta 'peito clavicular' na semana -> acrescenta um exercício
+    dessa região exata num dia que já treina peito.
+
+    Desequilíbrio e redundância NÃO são reparados aqui de propósito: eles vêm da
+    estrutura do blueprint, então consertar caso a caso esconderia um erro de
+    desenho que tem que ser corrigido no blueprint (e os testes cobram isso).
+    O que sobra volta como pendência, pra ficar registrado em vez de silencioso.
+    """
+    if not pendencias:
+        return []
+    faltando = plan_review.regioes_descobertas(plan)
+    for musculo, regiao in faltando:
+        methods_engine.add_accessory_slot(
+            db, plan, musculo,
+            prefer_machines=prefer_machines,
+            exercise_prefs=exercise_prefs,
+            max_per_session=_MAX_EXERCICIOS_POR_SESSAO,
+            region=regiao,
+        )
+    return plan_review.review(plan)
+
+
 def build_and_save(db: Session, user: User) -> dict:
     """Monta o treino pelas prefs e substitui as rotinas ativas. Devolve um
     resumo (método, dias, rotinas, ponto fraco, cardio, periodização)."""
@@ -92,16 +126,28 @@ def build_and_save(db: Session, user: User) -> dict:
     # Sessão curta: prioriza compostos multiarticulares e máquinas que pegam
     # vários músculos, pra render mais estímulo no pouco tempo.
     curto = training_brain.valid_session_length(profile.session_length) == "curto"
+    prefs_exercicio = training_brain.valid_exercise_prefs(getattr(profile, "exercise_prefs", None))
     plan = build_plan(
         db, method, available_days=days, weak_points=wps,
         session_target=session_target, time_efficient=curto,
         # Preferências marcadas no questionário (máquinas x peso livre, evitar
         # agachamento livre/acima da cabeça/impacto, unilateral). Chegam até a
         # escolha de cada exercício — é o que faz a resposta virar treino.
-        exercise_prefs=training_brain.valid_exercise_prefs(
-            getattr(profile, "exercise_prefs", None)
-        ),
+        exercise_prefs=prefs_exercicio,
     )
+
+    # --- REGRA DE COERÊNCIA GLOBAL ------------------------------------------
+    # "Antes de finalizar qualquer programa de treinamento, a IA deve validar
+    # automaticamente [...]. Se qualquer resposta for negativa, o treino deve
+    # ser reestruturado antes de ser entregue."
+    #
+    # Roda aqui, e não só dentro do build_plan, porque as vagas de volume
+    # acrescentadas mais abaixo também podem quebrar a coerência — então a
+    # revisão final acontece DEPOIS de todo mundo ter mexido no plano (ver o
+    # segundo `review` no fim desta função).
+    pendencias = plan_review.review(plan, method=method)
+    pendencias = _reparar_cobertura(db, plan, pendencias, prefer_machines=curto,
+                                    exercise_prefs=prefs_exercicio)
 
     # Volume semanal por grupo muscular (regra: sobe/desce série por músculo
     # dentro da faixa MEV-MRV baseada em evidência, ajustada por nível — nunca
@@ -156,7 +202,9 @@ def build_and_save(db: Session, user: User) -> dict:
             break
         _, _, muscle = max(faltas, key=lambda f: (f[0], f[1]))
         slot = methods_engine.add_accessory_slot(
-            db, plan, muscle, prefer_machines=curto, max_per_session=_MAX_EXERCICIOS_POR_SESSAO
+            db, plan, muscle, prefer_machines=curto,
+            exercise_prefs=prefs_exercicio,
+            max_per_session=_MAX_EXERCICIOS_POR_SESSAO,
         )
         if slot is None:
             # Sem exercício novo desse músculo na base (ou sessões cheias): o
@@ -168,6 +216,10 @@ def build_and_save(db: Session, user: User) -> dict:
         slot_count_by_muscle[muscle.value] = slot_count_by_muscle.get(muscle.value, 0) + 1
         exercicios_extras.append(slot.exercise_name)
         ids_extras.add(slot.exercise_id)
+
+    # Revisão global FINAL: as vagas de volume acima entraram depois da primeira
+    # checagem, então é aqui que o treino que vai ser entregue é conferido.
+    pendencias = plan_review.review(plan, method=method)
 
     base_by_muscle: dict[str, int] = {}
     remainder_by_muscle: dict[str, int] = {}
@@ -362,6 +414,12 @@ def build_and_save(db: Session, user: User) -> dict:
         "technique_note": technique_note,
         "extra_exercises_note": extra_note,
         "periodization_label": period_label,
+        # Resultado da revisão global (as 8 perguntas da regra mestra). O treino
+        # aprovado sai com is_coherent=true e lista vazia. Se algo sobrou, sai
+        # AQUI em vez de sumir num log — um treino entregue com pendência é algo
+        # que eu preciso poder ver, não descobrir por reclamação de usuário.
+        "is_coherent": not pendencias,
+        "coherence_issues": pendencias,
         "message": f"Pronto — montei {len(nomes)} treino(s) pra {days} dia(s) na semana. "
                    "Já estão nas suas rotinas, é só treinar.",
     }

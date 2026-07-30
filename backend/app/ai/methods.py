@@ -123,19 +123,65 @@ class MethodSpec:
 # ---------------------------------------------------------------------------
 
 # Split por nº de dias, desenhado pra 2×/semana por grupo (regra 6: nada de
-# bro-split como padrão). Os rótulos batem com _FOCUS_MUSCLES do methods_engine.
+# bro-split como padrão). Os rótulos batem com session_blueprints.BLUEPRINTS —
+# cada um tem uma sequência explícita de vagas, com padrão de movimento e papel.
+#
+# As divisões são as que a regra mestra descreve, uma por frequência:
 _COACH_SPLITS: dict[int, list[str]] = {
+    # 2 dias: full body A/B. Não é o ideal (a regra mestra não trata 2 dias),
+    # mas é treino de verdade — e como as duas sessões são full body, cada
+    # grupo ainda é treinado 2×/semana. A e B juntos já fecham peito
+    # clavicular+esternal, costas dorsais+upper back e as duas funções do
+    # posterior.
     2: ["full body a", "full body b"],
-    3: ["superior", "inferior", "full body"],
-    # 4 dias = upper/lower A/B: os dois superiores e os dois inferiores têm ênfase
-    # diferente (A puxa peito/quadríceps; B puxa costas/posterior), então o
-    # segundo dia do mesmo tipo não repete nem raspa sobras — sai coerente.
+    # 3 dias: FULL BODY ×3, como a regra mestra prescreve ("Full Body 3x por
+    # semana"). Cada sessão tem dominante de joelho, dominante de quadril, um
+    # empurrar, uma puxada, um isolador e panturrilha/core — e os três dias
+    # variam os padrões pra distribuir o estresse.
+    3: ["full body a", "full body b", "full body c"],
+    # 4 dias: upper/lower A/B. A puxa horizontal (superior) e joelho
+    # (inferior); B puxa vertical e quadril. Ver também TORSO_LIMBS_SPLIT, que
+    # substitui este quando o ponto fraco é braço ou panturrilha.
     4: ["superior a", "inferior a", "superior b", "inferior b"],
-    5: ["push", "pull", "pernas", "superior", "inferior"],
-    6: ["push", "pull", "pernas", "push", "pull", "pernas"],
+    # 5 dias: PPL + upper/lower. Os dois últimos dias são EQUILIBRADOS
+    # (empurrar e puxar juntos) porque a função deles é preencher lacuna de
+    # volume, não repetir a ênfase de um dia de push ou de pull.
+    5: ["push a", "pull a", "pernas a", "superior", "inferior"],
+    # 6 dias: PPL ×2, com a segunda passagem trocando qual padrão lidera (o
+    # sufixo b) — a regra mestra pede variação na segunda passagem, não
+    # repetição literal.
+    6: ["push a", "pull a", "pernas a", "push b", "pull b", "pernas b"],
     # 7 dias NÃO existe de propósito: sem dia de folga não há recuperação, e a
     # fadiga que o motor administra é sistêmica. Ver TRAINING_DAYS_MAX.
 }
+
+# Alternativa de 4 dias (regra mestra, "Torso / Limbs"). O tronco fica só com
+# empurrar/puxar e as pernas dividem o dia com os braços — é o desenho que
+# "permite maior volume para músculos menores sem sobrecarregar as sessões de
+# tronco". O coach só troca pra ela quando o ponto fraco é justamente um
+# músculo menor (bíceps, tríceps ou panturrilha); fora disso ela não compra
+# nada sobre upper/lower e só mudaria o treino por mudar.
+TORSO_LIMBS_SPLIT: list[str] = ["torso a", "membros a", "torso b", "membros b"]
+
+# Pontos fracos que fazem o Torso/Limbs valer a pena.
+TORSO_LIMBS_WEAK_POINTS: frozenset[str] = frozenset({"biceps", "triceps", "calves"})
+
+
+def coach_split_for(days: int, weak_points: list[str] | None = None) -> list[str]:
+    """O split do coach pra `days` dias, já considerando ponto fraco.
+
+    Só um caso muda a divisão: 4 dias com ponto fraco em músculo menor vira
+    Torso/Limbs. Todo o resto é o mapa acima.
+    """
+    if days == 4 and any(w in TORSO_LIMBS_WEAK_POINTS for w in (weak_points or [])):
+        return list(TORSO_LIMBS_SPLIT)
+    base = _COACH_SPLITS.get(days)
+    if base:
+        return list(base)
+    # Frequência fora de 2–6 não deveria chegar aqui (o builder faz clamp), mas
+    # se chegar, repete o ciclo de 3 dias em vez de estourar.
+    ciclo = _COACH_SPLITS[3]
+    return [ciclo[i % len(ciclo)] for i in range(max(1, days))]
 
 # Parâmetros da sessão por objetivo — proporção composto/isolado, RIR, descanso.
 # REPS: o coach trabalha com 8-12 em todo objetivo (a faixa-padrão de

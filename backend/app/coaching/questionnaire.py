@@ -144,6 +144,20 @@ def steps() -> list[dict]:
                 {"key": "session_length", "label": "Tempo por sessão", "type": SINGLE, "required": True,
                  "options": [{"value": v, "label": label, "desc": faixa}
                              for v, label, faixa, _ in training_brain.SESSION_LENGTHS]},
+                # O perfil já tinha `allow_advanced_techniques` e o coach já o
+                # respeitava (training_brain.advanced_allowed), mas ele NÃO
+                # estava no questionário: a pessoa nunca era perguntada, então o
+                # campo ficava null e valia o padrão por nível (iniciante não
+                # recebe técnica, os demais recebem). Agora é uma escolha
+                # explícita — e ela muda o treino: dito "não", o coach fica só
+                # com série normal, sem finisher com técnica e sem dica de
+                # técnica na prévia; volume e carga continuam progredindo igual.
+                {"key": "allow_advanced_techniques",
+                 "label": "Pode usar técnicas avançadas nos seus treinos?",
+                 "type": BOOL, "required": False,
+                 "help": "Myo-reps, rest-pause, muscle round, back-off e superset. Elas rendem mais "
+                         "estímulo no mesmo tempo, mas trabalham perto da falha. Se você está começando, "
+                         "ou prefere série normal, responda não — o treino continua evoluindo sem elas."},
             ],
         },
         {
