@@ -88,6 +88,47 @@ def _marca(valor) -> str | None:
     return valor or None
 
 
+# Palavras que aparecem depois de um "-" no nome e NÃO são marca — são preparo,
+# sabor ou qualificação do produto. Sem esta lista, "Arroz - integral" viraria
+# marca "integral".
+_NAO_E_MARCA = {
+    "integral", "light", "diet", "zero", "tradicional", "cremoso", "cremosa",
+    "cru", "crua", "cozido", "cozida", "assado", "assada", "frito", "frita",
+    "desnatado", "semidesnatado", "em po", "em pó", "sem gluten", "sem glúten",
+    "sem lactose", "sem acucar", "sem açúcar", "com sal", "sem sal",
+    "organico", "orgânico", "congelado", "congelada", "defumado", "defumada",
+    "sabor", "unidade", "pacote", "kg", "g", "ml", "l",
+}
+
+
+def _marca_no_nome(nome: str, marca_atual: str | None) -> tuple[str, str | None]:
+    """Extrai a marca de dentro do NOME quando o OFF deixou o campo `brands`
+    vazio — padrão "Cuzcuz - Gostozin", "Creme de ricota light ervas finas -
+    Godam". Devolve (nome_limpo, marca).
+
+    Por que importa: sem isto, esses produtos entram como alimentos SEM MARCA e
+    poluem a busca com vários homônimos de calorias diferentes (o usuário
+    encontrou 4 "Cuzcuz" variando de 112 a 354 kcal/100g, todos sem marca
+    aparente, sem jeito de saber qual era qual). Com a marca no lugar certo eles
+    viram produtos legítimos e distinguíveis — que é a regra do produto: pode ter
+    vários homônimos, desde que cada um mostre a marca.
+    """
+    if marca_atual:
+        return nome, marca_atual
+    if " - " not in nome:
+        return nome, None
+    cabeca, _, cauda = nome.rpartition(" - ")
+    cauda = cauda.strip()
+    cabeca = cabeca.strip()
+    # Cauda tem que parecer nome de marca: curta, não vazia, e não uma palavra
+    # de preparo/sabor. Cabeça tem que sobrar algo que sirva de nome.
+    if not cauda or not cabeca or len(cauda.split()) > 4:
+        return nome, None
+    if cauda.lower() in _NAO_E_MARCA or any(p == cauda.lower() for p in _NAO_E_MARCA):
+        return nome, None
+    return cabeca, cauda
+
+
 def _normalize_product(product: dict) -> dict | None:
     nutriments = product.get("nutriments", {})
     kcal = nutriments.get("energy-kcal_100g")
@@ -105,14 +146,17 @@ def _normalize_product(product: dict) -> dict | None:
 
     sodium_g = nutriments.get("sodium_100g")
 
+    # `brands` vem como STRING no endpoint de código de barras e como LISTA no de
+    # busca (search-a-licious). Sem normalizar, a marca chegaria no app como
+    # "['Aurora']". Quando vem vazia, tenta achar a marca dentro do nome.
+    nome = product.get("product_name") or product.get("product_name_pt") or "Produto sem nome"
+    nome, marca = _marca_no_nome(nome.strip(), _marca(product.get("brands")))
+
     return {
         "external_id": product.get("code") or product.get("_id"),
         "barcode": product.get("code"),
-        "name": product.get("product_name") or product.get("product_name_pt") or "Produto sem nome",
-        # `brands` vem como STRING no endpoint de código de barras e como LISTA
-        # no de busca (search-a-licious). Sem normalizar, a marca chegaria no
-        # app como "['Aurora']".
-        "brand": _marca(product.get("brands")),
+        "name": nome,
+        "brand": marca,
         "kcal_per_100g": kcal,
         "protein_g_per_100g": prot,
         "carbs_g_per_100g": carb,
