@@ -82,6 +82,28 @@ export async function duplicateRoutine(id: number): Promise<Routine> {
   return data;
 }
 
+export type SwapExerciseResult = {
+  exercicio_anterior: string;
+  exercicio_novo: string;
+  /** Por que ESTE substituto, em uma frase — o coach explicando a escolha. */
+  motivo: string;
+  routine: Routine;
+};
+
+/** Pede pro coach trocar UM exercício da rotina. Quem escolhe o substituto é o
+ * servidor, pelas mesmas regras da montagem (mesmo músculo e papel, tier,
+ * preferências, sem repetir o que já está no treino) — o app não manda opção
+ * nenhuma, só diz qual vaga a pessoa não quer. Séries e reps ficam como estavam. */
+export async function swapRoutineExercise(
+  routineId: number,
+  routineExerciseId: number
+): Promise<SwapExerciseResult> {
+  const { data } = await api.post<SwapExerciseResult>(
+    `/routines/${routineId}/exercises/${routineExerciseId}/swap`
+  );
+  return data;
+}
+
 /** Cria várias rotinas de uma vez (o treino que a IA montou), opcionalmente
  * arquivando as ativas antes. Uma chamada só e atômica — antes o app fazia N
  * chamadas soltas e qualquer falha deixava o treino pela metade. Exercícios

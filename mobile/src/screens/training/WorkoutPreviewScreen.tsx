@@ -10,7 +10,12 @@ import {
   type WorkoutOverlay,
 } from "../../api/coaching";
 import { CoachOverlayBlock, DeloadBanner } from "../../components/CoachOverlay";
-import { getRoutine, type Routine } from "../../api/routines";
+import {
+  getRoutine,
+  swapRoutineExercise,
+  type Routine,
+  type RoutineExercise,
+} from "../../api/routines";
 import {
   getWorkoutPreview,
   startWorkoutSession,
@@ -18,8 +23,10 @@ import {
 } from "../../api/workoutSessions";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { ExerciseThumb } from "../../components/ExerciseThumb";
 import { HelpDot } from "../../components/HelpDot";
+import { InfoDialog } from "../../components/InfoDialog";
 import { useActiveWorkout } from "../../context/ActiveWorkoutContext";
 import { useTheme } from "../../theme/ThemeProvider";
 import { fmtKg } from "../../utils/format";
@@ -46,6 +53,12 @@ export function WorkoutPreviewScreen() {
   const [overlays, setOverlays] = useState<WorkoutOverlay[]>([]);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
+  // Troca de exercício: qual vaga a pessoa pediu pra trocar (aviso aberto),
+  // qual está trocando agora (spinner no lugar do botão), e o que o coach
+  // respondeu depois de trocar.
+  const [trocando, setTrocando] = useState<RoutineExercise | null>(null);
+  const [emTroca, setEmTroca] = useState<number | null>(null);
+  const [resultadoTroca, setResultadoTroca] = useState<{ titulo: string; texto: string } | null>(null);
 
   useEffect(() => {
     Promise.all([getRoutine(routineId), getWorkoutPreview(routineId)])
@@ -99,6 +112,28 @@ export function WorkoutPreviewScreen() {
     return prefill.find((p) => p.exercise_id === exerciseId);
   }
 
+  /** Pede a troca ao coach. O app não escolhe o substituto — só diz qual vaga
+   * a pessoa não quer; quem decide é o servidor, pelas regras da montagem. */
+  async function confirmarTroca(alvo: RoutineExercise) {
+    setEmTroca(alvo.id);
+    try {
+      const r = await swapRoutineExercise(routineId, alvo.id);
+      setRoutine(r.routine);
+      // Os pesos pré-preenchidos são POR EXERCÍCIO: o que entrou tem histórico
+      // próprio (ou nenhum). Recarregar é o que evita a prévia mostrar a carga
+      // do exercício que acabou de sair ao lado do nome do que entrou.
+      getWorkoutPreview(routineId).then(setPrefill).catch(() => {});
+      setResultadoTroca({ titulo: `Entrou ${r.exercicio_novo}`, texto: r.motivo });
+    } catch (err: any) {
+      setResultadoTroca({
+        titulo: "Não deu pra trocar",
+        texto: mensagemDeErro(err, "Tente de novo daqui a pouco."),
+      });
+    } finally {
+      setEmTroca(null);
+    }
+  }
+
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
@@ -142,6 +177,39 @@ export function WorkoutPreviewScreen() {
                     {ex.target_sets} séries × {reps} reps · descanso {ex.rest_seconds}s
                   </Text>
                 </View>
+
+                {/* TROCAR EXERCÍCIO. Só existe na prévia, de propósito: aqui o
+                    treino ainda não começou, então trocar é editar o plano. Na
+                    tela de execução ele não aparece — trocar no meio da série
+                    embaralharia os números que a sessão está registrando. */}
+                {emTroca === ex.id ? (
+                  <View style={{ width: 38, height: 38, alignItems: "center", justifyContent: "center" }}>
+                    <ActivityIndicator color={colors.primary} />
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => setTrocando(ex)}
+                    disabled={emTroca !== null}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Trocar ${ex.exercise.name} por outro exercício`}
+                    // Área de toque generosa num alvo pequeno — o botão é
+                    // discreto de propósito (trocar é a exceção, não o caminho),
+                    // mas errar o toque num treino não pode ser fácil.
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: radius.pill,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: colors.surfaceAlt,
+                      opacity: emTroca !== null ? 0.4 : 1,
+                    }}
+                  >
+                    <Ionicons name="swap-horizontal" size={19} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                )}
               </View>
 
               {/* Rampa de preparação (aquecimento + feeder), calculada da carga
@@ -234,6 +302,30 @@ export function WorkoutPreviewScreen() {
       >
         <Button title="Treinar agora" onPress={handleStart} loading={starting} />
       </View>
+
+      <ConfirmDialog
+        visible={trocando !== null}
+        onClose={() => setTrocando(null)}
+        title="Trocar este exercício?"
+        message={
+          trocando
+            ? `Quem escolhe o substituto de ${trocando.exercise.name} é o coach — vem outro exercício ` +
+              "para o mesmo músculo, com o mesmo papel no treino e respeitando suas preferências. " +
+              "Suas séries e reps continuam iguais, e o volume da semana não muda."
+            : undefined
+        }
+        confirmLabel="Trocar"
+        onConfirm={() => {
+          if (trocando) confirmarTroca(trocando);
+        }}
+      />
+
+      <InfoDialog
+        visible={resultadoTroca !== null}
+        onClose={() => setResultadoTroca(null)}
+        title={resultadoTroca?.titulo ?? ""}
+        message={resultadoTroca?.texto}
+      />
     </View>
   );
 }

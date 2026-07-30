@@ -3,6 +3,7 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.coaching import exercise_swap
 from app.core.db import get_db
 from app.core.security import get_current_user
 from app.models.exercise import Exercise
@@ -413,3 +414,58 @@ def duplicate_routine(
         )
     db.commit()
     return _load(db, copy.id, current_user.id)
+
+
+class SwapExerciseResult(BaseModel):
+    """O que a troca fez — pro app conseguir avisar em vez de só recarregar."""
+
+    exercicio_anterior: str
+    exercicio_novo: str
+    motivo: str
+    routine: RoutineRead
+
+
+@router.post("/{routine_id}/exercises/{routine_exercise_id}/swap", response_model=SwapExerciseResult)
+def swap_routine_exercise(
+    routine_id: int,
+    routine_exercise_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> SwapExerciseResult:
+    """Troca UM exercício da rotina pelo melhor substituto que o coach escolhe.
+
+    A pessoa não escolhe o substituto — ela diz "esse aqui não". Quem escolhe é
+    `exercise_swap`, pelas MESMAS regras da montagem (tier, função, preferências,
+    sem redundância). Séries, reps e descanso ficam como estavam: o volume da
+    semana foi calculado com esta vaga existindo.
+
+    Mexe na rotina-molde de propósito. É o que "trocar exercício" significa antes
+    de treinar; overlay de sessão é outra coisa (ver coaching/apply/action).
+    """
+    routine = _load(db, routine_id, current_user.id)
+    alvo = next((re for re in routine.exercises if re.id == routine_exercise_id), None)
+    if alvo is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Exercício não está nesta rotina."
+        )
+
+    anterior = alvo.exercise or db.get(Exercise, alvo.exercise_id)
+    substituto = exercise_swap.melhor_substituto(db, current_user, alvo, list(routine.exercises))
+    if substituto is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Não achei um substituto que cumpra o mesmo papel sem repetir algo que já está "
+                "neste treino. Esse exercício é a melhor opção que a biblioteca tem pra essa vaga."
+            ),
+        )
+
+    motivo = exercise_swap.explicar(anterior, substituto)
+    alvo.exercise_id = substituto.id
+    db.commit()
+    return SwapExerciseResult(
+        exercicio_anterior=anterior.name,
+        exercicio_novo=substituto.name,
+        motivo=motivo,
+        routine=RoutineRead.model_validate(_load(db, routine_id, current_user.id)),
+    )

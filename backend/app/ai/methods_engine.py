@@ -737,6 +737,19 @@ def _ordem_da_vaga(slot: PlannedSlot) -> int:
     return order_class_for_pattern(padrao)
 
 
+# --- O que a escolha de exercício expõe pro resto do coaching --------------
+# A troca de exercício (`coaching.exercise_swap`) precisa decidir pelos MESMOS
+# critérios da montagem — tier, preferências da pessoa, sorteio entre
+# equivalentes. Ela chama estes nomes em vez de reimplementar a regra: montador e
+# trocador discordarem seria uma porta lateral pra montar um treino que a regra
+# mestra reprovaria.
+ESTAVEIS = _ESTAVEIS
+load_candidates = _load_pool
+proibido_por_preferencia = _proibido_por_preferencia
+peso_de_preferencia = _ordenar_por_preferencia
+escolher_com_variacao = _escolher_com_variacao
+
+
 def plan_compound_ratio(plan: WorkoutPlan) -> float:
     """Proporção composto/total que o plano pratica."""
     total = sum(len(s.slots) for s in plan.sessions)
