@@ -302,6 +302,83 @@ def test_acessorio_de_volume_respeita_o_teto_de_funcao(db):
     assert plan_review.review(plan, method=spec) == []
 
 
+def test_desligar_tecnica_reverte_dicas_ativas(db):
+    """Regressão relatada pelo usuário: ele respondeu "não" pra técnica avançada
+    e o coach continuou gerando treino com técnica. Causa: CoachingTechniqueCue
+    sobrevive a remontagens de propósito (é o que faz uma técnica aplicada
+    manualmente persistir), mas nada revertia as dicas já ativas quando a
+    preferência mudava — elas ficavam pra sempre, independente da escolha nova.
+    """
+    from sqlalchemy import delete, select
+
+    from app.coaching import plan_service
+    from app.models.coaching_technique_cue import CoachingTechniqueCue
+    from app.models.routine import Routine, RoutineExercise
+    from app.models.user import User
+    from app.models.user_profile import UserProfile
+
+    email = "__tmp_test_desliga_tecnica__@teste.local"
+
+    def limpar():
+        u = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+        if u is None:
+            return None
+        rids = [r.id for r in db.execute(select(Routine).where(Routine.user_id == u.id)).scalars()]
+        if rids:
+            db.execute(delete(RoutineExercise).where(RoutineExercise.routine_id.in_(rids)))
+            db.execute(delete(Routine).where(Routine.id.in_(rids)))
+        db.execute(delete(CoachingTechniqueCue).where(CoachingTechniqueCue.user_id == u.id))
+        db.execute(delete(UserProfile).where(UserProfile.user_id == u.id))
+        db.execute(delete(User).where(User.id == u.id))
+        db.commit()
+
+    limpar()
+    from app.models.user import Plan
+    from app.models.user_profile import (
+        ActivityLevel, BiologicalSex, ExperienceLevel, Goal, TrainingLocation,
+    )
+
+    u = User(email=email, handle="__tmp_dt2__", display_name="T", password_hash="x", plan=Plan.PRO)
+    db.add(u)
+    db.flush()
+    perfil = UserProfile(
+        user_id=u.id, age=30, height_cm=180,
+        biological_sex=BiologicalSex.MALE, activity_level=ActivityLevel.MODERATE,
+        training_location=TrainingLocation.ACADEMIA_COMPLETA,
+        experience_level=ExperienceLevel.INTERMEDIARIO, goal=Goal.HIPERTROFIA,
+        training_days_per_week=4, session_length="curto",  # curto sempre prescreve técnica
+        allow_advanced_techniques=True, periodization="auto", wants_cardio=True,
+    )
+    db.add(perfil)
+    db.commit()
+
+    from app.coaching import workout_builder as wb
+
+    try:
+        r1 = wb.build_and_save(db, u)
+        assert r1.get("technique_note"), "pré-condição: precisa ter criado alguma dica"
+        ativas = db.execute(
+            select(CoachingTechniqueCue).where(
+                CoachingTechniqueCue.user_id == u.id, CoachingTechniqueCue.reverted_at.is_(None)
+            )
+        ).scalars().all()
+        assert ativas
+
+        plan_service.apply_answers_to_profile(db, u, {"allow_advanced_techniques": False})
+        db.commit()
+        ainda_ativas = db.execute(
+            select(CoachingTechniqueCue).where(
+                CoachingTechniqueCue.user_id == u.id, CoachingTechniqueCue.reverted_at.is_(None)
+            )
+        ).scalars().all()
+        assert not ainda_ativas, "responder 'não' deveria reverter as dicas já ativas"
+
+        r2 = wb.build_and_save(db, u)
+        assert r2.get("technique_note") is None, "não pode montar técnica com allow_advanced_techniques=False"
+    finally:
+        limpar()
+
+
 def test_determinismo(db):
     """Mesma entrada, mesmo treino — o produto não pode sortear."""
     _, p1 = _plan(db, dias=4)

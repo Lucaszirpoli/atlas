@@ -59,6 +59,36 @@ def _parse_reps(s) -> tuple[int, int]:
     return 8, 12
 
 
+def revert_technique_cues(db: Session, user_id: int) -> int:
+    """Reverte TODAS as dicas de técnica ativas da pessoa. Devolve quantas.
+
+    Existe pra um caso específico: a dica de técnica sobrevive a remontagens de
+    propósito (comentário mais abaixo, no laço de teto de séries) — é o que faz
+    uma técnica aplicada manualmente continuar valendo depois de refazer o
+    treino. Mas isso quer dizer que DESLIGAR "técnicas avançadas" no questionário
+    não fazia nada sozinho: as dicas de antes ficavam ativas pra sempre, e a
+    pessoa via o treino continuar com myo-reps/rest-pause/etc. mesmo tendo
+    respondido "não". Quem muda a preferência pra False precisa chamar isto —
+    ver `plan_service.apply_answers_to_profile` e
+    `routers.coaching.set_training_prefs`, os dois lugares que gravam a escolha.
+
+    Não mexe em `target_sets` já gravado (a mesma limitação do "Desfazer" manual
+    em `/technique-cues/{id}/remove` — o número de séries só volta ao normal na
+    PRÓXIMA vez que o treino for remontado)."""
+    agora = datetime.now(timezone.utc)
+    cues = list(
+        db.execute(
+            select(CoachingTechniqueCue).where(
+                CoachingTechniqueCue.user_id == user_id,
+                CoachingTechniqueCue.reverted_at.is_(None),
+            )
+        ).scalars()
+    )
+    for cue in cues:
+        cue.reverted_at = agora
+    return len(cues)
+
+
 def _reparar_cobertura(
     db: Session,
     plan,

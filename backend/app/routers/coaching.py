@@ -430,6 +430,12 @@ def set_training_prefs(
     if "wants_cardio" in enviados:
         profile.wants_cardio = payload.wants_cardio
     if "allow_advanced_techniques" in enviados:
+        # Desligar reverte as dicas de técnica já ativas — elas sobrevivem a
+        # remontagens de propósito (ver workout_builder.revert_technique_cues),
+        # então sem isto a escolha "não" não tinha efeito nenhum sobre o que já
+        # tinha sido aplicado antes.
+        if payload.allow_advanced_techniques is False:
+            workout_builder.revert_technique_cues(db, current_user.id)
         profile.allow_advanced_techniques = payload.allow_advanced_techniques
     if "periodization" in enviados:
         profile.periodization = training_brain.valid_periodization(payload.periodization)

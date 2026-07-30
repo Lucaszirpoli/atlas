@@ -291,7 +291,16 @@ def apply_answers_to_profile(db: Session, user: User, answers: dict) -> None:
     # avançada, os demais recebem. Por isso o `is not None` — sem ele, quem
     # deixasse a pergunta em branco zeraria a escolha anterior.
     if answers.get("allow_advanced_techniques") is not None:
-        p.allow_advanced_techniques = bool(answers["allow_advanced_techniques"])
+        novo_valor = bool(answers["allow_advanced_techniques"])
+        # Desligar reverte as dicas já ativas — senão a escolha "não" fica sem
+        # efeito nenhum sobre o que já foi aplicado (ver
+        # workout_builder.revert_technique_cues). Roda mesmo se o valor
+        # anterior era None (nunca escolheu, valia o padrão por nível — que
+        # para intermediário/avançado já podia ter criado dicas). Ligar não
+        # precisa reverter nada: é só permitir de novo.
+        if not novo_valor:
+            workout_builder.revert_technique_cues(db, p.user_id)
+        p.allow_advanced_techniques = novo_valor
     if answers.get("available_days") is not None:
         p.available_days = list(answers["available_days"] or [])
     if answers.get("dietary_restrictions") is not None:
