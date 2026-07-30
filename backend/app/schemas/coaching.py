@@ -219,7 +219,16 @@ class BuildWorkoutResult(BaseModel):
     session_range: str | None = None
     cardio_note: str | None = None
     technique_note: str | None = None
+    extra_exercises_note: str | None = None
     periodization_label: str
+    # Resultado da revisão de coerência global (as 8 perguntas da regra mestra:
+    # cobertura por região, equilíbrio empurrar/puxar e joelho/quadril,
+    # redundância de função, ordem). Treino aprovado sai com is_coherent=True e a
+    # lista vazia. Precisa estar DECLARADO aqui: o response_model do FastAPI
+    # filtra o que não está no schema, então sem estes dois campos o resultado da
+    # revisão era descartado silenciosamente antes de chegar ao app.
+    is_coherent: bool = True
+    coherence_issues: list[str] = []
     message: str
 
 

@@ -190,8 +190,26 @@ def quality_order():
 @event.listens_for(Exercise, "before_insert")
 @event.listens_for(Exercise, "before_update")
 def _populate_is_compound(_mapper, _connection, target: "Exercise") -> None:
+    """Composto x isolado, decidido em toda gravação.
+
+    A TAXONOMIA manda quando o exercício é da biblioteca curada: lá o padrão de
+    movimento está escrito à mão (empurrar horizontal, dominante de joelho,
+    isolamento...) e composto é exatamente "padrão multiarticular". O
+    classificador por palavra-chave fica só pro que a taxonomia não conhece —
+    exercício criado pelo usuário e linhas antigas escondidas.
+
+    Antes o classificador decidia SEMPRE, e ele erra articulação única com nome
+    de composto: "Pulldown com braços estendidos" entrava como composto e podia
+    ocupar a vaga de composto de costas no lugar de uma remada ou puxada.
+    Importa também que atribuir `is_compound` na mão não funcionava (este hook
+    sobrescrevia em silêncio) — agora a taxonomia é o único lugar pra mudar.
+    """
+    from app.ai.exercise_taxonomy import is_known, taxon_for
     from app.services.exercise_classify import classify_is_compound
 
+    if not target.is_custom and is_known(target.name):
+        target.is_compound = taxon_for(target.name, target.primary_muscle_group).is_compound
+        return
     target.is_compound = classify_is_compound(
         target.name, target.secondary_muscle_groups, target.equipment
     )

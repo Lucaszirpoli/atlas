@@ -115,16 +115,23 @@ def resolve_weak_points(profile) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# DIAS por semana que a pessoa pode treinar (2–7). É o que define quantos
+# DIAS por semana que a pessoa pode treinar (2–6). É o que define quantos
 # treinos o coach monta. None = automático (infere dos dias do onboarding).
+#
+# Por que 2 no piso e 6 no teto (decisão de produto, 2026-07-30):
+#   - 2 dias não é o ideal (cada grupo treina 2x/semana só se as duas sessões
+#     forem full body), mas é treino de verdade e melhor que não treinar.
+#   - 7 dias NÃO EXISTE: sem nenhum dia de folga não há recuperação, e o
+#     próprio motor de volume trabalha com a fadiga sendo sistêmica. Quem marca
+#     7 dias disponíveis no onboarding é montado com 6 (o clamp abaixo).
 # ---------------------------------------------------------------------------
 TRAINING_DAYS_MIN = 2
-TRAINING_DAYS_MAX = 7
+TRAINING_DAYS_MAX = 6
 TRAINING_DAYS_OPTIONS: list[int] = list(range(TRAINING_DAYS_MIN, TRAINING_DAYS_MAX + 1))
 
 
 def valid_training_days(value: int | None) -> int | None:
-    """None (automático) ou um inteiro dentro de 2–7; fora disso vira None."""
+    """None (automático) ou um inteiro dentro de 2–6; fora disso vira None."""
     if value is None:
         return None
     try:
@@ -446,9 +453,14 @@ def suggest_technique(
     1) PONTO FRACO — rest-pause é a técnica certa pra atacar um grupo que a
        pessoa priorizou: dobra o volume efetivo da série (~10 reps numa carga
        de ~4-5RM), com o cuidado de fadiga que isso pede.
-    2) POUCO TEMPO por sessão — hipertrofia é volume-dependente, então
-       fragmentar a série (myo-reps/muscle round) acumula volume de verdade
-       sem esticar um treino curto. Composto -> muscle round; isolado -> myo-reps.
+    2) POUCO TEMPO por sessão — MYO-REPS, tanto no composto quanto no isolado.
+       Hipertrofia é volume-dependente, e fragmentar a série acumula volume sem
+       esticar o treino. Antes o composto levava muscle round aqui; virou
+       myo-reps por medição: myo-reps economiza ~80s por exercício contra as
+       séries retas equivalentes, enquanto muscle round com 6 blocos CUSTA ~20s.
+       Numa sessão curta o que se quer é justamente o tempo, então a técnica que
+       poupa é a certa. (Muscle round continua sendo a escolha de acumulação no
+       item 4, onde o critério é densidade e não tempo.)
     3) BASTANTE TEMPO por sessão — back-off testa a tolerância a uma camada
        extra de volume ANTES de comprometer com uma série reta a mais no
        treino (não é permanente, é o teste).
@@ -460,7 +472,7 @@ def suggest_technique(
     if is_weak_point:
         key = "rest_pause"
     elif session_length == "curto":
-        key = "muscle_round" if is_compound else "myo_reps"
+        key = "myo_reps"
     elif session_length == "longo":
         key = "back_off"
     else:

@@ -369,7 +369,14 @@ export type BuildWorkoutResult = {
   session_range: string | null;
   cardio_note: string | null;
   technique_note: string | null;
+  extra_exercises_note: string | null;
   periodization_label: string;
+  /** Resultado da revisão de coerência global do treino (as 8 perguntas da
+   * regra mestra: cobertura por região, equilíbrio empurrar/puxar e
+   * joelho/quadril, redundância, ordem). Treino aprovado vem
+   * `is_coherent: true` e a lista vazia. */
+  is_coherent: boolean;
+  coherence_issues: string[];
   message: string;
 };
 

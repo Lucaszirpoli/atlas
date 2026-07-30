@@ -148,7 +148,7 @@ EXERCISES: list[tuple[str, MuscleGroup, list[MuscleGroup], Equipment, Difficulty
     ("Flexora em pé", M.HAMSTRINGS, [], E.MACHINE, D.BEGINNER, "0795_flexora_em_pe.gif"),
     ("Elevação pélvica com barra", M.GLUTES, [M.HAMSTRINGS], E.BARBELL, D.BEGINNER, "1409_elevacao_pelvica_com_barra.gif"),
     ("Elevação pélvica no Smith", M.GLUTES, [M.HAMSTRINGS], E.SMITH_MACHINE, D.BEGINNER, "elevacao_pelvica_no_smith.png"),
-    ("Elevação pélvica na máquina", M.GLUTES, [M.HAMSTRINGS], E.MACHINE, D.BEGINNER, "elevacao_pelvica_na_maquina.png"),
+    ("Elevação pélvica na máquina", M.GLUTES, [M.HAMSTRINGS], E.MACHINE, D.BEGINNER, "elevacao_pelvica_na_maquina.gif"),
     ("Glúteo na polia", M.GLUTES, [], E.CABLE, D.BEGINNER, "0228_gluteo_na_polia.gif"),
     ("Glúteo na máquina", M.GLUTES, [], E.MACHINE, D.BEGINNER, "3193_gluteo_na_maquina.gif"),
     ("Coice na máquina", M.GLUTES, [], E.MACHINE, D.BEGINNER, "2286_coice_na_maquina.gif"),
@@ -211,6 +211,9 @@ def run() -> None:
             )
             secondary_values = [g.value for g in secondary]
             video_url = f"{IMAGE_URL_PREFIX}/{image}"
+            # is_compound NÃO é setado aqui: um hook before_insert/before_update
+            # em models/exercise.py decide, e a taxonomia é a autoridade dele.
+            # Atribuir aqui seria escrita morta (o hook sobrescreve depois).
 
             if existing:
                 existing.primary_muscle_group = primary

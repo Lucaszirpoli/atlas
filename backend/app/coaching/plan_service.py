@@ -81,6 +81,7 @@ _IMPACTO: dict[str, tuple[str, ...]] = {
     # Recuperação.
     "sleep_hours": ("analise",),
     "wants_cardio": ("treino",),
+    "allow_advanced_techniques": ("treino",),
     "periodization": ("treino", "periodizacao"),
     "medications": ("analise",),
     "notes": ("analise",),
@@ -167,6 +168,7 @@ def answers_from_profile(db: Session, user: User) -> dict[str, Any]:
         "dietary_restrictions": list(p.dietary_restrictions or []),
         "injuries_limitations": p.injuries_limitations,
         "wants_cardio": p.wants_cardio,
+        "allow_advanced_techniques": p.allow_advanced_techniques,
         "periodization": p.periodization or "auto",
         **meta_atual,
     }
@@ -284,6 +286,12 @@ def apply_answers_to_profile(db: Session, user: User, answers: dict) -> None:
     p.periodization = training_brain.valid_periodization(answers.get("periodization"))
     if answers.get("wants_cardio") is not None:
         p.wants_cardio = bool(answers["wants_cardio"])
+    # None é resposta VÁLIDA aqui (= "não escolheu"), e nesse caso vale o padrão
+    # por nível de training_brain.advanced_allowed: iniciante não recebe técnica
+    # avançada, os demais recebem. Por isso o `is not None` — sem ele, quem
+    # deixasse a pergunta em branco zeraria a escolha anterior.
+    if answers.get("allow_advanced_techniques") is not None:
+        p.allow_advanced_techniques = bool(answers["allow_advanced_techniques"])
     if answers.get("available_days") is not None:
         p.available_days = list(answers["available_days"] or [])
     if answers.get("dietary_restrictions") is not None:

@@ -12,6 +12,7 @@ from app.core.db import Base, SessionLocal, engine
 from app.models.exercise import Exercise
 from app.models.food import Food
 from app.scripts import (
+    dedup_foods,
     backfill_exercise_category,
     clean_taco_names,
     grant_comp_pro,
@@ -241,6 +242,13 @@ def run() -> None:
     # do seed_food_portions de propósito: aquele deriva a medida do próprio
     # alimento (fonte melhor) e este só preenche quem ficou sem nenhuma.
     seed_medidas_caseiras.run()
+
+    # Limpeza dos alimentos: homônimo sem marca, duplicata que só muda o sal,
+    # nome ambíguo ao lado de versões específicas, e genérico de uma palavra.
+    # Roda por ÚLTIMO entre os seeds de comida, porque precisa da base completa
+    # pra decidir quem é duplicata de quem. ESCONDE, nunca apaga — o histórico
+    # de refeições referencia food_id por FK (regra 4). Idempotente.
+    dedup_foods.run()
 
     # Pro de cortesia (testadores) via env PRO_COMP_EMAILS. Só concede.
     grant_comp_pro.run()

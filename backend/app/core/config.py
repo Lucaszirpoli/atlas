@@ -58,10 +58,11 @@ class Settings(BaseSettings):
     fatsecret_client_id: str = ""
     fatsecret_client_secret: str = ""
 
-    # ExerciseDB (RapidAPI) — fonte de GIF/imagem demonstrativa por exercício.
-    # Cache permanente em Exercise.video_url após a primeira busca (ver
-    # scripts/backfill_exercise_images.py) pra não estourar a cota do plano.
-    rapidapi_exercisedb_key: str = ""
+    # A API do ExerciseDB (RapidAPI) foi APOSENTADA em 2026-07-30: todas as
+    # imagens da biblioteca são arquivos locais versionados em
+    # static/exercise_images/curated/, então não existe mais chamada de rede
+    # nem cota pra administrar. Os 3 scripts que consumiam a API (fetch,
+    # backfill e audit de imagens) foram removidos junto com a chave.
 
     # URL pública onde o backend é acessível (usada pra montar o video_url
     # completo dos exercícios cujo GIF fica hospedado localmente em /static).

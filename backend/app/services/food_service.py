@@ -69,12 +69,19 @@ def search_local(db: Session, query: str, limit: int = 30) -> list[Food]:
 
     candidates.sort(key=score, reverse=True)
 
-    # Dedup por nome exibido: TACO + curado às vezes têm o MESMO nome com kcal
-    # levemente diferente ("Arroz carreteiro" 2×). Mantém o de maior score.
-    vistos: set[str] = set()
+    # Dedup por nome exibido + MARCA. TACO e curado às vezes têm o mesmo nome com
+    # kcal levemente diferente ("Arroz carreteiro" 2×) e aí só um deve ficar.
+    #
+    # A marca entra na chave porque produtos de marcas DIFERENTES com o mesmo nome
+    # são resultados diferentes e legítimos — é a regra do produto: "pode ter
+    # pipoca A, pipoca B e pipoca C, desde que cada uma mostre a marca". Sem ela,
+    # "Cuzcuz" da Gostozin e "Cuzcuz" da Rainha do Campo se eliminavam e a pessoa
+    # só via um dos dois, sem saber que o outro existia. Quem some agora é só o
+    # homônimo SEM marca, que é o que o dedup_foods já esconde na origem.
+    vistos: set[tuple[str, str]] = set()
     unicos: list[Food] = []
     for f in candidates:
-        chave = (f.name or "").strip().lower()
+        chave = ((f.name or "").strip().lower(), (f.brand or "").strip().lower())
         if chave in vistos:
             continue
         vistos.add(chave)
@@ -100,13 +107,40 @@ def search_brands_live(db: Session, query: str, limit: int = 30) -> list[Food]:
         ).scalars()
         if f.external_id
     }
+
+    # Nomes que a busca LOCAL já entrega. Um produto do OFF sem marca que repete
+    # um nome do TACO é ruído puro: mesma comida, dado pior, e a pessoa fica com
+    # duas linhas iguais de calorias diferentes sem jeito de escolher.
+    nomes_locais = {
+        normalize_search_text(f.name or "")
+        for f in db.execute(select(Food).where(Food.hidden.is_(False))).scalars()
+    }
+
     out: list[Food] = []
     seen: set[str] = set()
+    nomes_desta_busca: set[str] = set()
     for product in remote_products:
         ext = product.get("external_id")
         if not ext or ext in seen:
             continue
         seen.add(ext)
+        # ESTA É A BUSCA DE MARCAS. Produto sem marca aqui não é o que a pessoa
+        # pediu, e era a origem da poluição do banco: cada busca GRAVAVA os
+        # genéricos do OFF como alimento permanente — foi assim que apareceram 4
+        # "Cuzcuz" de 112 a 354 kcal/100g, todos sem marca aparente e sem jeito
+        # de saber qual era cru e qual era cozido. Sem marca não entra na lista
+        # e, o mais importante, não é gravado.
+        #
+        # O código de barras continua achando esses produtos: get_by_barcode não
+        # passa por aqui e não filtra marca. Quem escaneia está com o produto na
+        # mão; quem digita "cuscuz" quer uma resposta em que dê pra escolher.
+        if not (product.get("brand") or "").strip():
+            continue
+        nome_norm = normalize_search_text(product.get("name") or "")
+        if nome_norm and (nome_norm in nomes_locais or nome_norm in nomes_desta_busca):
+            continue
+        if nome_norm:
+            nomes_desta_busca.add(nome_norm)
         if ext in existing_ids:
             existing = db.execute(
                 select(Food).where(
