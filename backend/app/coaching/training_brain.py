@@ -115,16 +115,23 @@ def resolve_weak_points(profile) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# DIAS por semana que a pessoa pode treinar (2–7). É o que define quantos
+# DIAS por semana que a pessoa pode treinar (2–6). É o que define quantos
 # treinos o coach monta. None = automático (infere dos dias do onboarding).
+#
+# Por que 2 no piso e 6 no teto (decisão de produto, 2026-07-30):
+#   - 2 dias não é o ideal (cada grupo treina 2x/semana só se as duas sessões
+#     forem full body), mas é treino de verdade e melhor que não treinar.
+#   - 7 dias NÃO EXISTE: sem nenhum dia de folga não há recuperação, e o
+#     próprio motor de volume trabalha com a fadiga sendo sistêmica. Quem marca
+#     7 dias disponíveis no onboarding é montado com 6 (o clamp abaixo).
 # ---------------------------------------------------------------------------
 TRAINING_DAYS_MIN = 2
-TRAINING_DAYS_MAX = 7
+TRAINING_DAYS_MAX = 6
 TRAINING_DAYS_OPTIONS: list[int] = list(range(TRAINING_DAYS_MIN, TRAINING_DAYS_MAX + 1))
 
 
 def valid_training_days(value: int | None) -> int | None:
-    """None (automático) ou um inteiro dentro de 2–7; fora disso vira None."""
+    """None (automático) ou um inteiro dentro de 2–6; fora disso vira None."""
     if value is None:
         return None
     try:

@@ -79,8 +79,9 @@ app.include_router(evolution.router)
 app.include_router(coaching.router)
 app.include_router(objective.router)
 
-# GIFs de exercício baixados da ExerciseDB (ver scripts/backfill_exercise_images.py)
-# ficam aqui até migrarmos pra um bucket S3-compatible (Cloudflare R2) em produção.
+# Imagens/GIFs dos exercícios: arquivos locais versionados no repo (a API do
+# ExerciseDB foi aposentada). Ficam aqui até migrarmos pra um bucket
+# S3-compatible (Cloudflare R2) em produção.
 _static_dir = Path(__file__).parent / "static"
 _static_dir.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=_static_dir), name="static")
