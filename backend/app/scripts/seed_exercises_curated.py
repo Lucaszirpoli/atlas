@@ -211,6 +211,9 @@ def run() -> None:
             )
             secondary_values = [g.value for g in secondary]
             video_url = f"{IMAGE_URL_PREFIX}/{image}"
+            # is_compound NÃO é setado aqui: um hook before_insert/before_update
+            # em models/exercise.py decide, e a taxonomia é a autoridade dele.
+            # Atribuir aqui seria escrita morta (o hook sobrescreve depois).
 
             if existing:
                 existing.primary_muscle_group = primary
