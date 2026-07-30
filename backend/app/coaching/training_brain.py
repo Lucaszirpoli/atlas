@@ -12,6 +12,7 @@ o mesmo output. A camada de conversa (IA Pro) só traduz isto; não muda a decis
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timezone
 
 from app.models.exercise import MuscleGroup
 
@@ -112,6 +113,59 @@ def resolve_weak_points(profile) -> list[str]:
         return lista
     legado = valid_weak_point(getattr(profile, "weak_point", None))
     return [legado] if legado else []
+
+
+# --- BLOCO DE ESPECIALIZAÇÃO -----------------------------------------------
+# Priorizar um músculo não é de graça: os outros descem pro piso da faixa e
+# passam o bloco em manutenção (volume_landmarks.weekly_plan). É a troca certa —
+# e tem prazo de validade. Um bloco de especialização dura 4 a 8 semanas; depois
+# disso a pessoa precisa decidir de novo, porque o corpo inteiro parado por tempo
+# indeterminado deixa de ser priorização e vira só um treino desequilibrado.
+#
+# 6 semanas: o meio da faixa consagrada, e tempo suficiente pra o ponto fraco
+# atravessar um mesociclo inteiro (MESOCYCLE_WEEKS) com volume alto e ainda
+# aparecer no espelho.
+SPECIALIZATION_WEEKS = 6
+
+
+def specialization_weeks(since, now) -> float | None:
+    """Há quantas semanas o bloco de especialização está em curso. None quando
+    não há bloco (nenhum ponto fraco marcado, ou perfil antigo sem a data)."""
+    if since is None:
+        return None
+    if since.tzinfo is None:
+        since = since.replace(tzinfo=timezone.utc)
+    return max(0.0, (now - since).total_seconds() / (7 * 86400))
+
+
+def specialization_due(since, now) -> bool:
+    """O bloco já cumpriu o prazo e o coach precisa cobrar a decisão?"""
+    semanas = specialization_weeks(since, now)
+    return semanas is not None and semanas >= SPECIALIZATION_WEEKS
+
+
+def apply_weak_points(profile, valores, now) -> list[str]:
+    """Grava os pontos fracos no perfil e mantém o relógio do bloco em dia.
+
+    Existe pra o relógio não depender de quem chama: os pontos fracos são
+    escritos em dois lugares (o questionário e as preferências de treino), e uma
+    data que só um dos dois carimbasse seria pior que data nenhuma — o coach
+    cobraria a revisão de umas pessoas e de outras não.
+
+    A data só é REINICIADA quando o conjunto muda de verdade. Reescrever a mesma
+    escolha (salvar o questionário de novo sem mexer no ponto fraco) não zera o
+    relógio: senão bastaria abrir e salvar as preferências pra a especialização
+    nunca vencer, que é justamente o que este mecanismo existe pra impedir.
+    """
+    novos = valid_weak_points(valores)
+    atuais = valid_weak_points(getattr(profile, "weak_points", None))
+    profile.weak_points = novos
+    profile.weak_point = novos[0] if novos else None  # mantém o legado em sincronia
+    if not novos:
+        profile.weak_points_since = None
+    elif set(novos) != set(atuais) or getattr(profile, "weak_points_since", None) is None:
+        profile.weak_points_since = now
+    return novos
 
 
 # ---------------------------------------------------------------------------

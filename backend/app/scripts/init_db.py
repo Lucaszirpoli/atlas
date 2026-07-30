@@ -60,6 +60,9 @@ def _ensure_profile_columns() -> None:
         ("medications", "TEXT", "TEXT"),
         ("extra_notes", "TEXT", "TEXT"),
         ("strong_points", "VARCHAR(20)[]", "TEXT"),
+        # Quando o bloco de especialização (ponto fraco) começou — o relógio que
+        # faz o coach cobrar a revisão em vez de deixar a priorização eterna.
+        ("weak_points_since", "TIMESTAMPTZ", "TIMESTAMP"),
     ]
     pg = engine.dialect.name == "postgresql"
     with engine.begin() as conn:

@@ -703,7 +703,15 @@ function CoachingHub({
           {missoes.length > 0 ? `Missões da semana · ${missoes.length}` : "Missões da semana"}
         </Text>
         {missoes.length > 0 ? (
-          missoes.map((ins) => <InsightBar key={ins.key} ins={ins} onApplied={onApplied} onOpenChart={onOpenChart} />)
+          missoes.map((ins) => (
+            <InsightBar
+              key={ins.key}
+              ins={ins}
+              onApplied={onApplied}
+              onOpenChart={onOpenChart}
+              onOpenSection={onOpenSection}
+            />
+          ))
         ) : (
           <Card accent={colors.success}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -1020,10 +1028,12 @@ function InsightBar({
   ins,
   onApplied,
   onOpenChart,
+  onOpenSection,
 }: {
   ins: CoachingInsight;
   onApplied: (title: string, message: string) => void;
   onOpenChart: (chart: CoachingChart) => void;
+  onOpenSection?: (s: CoachingSectionId) => void;
 }) {
   const { colors, type, spacing, radius } = useTheme();
   const [applying, setApplying] = useState(false);
@@ -1041,6 +1051,10 @@ function InsightBar({
   const kind = ins.adjustment?.kind;
   const podeAplicarAcao = (kind === "progression" || kind === "deload") && !!ins.finding_key;
   const podeAplicarTransicao = kind === "transition" && !!ins.finding_key;
+  // Bloco de especialização vencido: três saídas legítimas, sem uma
+  // "recomendada" — a decisão é da pessoa, e o coach já disse o custo no texto.
+  const podeRevisarEspecializacao = kind === "specialization" && !!ins.finding_key;
+  const semanasDoProximoBloco = ins.adjustment?.block_weeks ?? 6;
   const novoPeso = ins.adjustment?.new_weight;
   const rotuloAcao =
     kind === "progression"
@@ -1084,6 +1098,20 @@ function InsightBar({
     setApplying(true);
     try {
       const r = await applyCoachAction(ins.finding_key);
+      setAplicado(true);
+      onApplied(r.title, r.message);
+    } catch (e: any) {
+      setErro(mensagemDeErro(e, "Não consegui aplicar agora."));
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  async function decidirEspecializacao(escolha: "keep" | "end") {
+    setErro(null);
+    setApplying(true);
+    try {
+      const r = await applyCoachAction(`specialization:${escolha}`);
       setAplicado(true);
       onApplied(r.title, r.message);
     } catch (e: any) {
@@ -1201,6 +1229,39 @@ function InsightBar({
           )}
           {erro ? (
             <Text style={[type.caption, { color: colors.warning, marginTop: 4, textAlign: "center" }]}>{erro}</Text>
+          ) : null}
+        </View>
+      ) : podeRevisarEspecializacao ? (
+        <View style={{ marginTop: spacing.sm, gap: spacing.sm }}>
+          {/* Três saídas de MESMO peso visual, de propósito: qual delas é a
+              certa depende do objetivo da pessoa, não do app. O coach já disse
+              o custo no texto acima — aqui ele para de opinar. */}
+          <Button
+            title={`Seguir mais ${semanasDoProximoBloco} semanas`}
+            variant="secondary"
+            compact
+            loading={applying}
+            onPress={() => decidirEspecializacao("keep")}
+          />
+          <Button
+            title="Trocar de prioridade"
+            variant="secondary"
+            compact
+            disabled={applying}
+            onPress={() => onOpenSection?.("treino")}
+          />
+          <Button
+            title="Voltar todo mundo ao normal"
+            variant="secondary"
+            compact
+            loading={applying}
+            onPress={() => decidirEspecializacao("end")}
+          />
+          <Text style={[type.caption, { color: colors.textSecondary, textAlign: "center" }]}>
+            Voltar ao normal remonta seu treino na hora. Seguir não muda nada — só adia a conversa.
+          </Text>
+          {erro ? (
+            <Text style={[type.caption, { color: colors.warning, textAlign: "center" }]}>{erro}</Text>
           ) : null}
         </View>
       ) : podeAplicarTransicao ? (

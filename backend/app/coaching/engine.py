@@ -418,6 +418,7 @@ def _insights(
     weak_points: tuple[str, ...] = (),
     applied_technique_ex_ids: frozenset[int] = frozenset(),
     allow_advanced: bool = True,
+    specialization_weeks: float | None = None,
 ) -> list[Insight]:
     # Decisão ÚNICA de oferecer deload (mata o paradoxo): a periodização manda.
     offer = training_brain.offer_deload(
@@ -438,7 +439,55 @@ def _insights(
     pendentes = _dias_incompletos_insight(m)
     if pendentes is not None:
         insights.insert(0, pendentes)
+    especializacao = _especializacao_insight(weak_points, specialization_weeks)
+    if especializacao is not None:
+        insights.insert(0, especializacao)
     return insights
+
+
+def _especializacao_insight(
+    weak_points: tuple[str, ...], semanas: float | None
+) -> Insight | None:
+    """A conta do bloco de especialização, quando ele vence.
+
+    Priorizar um músculo põe todo o resto em manutenção (§6.1, a equalização).
+    Isso é a troca certa por 4 a 8 semanas, e nunca foi pra ser permanente — mas
+    "ponto fraco" é uma resposta de questionário, então fica marcada até alguém
+    mexer. Sem esta cobrança, quem marcasse braço e esquecesse passaria um ano
+    com costas e perna paradas e concluiria que o app parou de funcionar, sem
+    nunca ligar uma coisa à outra.
+
+    Não é um alerta de erro: é uma DECISÃO que voltou pra mesa, com as três
+    saídas legítimas (seguir, trocar de prioridade, voltar ao normal) e o custo
+    dito em voz alta. Só aparece depois do prazo cumprido.
+    """
+    if not weak_points or semanas is None or semanas < training_brain.SPECIALIZATION_WEEKS:
+        return None
+    nomes = [training_brain.WEAK_POINT_LABEL.get(w, w) for w in weak_points]
+    alvo = " e ".join(nomes) if len(nomes) <= 2 else ", ".join(nomes)
+    return Insight(
+        key="especializacao",
+        severity=SEV_ACTION,
+        title=f"{int(semanas)} semanas priorizando {alvo.lower()}",
+        detail=(
+            f"Nesse período {alvo.lower()} recebeu volume prioritário, e o resto do corpo ficou "
+            "em manutenção pra dar conta da recuperação — foi de propósito, e é o que faz "
+            "priorizar funcionar. Só que manutenção longa demais deixa de ser priorização e vira "
+            "treino desequilibrado. Você decide o próximo bloco: seguir com essa prioridade, "
+            "trocar por outro músculo, ou voltar todo mundo pra faixa normal."
+        ),
+        finding_key="specialization:review",
+        adjustment={
+            "kind": "specialization",
+            "weeks": int(semanas),
+            # Quanto dura o PRÓXIMO bloco, se a pessoa seguir. Vai daqui pro app
+            # em vez de o app repetir o 6 — número de regra de treino duplicado
+            # na tela é número que um dia vai discordar do motor.
+            "block_weeks": training_brain.SPECIALIZATION_WEEKS,
+            "muscles": list(weak_points),
+            "muscles_label": alvo,
+        },
+    )
 
 
 def _causa_provavel_do_plato(m: Metrics) -> str | None:
@@ -664,6 +713,7 @@ def analyze(
     weak_points: tuple[str, ...] = (),
     applied_technique_ex_ids: frozenset[int] = frozenset(),
     allow_advanced: bool = True,
+    specialization_weeks: float | None = None,
 ) -> WeeklyAnalysis:
     findings: list[Finding] = []
     findings += _weight_findings(m)
@@ -696,7 +746,8 @@ def analyze(
         headline=headline,
         findings=findings,
         insights=_insights(m, active_deload, periodization, planned_deload, period, session_length, weak_points,
-                           applied_technique_ex_ids, allow_advanced=allow_advanced),
+                           applied_technique_ex_ids, allow_advanced=allow_advanced,
+                           specialization_weeks=specialization_weeks),
         data_gaps=gaps,
         metrics=_metrics_public(m),
     )

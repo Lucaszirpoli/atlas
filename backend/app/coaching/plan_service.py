@@ -282,7 +282,7 @@ def apply_answers_to_profile(db: Session, user: User, answers: dict) -> None:
         int(answers["training_days_per_week"]) if str(answers.get("training_days_per_week") or "").isdigit() else None
     )
     p.session_length = training_brain.valid_session_length(answers.get("session_length"))
-    p.weak_points = training_brain.valid_weak_points(answers.get("weak_points"))
+    training_brain.apply_weak_points(p, answers.get("weak_points"), datetime.now(timezone.utc))
     p.periodization = training_brain.valid_periodization(answers.get("periodization"))
     if answers.get("wants_cardio") is not None:
         p.wants_cardio = bool(answers["wants_cardio"])

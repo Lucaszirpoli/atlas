@@ -144,6 +144,18 @@ class UserProfile(Base):
     weak_points: Mapped[list[str]] = mapped_column(
         ARRAY(String(20)).with_variant(JSON(), "sqlite"), default=list
     )
+    # QUANDO esta lista de pontos fracos passou a valer — o relógio do bloco de
+    # especialização.
+    #
+    # Priorizar um músculo custa: os outros descem pro piso da faixa e ficam em
+    # manutenção (volume_landmarks.weekly_plan). Isso é certo por 4 a 8 semanas e
+    # errado pra sempre, e "ponto fraco" é uma resposta de questionário — fica
+    # marcada até a pessoa trocar. Sem esta data, quem marcasse braço e
+    # esquecesse passaria um ano com o resto do corpo parado, sem nunca ligar uma
+    # coisa à outra. Com ela, o coach cobra a revisão no prazo.
+    #
+    # None = sem especialização em curso (nenhum ponto fraco marcado).
+    weak_points_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     session_length: Mapped[str | None] = mapped_column(String(10), nullable=True)  # curto|medio|longo
     wants_cardio: Mapped[bool | None] = mapped_column(Boolean, nullable=True)  # None = não escolheu
     periodization: Mapped[str] = mapped_column(

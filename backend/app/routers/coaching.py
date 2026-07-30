@@ -193,6 +193,11 @@ def coaching_analysis(
         weak_points=tuple(training_brain.resolve_weak_points(profile)) if profile else (),
         applied_technique_ex_ids=applied_tech_ex_ids,
         allow_advanced=training_brain.advanced_allowed(profile),
+        # Há quantas semanas o bloco de especialização está rodando — é o que
+        # faz o coach cobrar a decisão quando o prazo vence.
+        specialization_weeks=training_brain.specialization_weeks(
+            getattr(profile, "weak_points_since", None), now
+        ),
     ).to_dict()
     _inject_transition(result, db, current_user)
     result["metrics"]["pace"] = _pace_block(db, current_user)
@@ -437,14 +442,12 @@ def set_training_prefs(
     if profile is None:
         raise HTTPException(status_code=400, detail="Complete seu perfil primeiro.")
     enviados = payload.model_fields_set
+    agora = datetime.now(timezone.utc)
     if "weak_points" in enviados:
-        wps = training_brain.valid_weak_points(payload.weak_points)
-        profile.weak_points = wps
-        profile.weak_point = wps[0] if wps else None  # mantém o legado em sincronia
+        training_brain.apply_weak_points(profile, payload.weak_points, agora)
     elif "weak_point" in enviados:  # compat: chamador antigo mandando 1 só
         g = training_brain.valid_weak_point(payload.weak_point)
-        profile.weak_point = g
-        profile.weak_points = [g] if g else []
+        training_brain.apply_weak_points(profile, [g] if g else [], agora)
     if "session_length" in enviados:
         profile.session_length = training_brain.valid_session_length(payload.session_length)
     if "training_days_per_week" in enviados:
@@ -739,6 +742,56 @@ def apply_action(
                 CoachingAction.reverted_at.is_(None),
             )
         ).scalar_one_or_none()
+
+    # --- BLOCO DE ESPECIALIZAÇÃO ------------------------------------------
+    # A decisão que o coach devolve pra mesa quando o bloco vence (ver
+    # engine._especializacao_insight). Duas saídas mexem em dado; a terceira
+    # ("trocar de prioridade") é navegação no app, não passa por aqui.
+    if fk.startswith("specialization:"):
+        escolha = fk.split(":", 1)[1]
+        profile = getattr(current_user, "profile", None)
+        if profile is None:
+            raise HTTPException(status_code=400, detail="Complete seu perfil primeiro.")
+        atuais = training_brain.resolve_weak_points(profile)
+        if not atuais:
+            raise HTTPException(
+                status_code=409,
+                detail="Você não tem nenhum ponto fraco marcado agora — não há bloco pra revisar.",
+            )
+        rotulos = ", ".join(training_brain.WEAK_POINT_LABEL.get(w, w) for w in atuais)
+
+        if escolha == "keep":
+            # Só reinicia o relógio. O treino não muda: seguir é seguir, e
+            # remontar sem necessidade trocaria os exercícios da pessoa à toa.
+            profile.weak_points_since = datetime.now(timezone.utc)
+            db.commit()
+            return ApplyActionResult(
+                applied=True, kind="specialization_keep",
+                title="Prioridade mantida",
+                message=(
+                    f"Seguimos mais {training_brain.SPECIALIZATION_WEEKS} semanas com {rotulos} em "
+                    "prioridade. Seu treino continua igual — eu te chamo de novo no fim do bloco."
+                ),
+            )
+
+        if escolha == "end":
+            # Encerrar TEM que remontar: sem isso a pessoa aceita voltar ao
+            # normal e continua treinando as rotinas do bloco, com o corpo todo
+            # em 5 séries. A escolha valeria no banco e não no treino — que é
+            # exatamente o tipo de mentira silenciosa que esta leva consertou.
+            training_brain.apply_weak_points(profile, [], datetime.now(timezone.utc))
+            db.flush()
+            resultado = workout_builder.build_and_save(db, current_user)
+            return ApplyActionResult(
+                applied=True, kind="specialization_end",
+                title="Bloco encerrado",
+                message=(
+                    f"{rotulos} sai de prioridade e o corpo inteiro volta pra faixa normal. "
+                    f"Já remontei seu treino: {resultado['days']} treino(s) na semana. "
+                    "Dá pra marcar outro ponto fraco quando quiser, em Como eu monto seu treino."
+                ),
+            )
+        raise HTTPException(status_code=400, detail="Sugestão inválida.")
 
     if fk.startswith("progression:"):
         try:

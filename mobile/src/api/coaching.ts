@@ -92,13 +92,21 @@ export type CoachingChart = "peso" | "calorias" | "macros" | "sono" | "carga";
 // Ajuste aplicável de uma barra. `kind` diz qual fluxo de aplicar chamar:
 // dieta (kcal_delta, sem kind) | technique | progression | deload.
 export type CoachingAdjustmentInfo = {
-  kind?: "technique" | "progression" | "deload" | "transition";
+  kind?: "technique" | "progression" | "deload" | "transition" | "specialization";
   kcal_delta?: number;
   technique?: string;
   technique_label?: string;
   exercise_id?: number;
   exercise_name?: string;
   new_weight?: number | null;
+  /** Só em kind="specialization": há quantas semanas o bloco de priorização de
+   * ponto fraco está rodando, e quais músculos ele prioriza. */
+  weeks?: number;
+  /** Duração do PRÓXIMO bloco, se a pessoa seguir. Vem do motor pra a tela não
+   * repetir uma regra de treino que um dia discordaria dele. */
+  block_weeks?: number;
+  muscles?: string[];
+  muscles_label?: string;
 };
 
 export type CoachingInsight = {

@@ -272,3 +272,100 @@ def test_remontar_o_treino_nao_troca_os_exercicios(db):
         primeira = nomes_dos_exercicios(db, u)
         workout_builder.build_and_save(db, u)
         assert nomes_dos_exercicios(db, u) == primeira
+
+
+# --- O bloco de especialização tem PRAZO ----------------------------------
+#
+# Segurar o resto do corpo em manutenção é a troca certa por 4 a 8 semanas e
+# errada pra sempre. Como "ponto fraco" é resposta de questionário (fica marcada
+# até alguém mexer), sem prazo quem marcasse braço e esquecesse passaria um ano
+# com costas e perna paradas — e concluiria que o app parou de funcionar.
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+from app.coaching import engine, training_brain  # noqa: E402
+
+
+def _analise(weak_points, semanas):
+    """Só a parte da análise que interessa aqui: os insights."""
+    return engine._especializacao_insight(tuple(weak_points), semanas)
+
+
+def test_bloco_novo_nao_cobra_nada(db):
+    """Semana 1 de especialização não é hora de perguntar nada — a decisão
+    acabou de ser tomada."""
+    assert _analise(["biceps"], 0.0) is None
+    assert _analise(["biceps"], training_brain.SPECIALIZATION_WEEKS - 1) is None
+
+
+def test_bloco_vencido_devolve_a_decisao(db):
+    ins = _analise(["biceps"], training_brain.SPECIALIZATION_WEEKS)
+    assert ins is not None
+    assert ins.severity == engine.SEV_ACTION
+    assert ins.finding_key == "specialization:review"
+    assert ins.adjustment["kind"] == "specialization"
+    # O custo tem que estar dito em voz alta: é isso que faz a decisão ser
+    # informada em vez de um botão sem contexto.
+    assert "manutenção" in ins.detail
+
+
+def test_sem_ponto_fraco_nao_existe_bloco(db):
+    assert _analise([], 99) is None
+
+
+def test_relogio_so_reinicia_quando_a_escolha_muda(db):
+    """Reabrir e salvar as preferências sem mexer no ponto fraco NÃO pode zerar
+    o relógio — senão bastaria salvar de novo pra a especialização nunca vencer,
+    que é justamente o que este mecanismo existe pra impedir."""
+    # O SQLite (dev) devolve a data SEM fuso; o Postgres (prod) devolve com.
+    # Comparar o instante, e não o objeto, é o que faz este teste valer nos dois
+    # — e é a mesma razão de training_brain.specialization_weeks normalizar a
+    # data antes de fazer conta com ela.
+    def instante(dt):
+        return dt.replace(tzinfo=timezone.utc) if dt is not None and dt.tzinfo is None else dt
+
+    with usuario(db, handle="relogio", weak_points=["biceps"]) as u:
+        perfil = u.profile
+        antigo = datetime.now(timezone.utc) - timedelta(weeks=7)
+        perfil.weak_points_since = antigo
+        db.commit()
+
+        agora = datetime.now(timezone.utc)
+        training_brain.apply_weak_points(perfil, ["biceps"], agora)
+        assert instante(perfil.weak_points_since) == antigo, "salvar a mesma escolha reiniciou o relógio"
+
+        training_brain.apply_weak_points(perfil, ["triceps"], agora)
+        assert instante(perfil.weak_points_since) == agora, "trocar de prioridade deveria reiniciar o relógio"
+
+        training_brain.apply_weak_points(perfil, [], agora)
+        assert perfil.weak_points_since is None, "sem ponto fraco não existe bloco em curso"
+
+
+def test_relogio_sem_fuso_nao_quebra_a_conta(db):
+    """Regressão de fuso: no SQLite a data volta naive e no Postgres volta aware.
+    A conta de semanas tem que dar o mesmo dos dois lados — uma exceção aqui
+    derrubaria a análise inteira do Coaching, não só a especialização."""
+    agora = datetime.now(timezone.utc)
+    naive = (agora - timedelta(weeks=7)).replace(tzinfo=None)
+    aware = agora - timedelta(weeks=7)
+    assert training_brain.specialization_weeks(naive, agora) == pytest.approx(
+        training_brain.specialization_weeks(aware, agora)
+    )
+    assert training_brain.specialization_due(naive, agora)
+
+
+def test_encerrar_o_bloco_devolve_o_volume(db):
+    """Encerrar TEM que remontar o treino. Sem isso a pessoa aceita voltar ao
+    normal e continua treinando as rotinas do bloco, com o corpo todo em 5
+    séries — a escolha valeria no banco e não no treino."""
+    with usuario(db, handle="encerra", weak_points=["biceps"]) as u:
+        workout_builder.build_and_save(db, u)
+        durante = series_por_musculo(db, u)
+        assert durante[M.BACK] <= volume_landmarks.BASE_MIN + 1  # pré-condição
+
+        training_brain.apply_weak_points(u.profile, [], datetime.now(timezone.utc))
+        db.flush()
+        workout_builder.build_and_save(db, u)
+        depois = series_por_musculo(db, u)
+
+        assert depois[M.BACK] > durante[M.BACK], "costas deveria voltar a crescer"
+        assert depois[M.BICEPS] < durante[M.BICEPS], "bíceps deixa de ser prioridade"
