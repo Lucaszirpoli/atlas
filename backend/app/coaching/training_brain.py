@@ -204,6 +204,19 @@ SESSION_LENGTHS: list[tuple[str, str, str, int]] = [
     ("medio", "Médio", "70–100 min", 6),
     ("longo", "Longo", "100–120 min", 8),
 ]
+
+# PISO de exercícios por sessão. Abaixo disso não é um treino curto — é um treino
+# pela metade: não dá pra cobrir os padrões de movimento do dia, alternar
+# estímulos (Princípio 5) nem fechar as regiões da semana (Princípio 6) com 3 ou
+# 4 vagas. É o mesmo número do tempo "Curto", que já é o menor treino que o
+# produto oferece — ninguém pode receber menos do que quem pediu o mais curto.
+#
+# Nasceu de uma regressão real: o preenchimento de volume podava vagas até o
+# volume semanal fechar, com piso por MÚSCULO (2×/semana) mas nenhum piso por
+# SESSÃO. Em 5 e 6 dias o mesmo volume semanal se espalhava fino demais e saíam
+# dias com 1 a 3 exercícios — cada um coerente com o alvo da semana, e nenhum
+# coerente com a ideia de "um treino".
+MIN_EXERCISES_PER_SESSION = 5
 _SESSION_META = {v: (label, faixa, alvo) for v, label, faixa, alvo in SESSION_LENGTHS}
 
 

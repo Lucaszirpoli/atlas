@@ -551,6 +551,7 @@ def add_accessory_slot(
     max_per_session: int = 9,
     region: str | None = None,
     seed: int | None = None,
+    session: PlannedSession | None = None,
 ) -> PlannedSlot | None:
     """Acrescenta UMA vaga do `muscle` ao plano e devolve a vaga criada (None se
     não houver exercício novo, nenhuma sessão que treine o músculo, ou todas as
@@ -574,14 +575,25 @@ def add_accessory_slot(
     """
     usados = {sl.exercise_id for s in plan.sessions for sl in s.slots if sl.exercise_id is not None}
 
-    candidatas = [
-        s
-        for s in plan.sessions
-        if len(s.slots) < max_per_session and any(sl.muscle_group == muscle.value for sl in s.slots)
-    ]
-    if not candidatas:
-        return None
-    sessao = min(candidatas, key=lambda s: len(s.slots))
+    if session is not None:
+        # Quem chama já sabe QUAL dia precisa da vaga (o reforço de sessão curta,
+        # que está consertando um dia específico, não procurando onde caberia
+        # mais volume). O dia continua tendo que treinar o músculo: acessório em
+        # dia que não é dele não é volume, é exercício solto.
+        if len(session.slots) >= max_per_session:
+            return None
+        if not any(sl.muscle_group == muscle.value for sl in session.slots):
+            return None
+        sessao = session
+    else:
+        candidatas = [
+            s
+            for s in plan.sessions
+            if len(s.slots) < max_per_session and any(sl.muscle_group == muscle.value for sl in s.slots)
+        ]
+        if not candidatas:
+            return None
+        sessao = min(candidatas, key=lambda s: len(s.slots))
 
     from collections import Counter
 
@@ -669,6 +681,7 @@ def drop_surplus_slot(
     muscle: MuscleGroup,
     *,
     pode_remover=None,
+    min_por_sessao: int = 0,
 ) -> PlannedSlot | None:
     """Tira UMA vaga do `muscle` e devolve a que saiu (None se não dá pra tirar).
 
@@ -684,6 +697,10 @@ def drop_surplus_slot(
         fraco) — é ela que define o dia;
       - a última vaga de uma REGIÃO exigida na semana (Princípio 6): tirar o
         único exercício de peito clavicular economiza série e descobre a região;
+      - qualquer vaga de uma sessão que já esteja no piso de `min_por_sessao` —
+        o volume da SEMANA fecha por muitos caminhos, e nenhum deles pode ser
+        entregar um dia com 3 exercícios. Sem este piso, em 5 e 6 dias o mesmo
+        volume se espalhava fino e saíam dias de 1 a 3 vagas;
       - o que `pode_remover` vetar — é por onde quem chama protege o equilíbrio
         empurrar/puxar e joelho/quadril da semana, que só ele sabe medir.
 
@@ -705,6 +722,8 @@ def drop_surplus_slot(
 
     candidatas: list[tuple[tuple, PlannedSession, int]] = []
     for sessao in plan.sessions:
+        if len(sessao.slots) <= min_por_sessao:
+            continue
         for i, sl in enumerate(sessao.slots):
             if sl.muscle_group != muscle.value or i == 0:
                 continue

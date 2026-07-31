@@ -289,7 +289,11 @@ def build_and_save(db: Session, user: User) -> dict:
         if not excessos:
             break
         _, _, muscle = max(excessos, key=lambda e: (e[0], e[1]))
-        removida = methods_engine.drop_surplus_slot(plan, muscle, pode_remover=_mantem_equilibrio)
+        removida = methods_engine.drop_surplus_slot(
+            plan, muscle,
+            pode_remover=_mantem_equilibrio,
+            min_por_sessao=training_brain.MIN_EXERCISES_PER_SESSION,
+        )
         if removida is None:
             # Tudo que sobrava nesse músculo é protegido (região exigida,
             # abertura do dia, equilíbrio da semana). O excesso fica e é
@@ -333,6 +337,50 @@ def build_and_save(db: Session, user: User) -> dict:
         slot_count_by_muscle[muscle.value] = slot_count_by_muscle.get(muscle.value, 0) + 1
         exercicios_extras.append(slot.exercise_name)
         ids_extras.add(slot.exercise_id)
+
+    # --- PISO DE EXERCÍCIOS POR SESSÃO --------------------------------------
+    # O volume da SEMANA fecha por muitos caminhos, e nenhum deles pode ser
+    # entregar um dia com 3 exercícios. A poda já respeita o piso, mas ela não é
+    # a única forma de um dia sair curto: o recorte por tempo, uma vaga que a
+    # base não conseguiu preencher ou um blueprint enxuto chegam no mesmo lugar.
+    # Aqui é o último passo antes da revisão — a garantia de que TODO dia
+    # entregue é um treino inteiro.
+    #
+    # A vaga extra vai pro músculo daquele dia que está mais longe de fechar o
+    # próprio alvo semanal (o ponto fraco primeiro, pelo mesmo motivo de sempre).
+    # Quando nenhum músculo do dia tem folga no alvo, a vaga entra assim mesmo e
+    # o músculo passa um pouco do alvo: um dia inteiro vale mais que a última
+    # série de precisão do volume semanal — e o teto por exercício, que é o que
+    # protege da fadiga inútil, continua valendo.
+    for sessao in plan.sessions:
+        for _ in range(training_brain.MIN_EXERCISES_PER_SESSION):
+            if len(sessao.slots) >= training_brain.MIN_EXERCISES_PER_SESSION:
+                break
+            do_dia = {sl.muscle_group for sl in sessao.slots}
+            candidatos = [m for m in musculos if m.value in do_dia]
+            if not candidatos:
+                break
+
+            def folga(m: MuscleGroup) -> int:
+                return plano_semanal[m] - slot_count_by_muscle.get(m.value, 0) * volume_landmarks.PER_EXERCISE_MIN
+
+            candidatos.sort(key=lambda m: (m not in wps, -folga(m), m.value))
+            entrou = None
+            for muscle in candidatos:
+                entrou = methods_engine.add_accessory_slot(
+                    db, plan, muscle, prefer_machines=curto,
+                    exercise_prefs=prefs_exercicio,
+                    max_per_session=_MAX_EXERCICIOS_POR_SESSAO,
+                    seed=user.id,
+                    session=sessao,
+                )
+                if entrou is not None:
+                    break
+            if entrou is None:
+                break  # a base não tem mais nada que sirva neste dia
+            slot_count_by_muscle[muscle.value] = slot_count_by_muscle.get(muscle.value, 0) + 1
+            exercicios_extras.append(entrou.exercise_name)
+            ids_extras.add(entrou.exercise_id)
 
     # Revisão global FINAL: as vagas de volume acima entraram depois da primeira
     # checagem, então é aqui que o treino que vai ser entregue é conferido.

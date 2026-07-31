@@ -154,21 +154,31 @@ def test_trocar_o_ponto_fraco_muda_o_treino(db):
     assert volume_b[M.QUADS] > volume_a[M.QUADS]
 
 
-def test_financiador_e_segurado_perto_do_piso(db):
+def test_financiador_cede_volume_pro_ponto_fraco(db):
     """A outra metade da equalização: quem não é prioridade CEDE. Sem isso o
-    volume total só sobe e a recuperação (que é sistêmica) não fecha."""
-    with usuario(db, handle="finan", weak_points=["biceps"]) as u:
-        workout_builder.build_and_save(db, u)
-        series = series_por_musculo(db, u)
+    volume total só sobe e a recuperação (que é sistêmica) não fecha.
 
-        # +1 de folga: a poda respeita cobertura regional e equilíbrio da semana,
-        # então um músculo pode ficar uma série acima do piso por proteção.
-        teto = volume_landmarks.BASE_MIN + 1
-        for musculo in (M.BACK, M.CHEST, M.SHOULDERS):
-            assert series[musculo] <= teto, (
-                f"{musculo.value} devia estar segurado perto de {volume_landmarks.BASE_MIN} "
-                f"séries e está com {series[musculo]}"
-            )
+    O teste compara os DOIS mundos (com e sem ponto fraco) em vez de cobrar um
+    número fixo, porque o piso de exercícios por sessão
+    (training_brain.MIN_EXERCISES_PER_SESSION) impede que alguns músculos desçam
+    até o piso da faixa: um dia inteiro vale mais que a última série de precisão
+    do volume semanal. O que TEM que valer sempre é a direção — financiador cede,
+    prioridade recebe — e é isso que está escrito aqui.
+    """
+    with usuario(db, handle="finansem") as sem_prioridade:
+        workout_builder.build_and_save(db, sem_prioridade)
+        base = series_por_musculo(db, sem_prioridade)
+    with usuario(db, handle="financom", weak_points=["biceps"]) as com_prioridade:
+        workout_builder.build_and_save(db, com_prioridade)
+        priorizado = series_por_musculo(db, com_prioridade)
+
+    cederam = [m for m in (M.BACK, M.CHEST, M.SHOULDERS, M.QUADS) if priorizado[m] < base[m]]
+    assert len(cederam) >= 3, (
+        "quase ninguém cedeu volume pro ponto fraco — a equalização não aconteceu: "
+        f"{ {m.value: (base[m], priorizado[m]) for m in (M.BACK, M.CHEST, M.SHOULDERS, M.QUADS)} }"
+    )
+    maior_nao_prioritario = max(n for m, n in priorizado.items() if m is not M.BICEPS)
+    assert priorizado[M.BICEPS] > maior_nao_prioritario
 
 
 def test_sem_ponto_fraco_ninguem_e_segurado(db):
@@ -360,12 +370,80 @@ def test_encerrar_o_bloco_devolve_o_volume(db):
     with usuario(db, handle="encerra", weak_points=["biceps"]) as u:
         workout_builder.build_and_save(db, u)
         durante = series_por_musculo(db, u)
-        assert durante[M.BACK] <= volume_landmarks.BASE_MIN + 1  # pré-condição
+        # Pré-condição: durante o bloco o bíceps é quem manda no volume.
+        assert durante[M.BICEPS] > durante[M.BACK]
 
         training_brain.apply_weak_points(u.profile, [], datetime.now(timezone.utc))
         db.flush()
         workout_builder.build_and_save(db, u)
         depois = series_por_musculo(db, u)
 
-        assert depois[M.BACK] > durante[M.BACK], "costas deveria voltar a crescer"
+        # A conta é no TOTAL do resto do corpo, não num músculo escolhido a dedo:
+        # com o piso de exercícios por sessão, um músculo que aparece todo dia
+        # (costas) já estava acima do piso durante o bloco e não tem pra onde
+        # subir. Quem se move é o conjunto.
+        resto = lambda s: sum(n for m, n in s.items() if m is not M.BICEPS)  # noqa: E731
+        assert resto(depois) > resto(durante), "o resto do corpo deveria voltar a crescer"
         assert depois[M.BICEPS] < durante[M.BICEPS], "bíceps deixa de ser prioridade"
+
+
+# --- PISO DE EXERCÍCIOS POR SESSÃO ----------------------------------------
+@pytest.mark.parametrize("sessao", ("curto", "medio", "longo"))
+@pytest.mark.parametrize("dias", (3, 4, 5, 6))
+@pytest.mark.parametrize("fracos", ([], ["biceps"], ["biceps", "triceps"]))
+def test_nenhum_dia_sai_com_menos_de_cinco_exercicios(db, sessao, dias, fracos):
+    """Regressão relatada pelo usuário treinando de verdade: "teve dia que ele
+    colocou 3 exercícios só".
+
+    A causa foi o preenchimento de volume podar vagas até o volume SEMANAL
+    fechar, com piso por músculo (2×/semana) e nenhum piso por SESSÃO. Em 5 e 6
+    dias o mesmo volume se espalhava fino e saíam dias de 1 a 3 exercícios — cada
+    um coerente com o alvo da semana, e nenhum coerente com a ideia de um treino.
+
+    A matriz inteira está aqui de propósito: os piores casos não eram o padrão,
+    eram cantos específicos (6 dias + sessão curta + ponto fraco), que é
+    exatamente o tipo de coisa que passa despercebida testando só o caminho
+    comum.
+    """
+    with usuario(db, handle=f"piso{sessao[0]}{dias}{len(fracos)}",
+                 weak_points=fracos, dias=dias) as u:
+        u.profile.session_length = sessao
+        db.commit()
+        workout_builder.build_and_save(db, u)
+
+        curtos = [
+            (r.name, len(r.exercises))
+            for r in db.execute(
+                select(Routine).where(Routine.user_id == u.id, Routine.is_archived.is_(False))
+            ).scalars()
+            if len(r.exercises) < training_brain.MIN_EXERCISES_PER_SESSION
+        ]
+        assert not curtos, f"dia(s) abaixo do piso: {curtos}"
+
+
+@pytest.mark.parametrize("dias", (4, 6))
+def test_piso_de_sessao_nao_quebra_a_coerencia(db, dias):
+    """O reforço acrescenta exercício DEPOIS de tudo — cobertura, equilíbrio,
+    redundância e ordem continuam valendo no treino que sai."""
+    with usuario(db, handle=f"pisocoer{dias}", weak_points=["biceps"], dias=dias) as u:
+        u.profile.session_length = "curto"
+        db.commit()
+        resultado = workout_builder.build_and_save(db, u)
+        assert resultado["is_coherent"], resultado["coherence_issues"]
+
+
+def test_piso_de_sessao_nao_fura_o_teto_por_exercicio(db):
+    """O dia cresce por EXERCÍCIO, nunca empilhando série: o teto de 3 séries de
+    trabalho efetivas é o que protege da fadiga sem estímulo novo, e ele não é
+    negociável nem pra fechar o piso do dia."""
+    with usuario(db, handle="pisoteto", weak_points=["biceps"], dias=6) as u:
+        u.profile.session_length = "curto"
+        db.commit()
+        workout_builder.build_and_save(db, u)
+        sets = db.execute(
+            select(RoutineExercise.target_sets)
+            .join(Routine, Routine.id == RoutineExercise.routine_id)
+            .where(Routine.user_id == u.id, Routine.is_archived.is_(False))
+        ).scalars().all()
+        assert max(sets) <= volume_landmarks.PER_EXERCISE_MAX
+        assert min(sets) >= volume_landmarks.PER_EXERCISE_MIN
