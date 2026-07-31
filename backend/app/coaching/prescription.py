@@ -212,3 +212,43 @@ def rest_seconds(
         base += 30
 
     return max(REST_MIN, min(REST_MAX, base))
+
+
+# --- Quanto tempo a sessão leva (Cap. XVIII Parte J) ------------------------
+# "Analise a duração provável da sessão conforme número de séries, aquecimentos,
+# descansos, transições." Virou conta porque virou possível: com o descanso saindo
+# do exercício, a duração deixa de ser um chute.
+#
+# As premissas estão todas aqui, à vista, porque a estimativa vale o que elas
+# valem:
+SEGUNDOS_POR_REP = 3          # mesma constante do training_brain
+TRANSICAO_ENTRE_EXERCICIOS_S = 60   # trocar de aparelho, ajustar, achar a carga
+PREP_REPS = 10                # aquecimento e feeder são séries curtas
+PREP_DESCANSO_S = 45
+
+
+def exercise_seconds(
+    *, sets: int, reps_min: int, reps_max: int, rest_seconds: int, com_aquecimento: bool
+) -> int:
+    """Segundos de UM exercício: séries de trabalho + descansos + preparação.
+
+    A última série não tem descanso depois dela — quem paga esse tempo é a
+    transição pro exercício seguinte, contada separadamente.
+
+    `com_aquecimento` é falso pro exercício que pega um músculo já preparado
+    nesta sessão (tríceps depois do supino não reaquece — ver
+    `training_brain.needs_warmup`). Sem isso a conta inflaria a sessão inteira.
+    """
+    reps_medias = (reps_min + reps_max) / 2
+    trabalho = sets * reps_medias * SEGUNDOS_POR_REP
+    descanso = max(0, sets - 1) * rest_seconds
+    preparo = (2 if com_aquecimento else 1) * (PREP_REPS * SEGUNDOS_POR_REP + PREP_DESCANSO_S)
+    return int(trabalho + descanso + preparo + TRANSICAO_ENTRE_EXERCICIOS_S)
+
+
+def session_minutes(exercicios: list[dict]) -> int:
+    """Duração estimada da sessão, em minutos.
+
+    Cada item: {sets, reps_min, reps_max, rest_seconds, com_aquecimento}.
+    """
+    return round(sum(exercise_seconds(**e) for e in exercicios) / 60)

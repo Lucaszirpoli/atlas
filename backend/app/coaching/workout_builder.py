@@ -494,6 +494,11 @@ def build_and_save(db: Session, user: User) -> dict:
     # numa passada só, DEPOIS — ver o bloco "TETO DE SÉRIES" no fim.
     routine_exercises_by_id: dict[int, list[RoutineExercise]] = {}
     is_compound_by_id: dict[int, bool] = {}
+    # Os exercícios de cada rotina, na ordem, pra estimar a duração da sessão
+    # (Cap. XVIII Parte J) DEPOIS que o teto de séries por técnica já rodou —
+    # estimar antes daria um número que o treino salvo não cumpre.
+    exercicios_por_rotina: list[list[RoutineExercise]] = []
+    aquecimentos_por_rotina: list[list[bool]] = []
 
     nomes: list[str] = []
     total_ex = 0
@@ -505,6 +510,10 @@ def build_and_save(db: Session, user: User) -> dict:
         routine = Routine(user_id=user.id, name=nome)
         db.add(routine)
         db.flush()
+        da_rotina: list[RoutineExercise] = []
+        exercicios_por_rotina.append(da_rotina)
+        musculos_preparados: set = set()
+        aquecimento_por_exercicio: list[bool] = []
         for i, sl in enumerate(slots):
             # FAIXA DE REPETIÇÕES E DESCANSO saem do EXERCÍCIO, não do método.
             #
@@ -546,7 +555,19 @@ def build_and_save(db: Session, user: User) -> dict:
             db.add(routine_exercise)
             routine_exercises_by_id.setdefault(sl.exercise_id, []).append(routine_exercise)
             is_compound_by_id[sl.exercise_id] = bool(sl.is_compound)
+            da_rotina.append(routine_exercise)
+            # Aquecimento só no PRIMEIRO exercício de cada músculo da sessão —
+            # a mesma regra que a tela de execução aplica (needs_warmup). Contar
+            # aquecimento em todos inflaria a estimativa da sessão inteira.
+            musculo_vaga = _muscle_or_none(sl.muscle_group)
+            aquecimento_por_exercicio.append(
+                musculo_vaga is None
+                or training_brain.needs_warmup(musculo_vaga, musculos_preparados)
+            )
+            if musculo_vaga is not None:
+                musculos_preparados.update(training_brain.prepared_by(musculo_vaga))
             total_ex += 1
+        aquecimentos_por_rotina.append(aquecimento_por_exercicio)
         nomes.append(nome)
 
         candidatos: list = []
@@ -628,6 +649,37 @@ def build_and_save(db: Session, user: User) -> dict:
                     cap, is_compound_by_id.get(cue.exercise_id, False)
                 )
     db.commit()
+
+    # --- DURAÇÃO REAL DA SESSÃO (Cap. XVIII Parte J) ------------------------
+    # "Analise a duração provável da sessão conforme número de séries,
+    # aquecimentos, descansos, transições."
+    #
+    # Vale a pena calcular agora que dá: com o descanso saindo do exercício, a
+    # duração deixou de ser um chute. E a primeira medição já mostrou que os
+    # rótulos de tempo prometiam mais do que o treino entrega — quem escolhe
+    # "Longo" e recebe 50 minutos não se sente bem servido, se sente enganado.
+    duracoes = [
+        prescription.session_minutes([
+            {
+                "sets": re.target_sets,
+                "reps_min": re.target_reps_min,
+                "reps_max": re.target_reps_max,
+                "rest_seconds": re.rest_seconds,
+                "com_aquecimento": aquece,
+            }
+            for re, aquece in zip(exercicios, aquecimentos)
+        ])
+        for exercicios, aquecimentos in zip(exercicios_por_rotina, aquecimentos_por_rotina)
+        if exercicios
+    ]
+    duracao_note = None
+    if duracoes:
+        menor, maior = min(duracoes), max(duracoes)
+        faixa = f"{menor} min" if menor == maior else f"{menor} a {maior} min"
+        duracao_note = (
+            f"Seus treinos devem levar de {faixa}, contando aquecimento, os descansos "
+            "entre séries e a troca de aparelho."
+        )
 
     technique_note = None
     if technique_applied:
@@ -712,6 +764,9 @@ def build_and_save(db: Session, user: User) -> dict:
         # Filtrar em silêncio é pior que não filtrar: a pessoa procura o supino
         # livre, não acha, e conclui que o app é ruim.
         "restriction_notes": restrictions.avisos(profile),
+        # Quanto o treino REALMENTE leva, calculado do que foi salvo.
+        "estimated_minutes": duracoes or None,
+        "duration_note": duracao_note,
         "message": f"Pronto — montei {len(nomes)} treino(s) pra {days} dia(s) na semana. "
                    "Já estão nas suas rotinas, é só treinar.",
     }

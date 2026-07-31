@@ -236,6 +236,11 @@ class BuildWorkoutResult(BaseModel):
     # e por quê. Mesma regra dos dois campos acima: sem estar declarado aqui, o
     # response_model descarta e a pessoa vê o exercício sumir sem explicação.
     restriction_notes: list[str] = []
+    # Duração estimada de cada treino montado, em minutos, e a frase pra tela.
+    # Sai do que foi SALVO (séries, reps, descanso de cada exercício), não do
+    # rótulo escolhido no questionário.
+    estimated_minutes: list[int] | None = None
+    duration_note: str | None = None
     message: str
 
 

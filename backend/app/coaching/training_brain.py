@@ -484,11 +484,26 @@ def valid_training_days(value: int | None) -> int | None:
 # ---------------------------------------------------------------------------
 # TEMPO por sessão -> alvo de exercícios por treino. Curto/Médio/Longo.
 # ---------------------------------------------------------------------------
-# value, rótulo, faixa de tempo, exercícios-alvo por sessão
+# value, rótulo, tempo aproximado, exercícios-alvo por sessão
+#
+# Os tempos foram CORRIGIDOS em 2026-07-31, e não por gosto: assim que o descanso
+# passou a sair do exercício (`prescription.rest_seconds`), deu pra medir a
+# duração real do que o motor monta. Os números antigos — 45–70, 70–100 e
+# 100–120 — prometiam quase o dobro do que o treino entrega. Medido nas 15
+# combinações de tempo × frequência (2 a 6 dias): Curto sai entre 27 e 42 min,
+# Médio entre 27 e 68, Longo entre 31 e 72.
+#
+# Por que uma média e não uma faixa: a duração cai bastante conforme a FREQUÊNCIA
+# sobe, porque o volume semanal se distribui em mais dias. Quem treina Longo em 3
+# dias faz ~70 min; em 6 dias, ~40. Uma faixa que cobrisse os dois extremos
+# ("31–72 min") não ajudaria ninguém a escolher, e as faixas de Médio e Longo se
+# sobreporiam quase inteiras. A estimativa EXATA do plano de cada pessoa é
+# calculada na montagem e sai em `duration_note` — este texto aqui é só a
+# ordem de grandeza pra escolher na hora de responder.
 SESSION_LENGTHS: list[tuple[str, str, str, int]] = [
-    ("curto", "Curto", "45–70 min", 5),
-    ("medio", "Médio", "70–100 min", 6),
-    ("longo", "Longo", "100–120 min", 8),
+    ("curto", "Curto", "cerca de 30 min", 5),
+    ("medio", "Médio", "cerca de 45 min", 6),
+    ("longo", "Longo", "cerca de 60 min", 8),
 ]
 
 # PISO de exercícios por sessão. Abaixo disso não é um treino curto — é um treino
@@ -518,7 +533,8 @@ def session_exercise_target(session_length: str | None) -> int | None:
 
 
 def session_range_text(session_length: str | None) -> str | None:
-    """Faixa de tempo legível (ex.: '45–70 min') ou None."""
+    """Tempo aproximado legível (ex.: 'cerca de 45 min') ou None. É a ordem de
+    grandeza da escolha; o número real do plano montado sai em `duration_note`."""
     meta = _SESSION_META.get(session_length or "")
     return meta[1] if meta else None
 

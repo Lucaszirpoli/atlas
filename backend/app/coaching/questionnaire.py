@@ -253,7 +253,10 @@ def steps() -> list[dict]:
                  "options": [{"value": str(n), "label": f"{n} dias"} for n in training_brain.TRAINING_DAYS_OPTIONS]},
                 {"key": "session_length", "label": "Tempo por treino", "type": SINGLE, "required": True,
                  "options": [{"value": v, "label": label, "desc": faixa}
-                             for v, label, faixa, _ in training_brain.SESSION_LENGTHS]},
+                             for v, label, faixa, _ in training_brain.SESSION_LENGTHS],
+                 "help": "É a ordem de grandeza. O tempo real cai conforme você treina mais "
+                         "dias na semana, porque o mesmo volume se divide em mais treinos — "
+                         "eu te digo a duração exata assim que montar o plano."},
                 # "Qual divisão você prefere?" SAIU, e por um motivo que só
                 # apareceu ao tentar implementá-la.
                 #

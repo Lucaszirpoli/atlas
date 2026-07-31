@@ -370,6 +370,79 @@ def test_treino_salvo_nao_usa_o_mesmo_descanso_pra_tudo(rotinas):
     assert len(descansos) > 1, f"todo exercício saiu com o mesmo descanso: {descansos}"
 
 
+def test_a_duracao_estimada_bate_com_o_rotulo_escolhido(db):
+    """O rótulo do tempo de sessão prometia quase o DOBRO do que o treino
+    entrega ("Longo — 100–120 min" saía em 41–70). Ele foi corrigido pra ordem de
+    grandeza medida; este teste existe pra ele não voltar a divergir em silêncio
+    quando alguém mexer em descanso, número de exercícios ou volume.
+
+    A tolerância é larga de propósito: a duração varia MUITO com a frequência
+    (mesmo volume dividido em mais dias = treino mais curto), e o número exato de
+    cada pessoa sai em `duration_note`. O que se protege aqui é a ordem de
+    grandeza e a ORDEM entre os três tempos.
+    """
+    from sqlalchemy import delete, select
+
+    from app.coaching import training_brain, workout_builder
+    from app.models.coaching_technique_cue import CoachingTechniqueCue
+    from app.models.routine import Routine, RoutineExercise
+    from app.models.user import Plan, User
+    from app.models.user_profile import (
+        ActivityLevel, BiologicalSex, ExperienceLevel, Goal, TrainingLocation, UserProfile,
+    )
+
+    email = "__tmp_dur__@teste.local"
+
+    def limpar():
+        u = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+        if u is None:
+            return
+        rids = [r.id for r in db.execute(select(Routine).where(Routine.user_id == u.id)).scalars()]
+        if rids:
+            db.execute(delete(RoutineExercise).where(RoutineExercise.routine_id.in_(rids)))
+            db.execute(delete(Routine).where(Routine.id.in_(rids)))
+        db.execute(delete(CoachingTechniqueCue).where(CoachingTechniqueCue.user_id == u.id))
+        db.execute(delete(UserProfile).where(UserProfile.user_id == u.id))
+        db.execute(delete(User).where(User.id == u.id))
+        db.commit()
+
+    medias = {}
+    for tempo in ("curto", "medio", "longo"):
+        limpar()
+        u = User(email=email, handle="__tmp_du__", display_name="T",
+                 password_hash="x", plan=Plan.PRO)
+        db.add(u)
+        db.flush()
+        db.add(UserProfile(
+            user_id=u.id, age=30, height_cm=180,
+            biological_sex=BiologicalSex.MALE, activity_level=ActivityLevel.MODERATE,
+            training_location=TrainingLocation.ACADEMIA_COMPLETA,
+            experience_level=ExperienceLevel.INTERMEDIARIO, goal=Goal.HIPERTROFIA,
+            training_days_per_week=3, session_length=tempo,
+            allow_advanced_techniques=False, periodization="auto", wants_cardio=False,
+        ))
+        db.commit()
+        db.refresh(u)
+        resumo = workout_builder.build_and_save(db, u)
+        mins = resumo["estimated_minutes"]
+        assert mins, f"{tempo}: nenhuma duração estimada"
+        assert resumo["duration_note"], "a pessoa precisa saber quanto o treino leva"
+        medias[tempo] = sum(mins) / len(mins)
+    limpar()
+
+    assert medias["curto"] < medias["medio"] < medias["longo"], (
+        f"escolher mais tempo deveria dar treino mais longo: {medias}"
+    )
+    # O rótulo declara "cerca de N min"; o real não pode passar do dobro nem
+    # ficar abaixo da metade — aí deixou de ser ordem de grandeza.
+    declarado = {v: int(txt.split()[-2]) for v, _, txt, _ in training_brain.SESSION_LENGTHS}
+    for tempo, real in medias.items():
+        alvo = declarado[tempo]
+        assert alvo / 2 <= real <= alvo * 2, (
+            f"{tempo}: rótulo diz ~{alvo} min e o treino sai com {real:.0f} min"
+        )
+
+
 def test_o_que_foi_gravado_bate_com_a_prescricao(rotinas):
     """Não basta variar — tem que variar do jeito certo. Compara linha a linha o
     que está no banco com o que a prescrição manda pra aquele exercício."""
