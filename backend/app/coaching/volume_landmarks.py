@@ -71,6 +71,28 @@ WEAK_MAX = 16
 # na primeira semana, não só no fim do ciclo.
 BAND_START = 0.5
 
+# ...e ONDE a faixa começa depende do TEMPO POR SESSÃO.
+#
+# "Tempo por sessão" mandava só no número de EXERCÍCIOS (5/6/8) e não encostava
+# no número de séries. Na prática, quem escolhia Curto e quem escolhia Longo
+# pedia a mesma quantidade de séries por músculo — o Curto só espremia o mesmo
+# volume em menos exercícios, o que é a receita de um treino apertado e de
+# músculo ficando sem vaga.
+#
+# Agora o tempo escolhido é o que define a MARGEM de trabalho:
+#   curto -> o piso da faixa. Menos séries, o treino mais rápido possível.
+#   médio -> o meio (o comportamento de antes).
+#   longo -> mais alto: quem tem tempo aguenta e merece mais volume.
+#
+# Em todos, o alvo continua subindo ao longo do mesociclo (é a fase de
+# acumulação); o que muda é de onde ele parte.
+_BAND_START_BY_SESSION = {"curto": 0.0, "medio": 0.5, "longo": 0.75}
+
+
+def band_start(session_length: str | None) -> float:
+    """Onde a faixa começa pro tempo de sessão escolhido. Sem escolha, o meio."""
+    return _BAND_START_BY_SESSION.get(session_length or "", BAND_START)
+
 # Excepcional — só com prioridade máxima, em 1 ou 2 músculos, cortando o resto.
 EXCEPTIONAL_MIN = 20
 EXCEPTIONAL_MAX = 22
@@ -127,10 +149,10 @@ def _progress(weeks_accumulating: float | None) -> float:
     return min(1.0, max(0.0, (weeks_accumulating or 0.0) / training_brain.MESOCYCLE_WEEKS))
 
 
-def _dentro_da_faixa(piso: float, topo: float, p: float) -> float:
+def _dentro_da_faixa(piso: float, topo: float, p: float, inicio: float = BAND_START) -> float:
     """Posição dentro de uma faixa na semana `p` do mesociclo — começando em
-    BAND_START da faixa (não no piso) e chegando ao topo no fim do ciclo."""
-    return piso + (topo - piso) * (BAND_START + (1.0 - BAND_START) * p)
+    `inicio` da faixa (não no piso) e chegando ao topo no fim do ciclo."""
+    return piso + (topo - piso) * (inicio + (1.0 - inicio) * p)
 
 
 # Extremos de MRV entre todos os músculos — usados pra posicionar cada um
@@ -163,6 +185,7 @@ def weekly_target_sets(
     weeks_accumulating: float | None,
     *,
     priority: str = "normal",
+    session_length: str | None = None,
 ) -> int:
     """Séries semanais efetivas pro músculo. `priority`:
 
@@ -171,6 +194,14 @@ def weekly_target_sets(
     - "alta"        -> ponto fraco: 8–16
     - "excepcional" -> 20–22 (só 1–2 músculos, e com o resto reduzido)
 
+    `session_length` decide de ONDE a faixa parte (ver `band_start`): quem pediu
+    um treino curto trabalha na margem baixa, quem tem tempo trabalha na alta.
+
+    O PONTO FRACO é a exceção deliberada: ele mantém a faixa alta em qualquer
+    tempo de sessão. Num treino curto o que se espreme é o que NÃO é prioridade —
+    espremer os dois lados igualmente devolveria o problema original (marcar um
+    ponto fraco e não ver diferença), só que por outro caminho.
+
     O teto de recuperação do músculo (MRV ajustado pelo nível) vence sempre:
     prescrever 16 séries de posterior porque virou prioridade não faz o
     posterior recuperar 16.
@@ -178,19 +209,21 @@ def weekly_target_sets(
     _, mrv = weekly_set_range(muscle, level)
     p = _progress(weeks_accumulating)
     fator = _LEVEL_FACTOR.get(level or "intermediario", 1.0)
+    inicio = band_start(session_length)
 
     if priority == "baixa":
         # Ponto forte / já desenvolvido / FINANCIADOR de um ponto fraco: manter
         # custa pouco — fica no piso da faixa.
         alvo = BASE_MIN
     elif priority == "alta":
+        # Prioridade não encolhe com o relógio — ver o docstring.
         alvo = _dentro_da_faixa(WEAK_MIN, WEAK_MAX, p)
     elif priority == "excepcional":
         alvo = _dentro_da_faixa(EXCEPTIONAL_MIN, EXCEPTIONAL_MAX, p)
     else:
         # Faixa-base, com o TOPO próprio de cada músculo (§6.1: nada de mesmo
-        # volume pro corpo inteiro).
-        alvo = _dentro_da_faixa(BASE_MIN, _band_top(muscle), p)
+        # volume pro corpo inteiro) e o INÍCIO dado pelo tempo de sessão.
+        alvo = _dentro_da_faixa(BASE_MIN, _band_top(muscle), p, inicio)
 
     alvo = round(alvo * fator)
     teto = mrv if priority == "excepcional" else min(mrv, EXCEPTIONAL_MAX)
@@ -204,6 +237,7 @@ def weekly_plan(
     *,
     weak_points: list[MuscleGroup] | None = None,
     exceptional: list[MuscleGroup] | None = None,
+    session_length: str | None = None,
 ) -> dict[MuscleGroup, int]:
     """O volume semanal de TODOS os músculos da semana, de uma vez.
 
@@ -237,7 +271,11 @@ def weekly_plan(
         return "baixa" if weak else "normal"
 
     return {
-        m: weekly_target_sets(m, level, weeks_accumulating, priority=prioridade(m)) for m in muscles
+        m: weekly_target_sets(
+            m, level, weeks_accumulating,
+            priority=prioridade(m), session_length=session_length,
+        )
+        for m in muscles
     }
 
 

@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from app.coaching import chat as coach_chat
 from app.coaching import cycle_state
 from app.coaching import overlays as coach_overlays
+from app.coaching import session_fit
 from app.coaching import training_brain
 from app.coaching import user_model
 from app.coaching import volume_landmarks
@@ -120,6 +121,16 @@ def _training_prefs_block(db: Session, user: User) -> dict | None:
         ],
         "training_days_per_week": training_brain.valid_training_days(profile.training_days_per_week),
         "training_days_options": training_brain.TRAINING_DAYS_OPTIONS,
+        # Aviso da combinação tempo × frequência: quais grupos ficam sem
+        # exercício próprio e qual tempo cobriria tudo. Nenhuma combinação é
+        # bloqueada — treino curto que a pessoa FAZ vale mais que treino longo
+        # que ela não faz. O que não pode é ela descobrir isso depois de seis
+        # semanas achando que estava cobrindo o corpo inteiro.
+        "session_fit_warning": session_fit.aviso(
+            training_brain.valid_training_days(profile.training_days_per_week) or 3,
+            training_brain.valid_session_length(profile.session_length),
+            wps,
+        ),
         "wants_cardio": profile.wants_cardio,
         # Técnica avançada (myo-reps, rest-pause, muscle round). O valor
         # EFETIVO, já com a regra de iniciante aplicada — a tela mostra o que

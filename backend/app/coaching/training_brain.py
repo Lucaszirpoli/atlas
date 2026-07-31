@@ -469,6 +469,57 @@ TECHNIQUE_SET_WEIGHT: dict[str, float] = {
 }
 
 
+# --- QUANTO TEMPO CADA TÉCNICA CUSTA ---------------------------------------
+# Uma técnica que vale 2 séries substitui 2 séries retas. A pergunta que
+# importa numa sessão curta é: ela leva MENOS tempo que as 2 retas que
+# substitui?
+#
+# A conta sai dos próprios dados de TECHNIQUE_STRUCTURES (repetições × segundos
+# por repetição + os descansos declarados), então ela não pode divergir do que a
+# tela de execução materializa. Mexer numa estrutura muda o número aqui junto —
+# que é o ponto: já houve uma vez em que muscle round passou a 6 blocos e a
+# conclusão sobre tempo ficou desatualizada num comentário.
+SEGUNDOS_POR_REP = 3
+# A referência: 2 séries retas de 10 reps com 90s de descanso entre elas.
+_REPS_SERIE_RETA = 10
+_DESCANSO_ENTRE_RETAS_S = 90
+
+
+def technique_seconds(key: str) -> int | None:
+    """Segundos que a técnica leva, incluindo os descansos internos. None quando
+    a técnica não muda a série (superset é só uma dica de execução)."""
+    st = technique_structure(key)
+    forma = st.get("form")
+    if forma == "activation_blocks":
+        reps = st["activation_reps"] + st["blocks"] * st["block_reps"]
+        descanso = st.get("first_rest_s", 0) + st["rest_between_blocks_s"] * st["blocks"]
+    elif forma == "singles":
+        reps = st["activation_reps"] + st["blocks"] * st["block_reps"]
+        descanso = st["rest_between_blocks_s"] * st["blocks"]
+    elif forma == "cluster":
+        reps = st["blocks"] * st["block_reps"]
+        descanso = st["rest_between_blocks_s"] * st["blocks"]
+    elif forma == "drop":
+        reps = _REPS_SERIE_RETA + 8  # a reta pesada + o back-off encurtado
+        descanso = st.get("rest_before_drop_s", 0)
+    else:
+        return None
+    return reps * SEGUNDOS_POR_REP + descanso
+
+
+def technique_time_saved_s(key: str) -> int | None:
+    """Segundos POUPADOS pela técnica contra as séries retas que ela substitui.
+    Positivo = mais rápida. None quando não se aplica."""
+    custo = technique_seconds(key)
+    if custo is None:
+        return None
+    equivalentes = TECHNIQUE_SET_WEIGHT.get(key, 1)
+    retas = equivalentes * _REPS_SERIE_RETA * SEGUNDOS_POR_REP + (
+        max(0, equivalentes - 1) * _DESCANSO_ENTRE_RETAS_S
+    )
+    return int(retas - custo)
+
+
 # Fallback por (composto?, período) pro caso "meio-termo" (tempo médio/não
 # definido, sem ser ponto fraco): acumulação puxa densidade/volume,
 # intensificação puxa intensidade — o resto do critério é session_length e
@@ -519,7 +570,12 @@ def suggest_technique(
 
     1) PONTO FRACO — rest-pause é a técnica certa pra atacar um grupo que a
        pessoa priorizou: dobra o volume efetivo da série (~10 reps numa carga
-       de ~4-5RM), com o cuidado de fadiga que isso pede.
+       de ~4-5RM), com o cuidado de fadiga que isso pede. Ele ganha do critério
+       de tempo (item 2) mesmo numa sessão curta, e isso não custa tempo:
+       rest-pause também é mais rápido que as 2 séries retas que substitui (ver
+       `technique_time_saved_s`, coberto por teste). Prioridade e pressa não
+       estão em conflito aqui — o que seria um problema é o coach escolher, num
+       treino curto, uma técnica que ESTICA a sessão.
     2) POUCO TEMPO por sessão — MYO-REPS, tanto no composto quanto no isolado.
        Hipertrofia é volume-dependente, e fragmentar a série acumula volume sem
        esticar o treino. Antes o composto levava muscle round aqui; virou

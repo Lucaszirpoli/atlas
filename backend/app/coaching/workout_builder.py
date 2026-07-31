@@ -165,7 +165,8 @@ def build_and_save(db: Session, user: User) -> dict:
     session_target = training_brain.session_exercise_target(profile.session_length)
     # Sessão curta: prioriza compostos multiarticulares e máquinas que pegam
     # vários músculos, pra render mais estímulo no pouco tempo.
-    curto = training_brain.valid_session_length(profile.session_length) == "curto"
+    tempo_sessao = training_brain.valid_session_length(profile.session_length)
+    curto = tempo_sessao == "curto"
     prefs_exercicio = training_brain.valid_exercise_prefs(getattr(profile, "exercise_prefs", None))
     plan = build_plan(
         db, method, available_days=days, weak_points=wps,
@@ -218,7 +219,9 @@ def build_and_save(db: Session, user: User) -> dict:
         except ValueError:
             desconhecidos.append(muscle_value)
 
-    plano_semanal = volume_landmarks.weekly_plan(musculos, exp, weeks_acc, weak_points=wps)
+    plano_semanal = volume_landmarks.weekly_plan(
+        musculos, exp, weeks_acc, weak_points=wps, session_length=tempo_sessao
+    )
 
     # --- VOLUME QUE NÃO CABE NAS VAGAS -> OUTRO EXERCÍCIO -------------------
     # Uma vaga entrega no máximo PER_EXERCISE_MAX séries de trabalho efetivas.
@@ -371,7 +374,7 @@ def build_and_save(db: Session, user: User) -> dict:
         if muscle not in plano_semanal:
             musculos.append(muscle)
             plano_semanal[muscle] = volume_landmarks.weekly_target_sets(
-                muscle, exp, weeks_acc, priority="alta"
+                muscle, exp, weeks_acc, priority="alta", session_length=tempo_sessao
             )
 
     # --- PISO DE EXERCÍCIOS POR SESSÃO --------------------------------------

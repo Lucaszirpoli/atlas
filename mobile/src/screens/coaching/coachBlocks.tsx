@@ -383,6 +383,17 @@ export function TrainingPrefsCard({
           <PrefRow icon="flash" label="Técnicas avançadas" value={tecnicasTxt} onPress={() => setSheet("tecnicas")} />
           <PrefRow icon="repeat" label="Periodização" value={periodTxt} onPress={() => setSheet("periodization")} last />
 
+          {/* Aviso de cobertura ANTES do de cardio: ele fala do treino que a
+              pessoa acabou de configurar, então é o mais próximo do que ela
+              está fazendo agora. Fundo azul (informação), não amarelo (alerta) —
+              a escolha dela é legítima, só precisa ser informada. */}
+          {prefs.session_fit_warning ? (
+            <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: spacing.sm, backgroundColor: colors.primary + "14", borderRadius: radius.card, padding: spacing.sm }}>
+              <Ionicons name="information-circle" size={15} color={colors.primary} style={{ marginTop: 1 }} />
+              <Text style={[type.caption, { color: colors.textSecondary, flex: 1, lineHeight: 18 }]}>{prefs.session_fit_warning}</Text>
+            </View>
+          ) : null}
+
           {prefs.cardio_warning ? (
             <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: spacing.sm, backgroundColor: colors.warning + "14", borderRadius: radius.card, padding: spacing.sm }}>
               <Ionicons name="alert-circle" size={15} color={colors.warning} style={{ marginTop: 1 }} />

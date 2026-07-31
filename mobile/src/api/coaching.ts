@@ -79,6 +79,10 @@ export type TrainingPrefs = {
   // Dias por semana que a pessoa pode treinar (2–7). null = automático.
   training_days_per_week: number | null;
   training_days_options: number[];
+  /** Quais grupos ficam sem exercício próprio nesta combinação de tempo x
+   * frequência, e qual tempo cobriria tudo. null = a combinação cobre o corpo
+   * inteiro. Nenhuma combinação é bloqueada — isto é aviso, não erro. */
+  session_fit_warning: string | null;
   wants_cardio: boolean | null;
   /** Valor EFETIVO (já com a regra de iniciante aplicada no backend). */
   allow_advanced_techniques: boolean;
