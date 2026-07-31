@@ -221,12 +221,19 @@ def steps() -> list[dict]:
                  "options": _enum_opts(TrainingLocation, LOCAL_LABELS)},
                 {"key": "home_equipment", "label": "O que você tem em casa", "type": MULTI,
                  "required": False, "options": _opts(training_brain.HOME_EQUIPMENT),
-                 "shows_if": {"field": "training_location", "equals": "casa_com_equipamento"}},
-                {"key": "gym_crowding", "label": "Como costuma estar no seu horário",
-                 "type": SINGLE, "required": False,
-                 "options": _opts3(training_brain.GYM_CROWDING),
-                 "help": "Academia cheia muda o treino de verdade: eu evito exercício que "
-                         "depende de segurar dois aparelhos ao mesmo tempo."},
+                 "shows_if": {"field": "training_location", "equals": "casa_com_equipamento"},
+                 "help": "Eu monto o plano só com o que você marcar aqui."},
+                # "A academia costuma estar cheia?" SAIU.
+                #
+                # O efeito que ela teria é o do manual: não prescrever superset,
+                # que exige segurar duas estações ao mesmo tempo. Só que o motor
+                # NUNCA prescreve superset — `training_brain.suggest_technique`
+                # escolhe entre rest-pause, myo-reps, back-off e muscle round, e
+                # o superset existe no catálogo sem nenhum caminho que o
+                # selecione. A pergunta não teria como mudar nada.
+                #
+                # Ela volta junto com o superset pareado (o modelo que liga dois
+                # exercícios, que também não existe).
             ],
         },
         # --- 5 -------------------------------------------------------------
@@ -247,10 +254,19 @@ def steps() -> list[dict]:
                 {"key": "session_length", "label": "Tempo por treino", "type": SINGLE, "required": True,
                  "options": [{"value": v, "label": label, "desc": faixa}
                              for v, label, faixa, _ in training_brain.SESSION_LENGTHS]},
-                {"key": "split_preference", "label": "Divisão dos treinos", "type": SINGLE, "required": False,
-                 "options": _opts3(training_brain.SPLIT_PREFERENCES),
-                 "help": "Todas as opções passam por cada músculo pelo menos 2× na semana — "
-                         "treinar um músculo só por dia rende menos."},
+                # "Qual divisão você prefere?" SAIU, e por um motivo que só
+                # apareceu ao tentar implementá-la.
+                #
+                # Pra cada número de dias existe UMA divisão que cumpre a regra 6
+                # (mínimo 2×/semana por grupo) com os blueprints que existem:
+                # 2 e 3 dias -> full body; 4 -> superior/inferior; 5 -> PPL +
+                # superior/inferior; 6 -> PPL ×2. As alternativas ou quebram a
+                # frequência mínima (PPL em 3 dias passa a 1×/semana por grupo)
+                # ou exigem blueprint que não foi escrito (full body ×4,
+                # superior/inferior ×6).
+                #
+                # Ou seja: escolher a divisão só mudaria alguma coisa piorando o
+                # treino. Ela volta quando os blueprints faltantes existirem.
             ],
         },
         # --- 6 -------------------------------------------------------------

@@ -18,7 +18,13 @@ from app.ai import exercise_taxonomy, methods_engine, plan_review
 from app.ai.exercise_taxonomy import Pattern
 from app.ai.methods import coach_custom_spec
 from app.ai.methods_engine import build_plan
-from app.coaching import cycle_state, prescription, training_brain, volume_landmarks
+from app.coaching import (
+    cycle_state,
+    prescription,
+    restrictions,
+    training_brain,
+    volume_landmarks,
+)
 from app.models.coaching_technique_cue import CoachingTechniqueCue
 from app.models.exercise import MuscleGroup
 from app.models.routine import Routine, RoutineExercise
@@ -102,6 +108,7 @@ def _reparar_cobertura(
     *,
     prefer_machines: bool,
     exercise_prefs: list[str],
+    restricoes: restrictions.Perfil = restrictions.PERFIL_LIVRE,
 ) -> list[str]:
     """Tenta CONSERTAR o que a revisão global apontou, e devolve o que sobrou.
 
@@ -125,6 +132,16 @@ def _reparar_cobertura(
             exercise_prefs=exercise_prefs,
             max_per_session=_MAX_EXERCICIOS_POR_SESSAO,
             region=regiao,
+            # ESTE caminho já reintroduziu um levantamento terra romeno num plano
+            # de quem tinha marcado dor lombar: a montagem filtrava certo, a
+            # revisão apontava "falta posterior (extensão de quadril)" — que era
+            # justamente a região que o filtro tinha esvaziado — e o reparo
+            # recolocava o exercício proibido pra fechar a cobertura.
+            #
+            # Cobertura NUNCA vence segurança. Quando a região só existe em
+            # movimentos que a pessoa não pode fazer, o certo é a lacuna
+            # PERMANECER e sair como pendência declarada.
+            restricoes=restricoes,
         )
     return plan_review.review(plan)
 
@@ -164,9 +181,14 @@ def build_and_save(db: Session, user: User) -> dict:
     tempo_sessao = training_brain.valid_session_length(profile.session_length)
     curto = tempo_sessao == "curto"
     prefs_exercicio = training_brain.valid_exercise_prefs(getattr(profile, "exercise_prefs", None))
+    # Lesão, dor (moderada ou forte), limitação funcional e equipamento de casa.
+    # É o que faz "dor no ombro" tirar o desenvolvimento do plano em vez de ficar
+    # guardado num campo que ninguém lê.
+    restricoes = restrictions.perfil_de(profile)
     plan = build_plan(
         db, method, available_days=days, weak_points=wps,
         session_target=session_target, time_efficient=curto,
+        restricoes=restricoes,
         # Preferências marcadas no questionário (máquinas x peso livre, evitar
         # agachamento livre/acima da cabeça/impacto, unilateral). Chegam até a
         # escolha de cada exercício — é o que faz a resposta virar treino.
@@ -189,7 +211,8 @@ def build_and_save(db: Session, user: User) -> dict:
     # segundo `review` no fim desta função).
     pendencias = plan_review.review(plan, method=method)
     pendencias = _reparar_cobertura(db, plan, pendencias, prefer_machines=curto,
-                                    exercise_prefs=prefs_exercicio)
+                                    exercise_prefs=prefs_exercicio,
+                                    restricoes=restricoes)
 
     # Volume semanal por grupo muscular (regra: sobe/desce série por músculo
     # dentro da faixa MEV-MRV baseada em evidência, ajustada por nível — nunca
@@ -331,6 +354,7 @@ def build_and_save(db: Session, user: User) -> dict:
             exercise_prefs=prefs_exercicio,
             max_per_session=_MAX_EXERCICIOS_POR_SESSAO,
             seed=user.id,
+            restricoes=restricoes,
         )
         if slot is None:
             # Sem exercício novo desse músculo na base (ou sessões cheias): o
@@ -364,6 +388,7 @@ def build_and_save(db: Session, user: User) -> dict:
             max_per_session=_MAX_EXERCICIOS_POR_SESSAO,
             seed=user.id,
             permitir_musculo_novo=True,
+            restricoes=restricoes,
         )
         if slot is None:
             continue  # a base não tem exercício desse músculo — reportado na revisão
@@ -415,6 +440,7 @@ def build_and_save(db: Session, user: User) -> dict:
                     max_per_session=_MAX_EXERCICIOS_POR_SESSAO,
                     seed=user.id,
                     session=sessao,
+                    restricoes=restricoes,
                 )
                 if entrou is not None:
                     break
@@ -682,6 +708,10 @@ def build_and_save(db: Session, user: User) -> dict:
         # que eu preciso poder ver, não descobrir por reclamação de usuário.
         "is_coherent": not pendencias,
         "coherence_issues": pendencias,
+        # O que foi TIRADO do treino por lesão, dor, limitação ou equipamento.
+        # Filtrar em silêncio é pior que não filtrar: a pessoa procura o supino
+        # livre, não acha, e conclui que o app é ruim.
+        "restriction_notes": restrictions.avisos(profile),
         "message": f"Pronto — montei {len(nomes)} treino(s) pra {days} dia(s) na semana. "
                    "Já estão nas suas rotinas, é só treinar.",
     }

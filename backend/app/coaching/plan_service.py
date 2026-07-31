@@ -71,10 +71,8 @@ _IMPACTO: dict[str, tuple[str, ...]] = {
     # Onde e quando.
     "training_location": ("treino",),
     "home_equipment": ("treino",),
-    "gym_crowding": ("treino",),
     "training_days_per_week": ("treino",),
     "session_length": ("treino",),
-    "split_preference": ("treino",),
     # Saúde: tira exercício do plano, então refaz o treino.
     "has_injury": ("treino",),
     "injury_regions": ("treino",),

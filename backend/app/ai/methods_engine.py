@@ -48,6 +48,7 @@ from app.ai.exercise_taxonomy import (
     tier_rank,
 )
 from app.ai.methods import MethodSpec, coach_split_for
+from app.coaching import restrictions
 from app.core.text import normalize_search_text
 from app.models.exercise import (
     STRENGTH_CATEGORIES,
@@ -292,6 +293,7 @@ def _pick_for_slot(
     prefs: frozenset[str],
     prefer_machines: bool,
     seed: int | None = None,
+    restricoes: restrictions.Perfil = restrictions.PERFIL_LIVRE,
 ) -> _Cand | None:
     """O exercício certo pra uma vaga, ou None quando a base não tem nada que
     sirva. Ordem de decisão: tier, preferência da pessoa, qualidade da imagem.
@@ -306,12 +308,19 @@ def _pick_for_slot(
     `seed`: identificador da pessoa. Só desempata entre candidatos EQUIVALENTES
     (ver `_escolher_com_variacao`) — nunca troca a ordem de decisão acima.
     """
+    # Lesão, dor, limitação e equipamento entram como filtro DURO, junto das
+    # preferências. As três passadas abaixo relaxam exigência de qualidade do
+    # treino (região, função inédita, variação) — nunca de segurança: se a vaga
+    # ficar sem candidato porque tudo que serviria carrega a região machucada, ela
+    # fica VAZIA e o volume se fecha em outro exercício. Melhor um treino com uma
+    # vaga a menos do que um movimento que a pessoa disse que dói.
     base = [
         c
         for c in pool
         if c.ex.primary_muscle_group == spec.muscle
         and c.taxon.pattern is spec.pattern
         and not _proibido_por_preferencia(c.nome_norm, prefs)
+        and not restrictions.proibido(c.taxon, c.ex.primary_muscle_group, c.ex.equipment, restricoes)
         and c.ex.id not in ids_na_sessao
     ]
     if not base:
@@ -440,8 +449,13 @@ def build_plan(
     time_efficient: bool = False,
     exercise_prefs: list[str] | None = None,
     seed: int | None = None,
+    restricoes: restrictions.Perfil = restrictions.PERFIL_LIVRE,
 ) -> WorkoutPlan:
     """Monta a semana inteira preenchendo os blueprints de cada dia.
+
+    restricoes: lesão, dor, limitação funcional e equipamento disponível, já
+    resolvidos por `restrictions.perfil_de`. Filtro DURO — a vaga fica vazia
+    antes de receber um movimento sobre a região que a pessoa declarou.
 
     weak_points: músculo(s) a priorizar (até 2). Muda a ORDEM (o composto do
     ponto fraco abre a sessão) e, via workout_builder, o VOLUME e a divisão de 4
@@ -533,6 +547,7 @@ def build_plan(
                 prefs=prefs,
                 prefer_machines=time_efficient or "maquinas" in prefs,
                 seed=seed,
+                restricoes=restricoes,
             )
             escolhido = escolher(spec)
             if escolhido is None:
@@ -590,6 +605,7 @@ def add_accessory_slot(
     seed: int | None = None,
     session: PlannedSession | None = None,
     permitir_musculo_novo: bool = False,
+    restricoes: restrictions.Perfil = restrictions.PERFIL_LIVRE,
 ) -> PlannedSlot | None:
     """Acrescenta UMA vaga do `muscle` ao plano e devolve a vaga criada (None se
     não houver exercício novo, nenhuma sessão que treine o músculo, ou todas as
@@ -659,6 +675,11 @@ def add_accessory_slot(
         if c.ex.primary_muscle_group == muscle
         and c.ex.id not in ids_sessao
         and not _proibido_por_preferencia(c.nome_norm, prefs)
+        # Mesmo filtro de segurança do montador. Sem ele, o preenchimento de
+        # volume reintroduziria justamente o exercício que a montagem tirou:
+        # o alvo semanal não fecharia, o motor procuraria "mais um de peito" e
+        # devolveria o supino com barra que a lesão de ombro tinha excluído.
+        and not restrictions.proibido(c.taxon, c.ex.primary_muscle_group, c.ex.equipment, restricoes)
         and (region is None or c.taxon.region == region)
         and ocupacao[(c.taxon.pattern.value, c.taxon.region)] < 2
     ]

@@ -232,6 +232,10 @@ class BuildWorkoutResult(BaseModel):
     # revisão era descartado silenciosamente antes de chegar ao app.
     is_coherent: bool = True
     coherence_issues: list[str] = []
+    # O que saiu do treino por lesão, dor, limitação funcional ou equipamento —
+    # e por quê. Mesma regra dos dois campos acima: sem estar declarado aqui, o
+    # response_model descarta e a pessoa vê o exercício sumir sem explicação.
+    restriction_notes: list[str] = []
     message: str
 
 

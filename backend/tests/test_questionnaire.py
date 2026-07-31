@@ -52,6 +52,31 @@ def test_todo_campo_tem_opcao_ou_e_numero():
             assert f.get("options"), f"{f['key']} é {f['type']} e não tem opções"
 
 
+def test_toda_pergunta_declara_o_que_ela_muda():
+    """A regra do arquivo, virada em teste.
+
+    `plan_service._IMPACTO` diz que componentes cada resposta refaz. Uma pergunta
+    ausente dali, ou com impacto vazio, é uma pergunta que a pessoa responde à
+    toa — e o app ainda a trata como "sem efeito" na hora de decidir o que
+    remontar.
+
+    Já pegou três de verdade: os dias específicos da semana (impacto declarado
+    como vazio no próprio código), a academia cheia (que só teria efeito sobre
+    superset, que o motor nunca prescreve) e a divisão preferida (cuja única
+    alternativa possível quebraria a frequência mínima de 2×/semana).
+    """
+    from app.coaching import plan_service
+
+    sem_efeito = [
+        f["key"] for f in TODOS_CAMPOS
+        if not plan_service._IMPACTO.get(f["key"])
+    ]
+    assert sem_efeito == [], (
+        f"perguntas que não mudam nada no plano: {sem_efeito}. "
+        "Ou ligue a resposta em alguma regra, ou tire a pergunta."
+    )
+
+
 def test_campo_condicional_aponta_pra_campo_que_existe():
     """`shows_if` apontando pra chave errada esconde o campo pra sempre, em
     silêncio — a tela simplesmente nunca o mostra."""
