@@ -57,6 +57,18 @@ BASE_MAX = 12
 WEAK_MIN = 8
 WEAK_MAX = 16
 
+# ...e o topo da faixa depende da POSIÇÃO na fila de prioridade.
+#
+# Os pontos fracos passaram a ser 3 e ORDENADOS (training_brain.WEAK_POINTS_MAX).
+# Se os três recebessem o mesmo topo, a ordem seria decorativa: marcar peito,
+# costas e bíceps nessa ordem daria exatamente o mesmo plano que marcar bíceps,
+# costas e peito. A "Compensação de Volume" do manual só existe porque o
+# orçamento de recuperação é finito — alguém tem que receber mais que os outros.
+#
+# O piso continua sendo WEAK_MIN pros três: mesmo a terceira prioridade nunca
+# recebe menos que um ponto fraco recebia antes. O que decai é o TETO.
+_WEAK_TOP_BY_RANK: dict[int, int] = {1: WEAK_MAX, 2: 14, 3: 12}
+
 # Onde a faixa COMEÇA na semana 1 do mesociclo, em fração da própria faixa.
 #
 # Existia um bug silencioso aqui: as duas faixas partiam do piso (0.0), então na
@@ -186,13 +198,21 @@ def weekly_target_sets(
     *,
     priority: str = "normal",
     session_length: str | None = None,
+    recovery: float = 1.0,
 ) -> int:
     """Séries semanais efetivas pro músculo. `priority`:
 
     - "baixa"       -> ponto forte / já desenvolvido / sem prioridade: perto de 5
     - "normal"      -> faixa-base 5–12, subindo ao longo do mesociclo
-    - "alta"        -> ponto fraco: 8–16
+    - "alta"        -> ponto fraco 1º da fila: 8–16
+    - "alta_2"      -> ponto fraco 2º da fila: 8–14
+    - "alta_3"      -> ponto fraco 3º da fila: 8–12
     - "excepcional" -> 20–22 (só 1–2 músculos, e com o resto reduzido)
+
+    `recovery` é o fator de training_brain.recovery_factor (sono, estresse, dor
+    entre sessões, outro esporte). Ele multiplica o alvo DEPOIS da faixa e ANTES
+    do teto — quem dorme mal treina o mesmo desenho de treino com menos série,
+    não um treino diferente.
 
     `session_length` decide de ONDE a faixa parte (ver `band_start`): quem pediu
     um treino curto trabalha na margem baixa, quem tem tempo trabalha na alta.
@@ -215,9 +235,11 @@ def weekly_target_sets(
         # Ponto forte / já desenvolvido / FINANCIADOR de um ponto fraco: manter
         # custa pouco — fica no piso da faixa.
         alvo = BASE_MIN
-    elif priority == "alta":
-        # Prioridade não encolhe com o relógio — ver o docstring.
-        alvo = _dentro_da_faixa(WEAK_MIN, WEAK_MAX, p)
+    elif priority.startswith("alta"):
+        # Prioridade não encolhe com o relógio — ver o docstring. O topo é o da
+        # POSIÇÃO na fila: 1º 16, 2º 14, 3º 12 (ver _WEAK_TOP_BY_RANK).
+        rank = 1 if priority == "alta" else int(priority.rsplit("_", 1)[-1])
+        alvo = _dentro_da_faixa(WEAK_MIN, _WEAK_TOP_BY_RANK.get(rank, WEAK_MAX), p)
     elif priority == "excepcional":
         alvo = _dentro_da_faixa(EXCEPTIONAL_MIN, EXCEPTIONAL_MAX, p)
     else:
@@ -225,7 +247,7 @@ def weekly_target_sets(
         # volume pro corpo inteiro) e o INÍCIO dado pelo tempo de sessão.
         alvo = _dentro_da_faixa(BASE_MIN, _band_top(muscle), p, inicio)
 
-    alvo = round(alvo * fator)
+    alvo = round(alvo * fator * recovery)
     teto = mrv if priority == "excepcional" else min(mrv, EXCEPTIONAL_MAX)
     return max(1, min(alvo, teto))
 
@@ -238,6 +260,7 @@ def weekly_plan(
     weak_points: list[MuscleGroup] | None = None,
     exceptional: list[MuscleGroup] | None = None,
     session_length: str | None = None,
+    recovery: float = 1.0,
 ) -> dict[MuscleGroup, int]:
     """O volume semanal de TODOS os músculos da semana, de uma vez.
 
@@ -245,8 +268,13 @@ def weekly_plan(
     **equalização obrigatória** (§6.1): a capacidade de recuperação é sistêmica,
     então o que sobe num ponto fraco tem que descer em outro lugar. Calcular
     isolado é como cada área da empresa pedir orçamento sem olhar o caixa.
+
+    `weak_points` vem ORDENADO — a posição na lista é a prioridade declarada no
+    questionário, e é ela que define o topo da faixa de cada um.
     """
-    weak = set(weak_points or [])
+    ordem = list(dict.fromkeys(weak_points or []))  # sem repetição, ordem mantida
+    weak = set(ordem)
+    rank = {m: i + 1 for i, m in enumerate(ordem)}
     # Excepcional é raro por definição: no máximo 2 músculos, e só entre os que
     # já são ponto fraco (ninguém leva um músculo sem prioridade a 22 séries).
     exc = [m for m in (exceptional or []) if m in weak][:MAX_EXCEPTIONAL_MUSCLES]
@@ -255,7 +283,8 @@ def weekly_plan(
         if m in exc:
             return "excepcional"
         if m in weak:
-            return "alta"
+            pos = rank[m]
+            return "alta" if pos == 1 else f"alta_{pos}"
         # --- EQUALIZAÇÃO ----------------------------------------------------
         # Havendo ponto fraco, quem NÃO é prioridade vira financiador e desce pro
         # piso da faixa (§6.1: "o coach reduz os outros grupos"). Não é
@@ -274,6 +303,7 @@ def weekly_plan(
         m: weekly_target_sets(
             m, level, weeks_accumulating,
             priority=prioridade(m), session_length=session_length,
+            recovery=recovery,
         )
         for m in muscles
     }

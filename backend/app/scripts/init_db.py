@@ -63,6 +63,29 @@ def _ensure_profile_columns() -> None:
         # Quando o bloco de especialização (ponto fraco) começou — o relógio que
         # faz o coach cobrar a revisão em vez de deixar a priorização eterna.
         ("weak_points_since", "TIMESTAMPTZ", "TIMESTAMP"),
+        # Respostas ESTRUTURADAS do questionário novo, que substituíram os campos
+        # de texto livre. Cada uma tem um consumidor determinístico no motor —
+        # ver o bloco correspondente em models/user_profile.py.
+        ("training_time", "VARCHAR(12)", "VARCHAR(12)"),
+        ("rir_accuracy", "VARCHAR(16)", "VARCHAR(16)"),
+        ("has_injury", "BOOLEAN", "BOOLEAN"),
+        ("injury_regions", "VARCHAR(16)[]", "TEXT"),
+        ("medical_clearance", "BOOLEAN", "BOOLEAN"),
+        ("has_pain", "BOOLEAN", "BOOLEAN"),
+        ("pain_regions", "VARCHAR(16)[]", "TEXT"),
+        ("pain_intensity", "VARCHAR(12)", "VARCHAR(12)"),
+        ("limitations", "VARCHAR(20)[]", "TEXT"),
+        ("gym_crowding", "VARCHAR(10)", "VARCHAR(10)"),
+        ("home_equipment", "VARCHAR(20)[]", "TEXT"),
+        ("split_preference", "VARCHAR(16)", "VARCHAR(16)"),
+        ("load_preference", "VARCHAR(12)", "VARCHAR(12)"),
+        ("failure_comfort", "VARCHAR(12)", "VARCHAR(12)"),
+        ("known_techniques", "VARCHAR(20)[]", "TEXT"),
+        ("sleep_quality", "VARCHAR(8)", "VARCHAR(8)"),
+        ("stress_level", "VARCHAR(8)", "VARCHAR(8)"),
+        ("recovery_between", "VARCHAR(12)", "VARCHAR(12)"),
+        ("other_sport", "VARCHAR(10)", "VARCHAR(10)"),
+        ("food_dislikes_list", "VARCHAR(30)[]", "TEXT"),
     ]
     pg = engine.dialect.name == "postgresql"
     with engine.begin() as conn:

@@ -219,8 +219,14 @@ def build_and_save(db: Session, user: User) -> dict:
         except ValueError:
             desconhecidos.append(muscle_value)
 
+    # Sono, estresse, dor entre sessões e outro esporte viram UM fator que
+    # desloca o volume da semana inteira (training_brain.recovery_factor). Quem
+    # está dormindo mal recebe o mesmo desenho de treino com menos série — não um
+    # treino diferente, que seria imprevisível pra quem acompanha a evolução.
+    recuperacao = training_brain.recovery_factor(profile)
     plano_semanal = volume_landmarks.weekly_plan(
-        musculos, exp, weeks_acc, weak_points=wps, session_length=tempo_sessao
+        musculos, exp, weeks_acc, weak_points=wps, session_length=tempo_sessao,
+        recovery=recuperacao,
     )
 
     # --- VOLUME QUE NÃO CABE NAS VAGAS -> OUTRO EXERCÍCIO -------------------
@@ -374,7 +380,8 @@ def build_and_save(db: Session, user: User) -> dict:
         if muscle not in plano_semanal:
             musculos.append(muscle)
             plano_semanal[muscle] = volume_landmarks.weekly_target_sets(
-                muscle, exp, weeks_acc, priority="alta", session_length=tempo_sessao
+                muscle, exp, weeks_acc, priority="alta", session_length=tempo_sessao,
+                recovery=recuperacao,
             )
 
     # --- PISO DE EXERCÍCIOS POR SESSÃO --------------------------------------

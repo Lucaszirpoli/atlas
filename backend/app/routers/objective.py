@@ -78,15 +78,27 @@ def get_state(
     ativo = plan_service.active_plan(db, current_user.id)
     draft = plan_service.get_draft(db, current_user.id)
 
-    respostas_ativas = dict(ativo.answers or {}) if ativo else {}
-    # Sem rascunho e sem plano: começa do que o app já sabe (perfil), pra
-    # ninguém redigitar altura, idade e objetivo.
+    # Tanto o rascunho quanto as respostas do plano ativo nascem do que o app já
+    # sabe (perfil) e só então recebem por cima o que estiver salvo. Ninguém
+    # redigita altura, idade e objetivo.
+    #
+    # O merge existe por causa do questionário novo: quem já tinha plano ativo
+    # respondeu perguntas que não existem mais (o ponto fraco era uma lista sem
+    # ordem, o nível era auto-avaliado) e não respondeu as que existem agora.
+    # Sem a base do perfil, essa pessoa abriria a tela com os campos novos em
+    # branco e travada num obrigatório, mesmo tendo a informação guardada.
+    #
+    # E a base precisa entrar DOS DOIS LADOS. Só no rascunho, o diff acusaria
+    # como "alteração pendente" cada campo novo que a pessoa não mexeu — ela
+    # abriria a aba com um aviso de mudanças que não fez. Os dois lados partindo
+    # da mesma base, o diff volta a mostrar só o que ela mudou de verdade.
+    base_perfil = plan_service.answers_from_profile(db, current_user)
+    respostas_ativas = {**base_perfil, **dict(ativo.answers or {})} if ativo else {}
+    rascunho = dict(base_perfil)
     if draft is not None:
-        rascunho = dict(draft.answers or {})
+        rascunho.update(dict(draft.answers or {}))
     elif ativo is not None:
-        rascunho = dict(respostas_ativas)
-    else:
-        rascunho = plan_service.answers_from_profile(db, current_user)
+        rascunho.update(respostas_ativas)
 
     pendentes = plan_service.diff_answers(respostas_ativas, rascunho) if ativo else []
 

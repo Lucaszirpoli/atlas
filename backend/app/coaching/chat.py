@@ -26,33 +26,91 @@ _MAX_HISTORY = 8
 _MAX_TOOL_ROUNDS = 5
 
 
+# Os alimentos rejeitados moram no questionário (é lista de apresentação, não
+# regra de motor). Importado aqui só pra traduzir o valor gravado no rótulo.
+def _food_dislikes_labels():
+    from app.coaching.questionnaire import FOOD_DISLIKES
+
+    return FOOD_DISLIKES
+
+
+FOOD_DISLIKES_LABELS = _food_dislikes_labels()
+
+
 def _perfil_lines(profile) -> list[str]:
     """TUDO que a pessoa respondeu no questionário. Antes o coach só recebia a
     análise numérica: quem respondeu "prefiro máquinas", "dor no ombro direito"
     ou "não como peixe" conversava com um coach que não sabia de nada disso —
-    e por isso parecia não levar o questionário em conta."""
+    e por isso parecia não levar o questionário em conta.
+
+    Os campos de TEXTO LIVRE saíram do questionário (ver `questionnaire`), então
+    as linhas abaixo vêm das respostas estruturadas. Os textos antigos continuam
+    sendo lidos quando existem: perfil que respondeu o questionário anterior não
+    pode perder contexto que já tinha dado.
+    """
     if profile is None:
         return []
     from app.coaching import training_brain
 
-    rotulos = dict((v, label) for v, label, _ in training_brain.EXERCISE_PREFS)
+    def _rot(pares, valores) -> str | None:
+        """Valores gravados -> rótulos que a pessoa viu na tela."""
+        mapa = {p[0]: p[1] for p in pares}
+        return ", ".join(mapa.get(v, v) for v in (valores or [])) or None
+
+    def _um(pares, valor) -> str | None:
+        return {p[0]: p[1] for p in pares}.get(valor) if valor else None
+
+    prioridades = training_brain.resolve_weak_points(profile)
     itens: list[tuple[str, object]] = [
         ("Nível", getattr(getattr(profile, "experience_level", None), "value", None)),
+        ("Tempo de treino", _um(training_brain.TRAINING_TIME, getattr(profile, "training_time", None))),
         ("Local de treino", getattr(getattr(profile, "training_location", None), "value", None)),
+        ("Equipamento em casa", _rot(training_brain.HOME_EQUIPMENT, getattr(profile, "home_equipment", None))),
+        ("Academia no horário dela",
+         _um(training_brain.GYM_CROWDING, getattr(profile, "gym_crowding", None))),
         ("Dias por semana", getattr(profile, "training_days_per_week", None)),
         ("Tempo por sessão", getattr(profile, "session_length", None)),
-        ("Pontos fracos", ", ".join(training_brain.resolve_weak_points(profile)) or None),
-        ("Pontos já desenvolvidos", ", ".join(getattr(profile, "strong_points", None) or []) or None),
-        ("Lesões/limitações", getattr(profile, "injuries_limitations", None)),
+        ("Divisão preferida",
+         _um(training_brain.SPLIT_PREFERENCES, getattr(profile, "split_preference", None))),
+        # A ORDEM importa: é ela que define quem recebe mais volume.
+        ("Prioridades, em ordem",
+         " > ".join(training_brain.WEAK_POINT_LABEL.get(m, m) for m in prioridades) or None),
+        ("Pontos já desenvolvidos",
+         _rot(training_brain.WEAK_POINTS, getattr(profile, "strong_points", None))),
+        ("Lesão",
+         _rot(training_brain.BODY_REGIONS, getattr(profile, "injury_regions", None))),
+        ("Tem liberação profissional pra treinar a lesão",
+         getattr(profile, "medical_clearance", None) if getattr(profile, "has_injury", None) else None),
+        ("Dor", _rot(training_brain.BODY_REGIONS, getattr(profile, "pain_regions", None))),
+        ("Intensidade da dor",
+         _um(training_brain.PAIN_INTENSITY, getattr(profile, "pain_intensity", None))),
+        ("Limitações", _rot(training_brain.LIMITATIONS, getattr(profile, "limitations", None))),
         ("Preferências de exercício",
-         ", ".join(rotulos.get(v, v) for v in (getattr(profile, "exercise_prefs", None) or [])) or None),
-        ("Outras preferências", getattr(profile, "exercise_preferences_text", None)),
+         _rot(training_brain.EXERCISE_PREFS, getattr(profile, "exercise_prefs", None))),
+        ("Prefere carga ou repetição",
+         _um(training_brain.LOAD_PREFERENCE, getattr(profile, "load_preference", None))),
+        ("Conforto perto da falha",
+         _um(training_brain.FAILURE_COMFORT, getattr(profile, "failure_comfort", None))),
+        ("Sabe estimar RIR",
+         _um(training_brain.RIR_ACCURACY, getattr(profile, "rir_accuracy", None))),
         ("Técnica avançada",
          "pode usar" if training_brain.advanced_allowed(profile) else "SÓ SÉRIES NORMAIS — não sugira técnica"),
-        ("Histórico de treino", getattr(profile, "training_history", None)),
+        ("Técnicas que já usou",
+         _rot(training_brain.KNOWN_TECHNIQUES, getattr(profile, "known_techniques", None))),
+        ("Sono", _um(training_brain.SLEEP_QUALITY, getattr(profile, "sleep_quality", None))),
+        ("Estresse", _um(training_brain.STRESS_LEVEL, getattr(profile, "stress_level", None))),
+        ("Chega no treino seguinte",
+         _um(training_brain.RECOVERY_BETWEEN, getattr(profile, "recovery_between", None))),
+        ("Outro esporte", _um(training_brain.OTHER_SPORT, getattr(profile, "other_sport", None))),
         ("Quer cardio", getattr(profile, "wants_cardio", None)),
         ("Restrições alimentares", ", ".join(getattr(profile, "dietary_restrictions", None) or []) or None),
-        ("Não come", getattr(profile, "food_dislikes", None)),
+        ("Não come", _rot(FOOD_DISLIKES_LABELS, getattr(profile, "food_dislikes_list", None))),
+        # Respostas do questionário ANTIGO. Ficam por último e só aparecem em
+        # quem as tinha preenchido — quem responder o novo nunca as verá.
+        ("Lesões/limitações (texto antigo)", getattr(profile, "injuries_limitations", None)),
+        ("Outras preferências (texto antigo)", getattr(profile, "exercise_preferences_text", None)),
+        ("Histórico de treino (texto antigo)", getattr(profile, "training_history", None)),
+        ("Não come (texto antigo)", getattr(profile, "food_dislikes", None)),
         ("Medicamentos/hormônios", getattr(profile, "medications", None)),
         ("Observações dela", getattr(profile, "extra_notes", None)),
     ]

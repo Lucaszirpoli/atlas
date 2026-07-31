@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 
 class QuestionnaireSchema(BaseModel):
-    """Estrutura das 6 etapas — o app desenha a tela a partir disto."""
+    """Estrutura das etapas — o app desenha a tela a partir disto."""
 
     steps: list[dict[str, Any]]
     required: list[str]

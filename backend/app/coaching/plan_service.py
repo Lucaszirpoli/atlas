@@ -62,29 +62,48 @@ _IMPACTO: dict[str, tuple[str, ...]] = {
     "manual_pct_protein": ("metas", "dieta"),
     "manual_pct_carbs": ("metas", "dieta"),
     "manual_pct_fat": ("metas", "dieta"),
-    # Treino.
-    "experience_level": ("treino", "periodizacao"),
+    # Experiência. `training_time` substituiu a auto-avaliação de nível, e é dele
+    # que o experience_level passa a sair — por isso herdou o mesmo impacto.
+    "training_time": ("treino", "periodizacao"),
+    "rir_accuracy": ("treino",),
+    "failure_comfort": ("treino",),
+    "load_preference": ("treino",),
+    # Onde e quando.
     "training_location": ("treino",),
-    "training_history": (),
+    "home_equipment": ("treino",),
+    "gym_crowding": ("treino",),
     "training_days_per_week": ("treino",),
-    "available_days": (),  # só o horário: não refaz divisão nenhuma
     "session_length": ("treino",),
-    "weak_points": ("treino",),
-    "strong_points": ("treino",),
-    "injuries_limitations": ("treino",),
-    "exercise_preferences": ("treino",),
+    "split_preference": ("treino",),
+    # Saúde: tira exercício do plano, então refaz o treino.
+    "has_injury": ("treino",),
+    "injury_regions": ("treino",),
+    "medical_clearance": ("treino",),
+    "has_pain": ("treino",),
+    "pain_regions": ("treino",),
+    "pain_intensity": ("treino",),
+    "limitations": ("treino",),
     "exercise_prefs": ("treino",),
+    # Prioridades.
+    "priority_1": ("treino",),
+    "priority_2": ("treino",),
+    "priority_3": ("treino",),
+    "strong_points": ("treino",),
+    "allow_advanced_techniques": ("treino",),
+    "known_techniques": ("treino",),
+    "periodization": ("treino", "periodizacao"),
+    # Recuperação. As quatro viram o fator que desloca o VOLUME semanal
+    # (training_brain.recovery_factor), então mexem no treino — não só na
+    # análise, como era quando ninguém as lia.
+    "sleep_quality": ("treino", "analise"),
+    "stress_level": ("treino", "analise"),
+    "recovery_between": ("treino", "analise"),
+    "other_sport": ("treino", "analise"),
+    "wants_cardio": ("treino",),
     # Alimentação.
     "dietary_restrictions": ("dieta",),
     "meals_per_day": ("dieta",),
-    "food_dislikes": ("dieta",),
-    # Recuperação.
-    "sleep_hours": ("analise",),
-    "wants_cardio": ("treino",),
-    "allow_advanced_techniques": ("treino",),
-    "periodization": ("treino", "periodizacao"),
-    "medications": ("analise",),
-    "notes": ("analise",),
+    "food_dislikes_list": ("dieta",),
 }
 
 TODOS_COMPONENTES = ("treino", "metas", "dieta", "periodizacao", "analise")
@@ -159,17 +178,45 @@ def answers_from_profile(db: Session, user: User) -> dict[str, Any]:
         "weight_kg": peso,
         "target_weight_kg": p.target_weight_kg,
         "activity_level": p.activity_level.value if p.activity_level else None,
-        "experience_level": p.experience_level.value if p.experience_level else None,
         "training_location": p.training_location.value if p.training_location else None,
         "training_days_per_week": str(p.training_days_per_week) if p.training_days_per_week else None,
-        "available_days": list(p.available_days or []),
         "session_length": p.session_length,
-        "weak_points": training_brain.resolve_weak_points(p),
         "dietary_restrictions": list(p.dietary_restrictions or []),
-        "injuries_limitations": p.injuries_limitations,
         "wants_cardio": p.wants_cardio,
         "allow_advanced_techniques": p.allow_advanced_techniques,
         "periodization": p.periodization or "auto",
+        # A fila de prioridade sai da lista ordenada do perfil e volta pros três
+        # campos da tela.
+        **questionnaire.priorities_to_answers(training_brain.resolve_weak_points(p)),
+        "strong_points": list(p.strong_points or []),
+        "exercise_prefs": list(p.exercise_prefs or []),
+        # Respostas estruturadas do questionário novo. `training_time` é
+        # obrigatório e não existia antes: pra quem já usava o app, ele nasce do
+        # nível que a auto-avaliação antiga tinha gravado, senão a pessoa ficaria
+        # travada fora do próprio plano até responder tudo de novo.
+        "training_time": p.training_time
+        or training_brain.training_time_from_experience(
+            p.experience_level.value if p.experience_level else None
+        ),
+        "rir_accuracy": p.rir_accuracy,
+        "failure_comfort": p.failure_comfort,
+        "load_preference": p.load_preference,
+        "home_equipment": list(p.home_equipment or []),
+        "gym_crowding": p.gym_crowding,
+        "split_preference": p.split_preference,
+        "has_injury": p.has_injury,
+        "injury_regions": list(p.injury_regions or []),
+        "medical_clearance": p.medical_clearance,
+        "has_pain": p.has_pain,
+        "pain_regions": list(p.pain_regions or []),
+        "pain_intensity": p.pain_intensity,
+        "limitations": list(p.limitations or []),
+        "known_techniques": list(p.known_techniques or []),
+        "sleep_quality": p.sleep_quality,
+        "stress_level": p.stress_level,
+        "recovery_between": p.recovery_between,
+        "other_sport": p.other_sport,
+        "food_dislikes_list": list(p.food_dislikes_list or []),
         **meta_atual,
     }
 
@@ -268,8 +315,14 @@ def apply_answers_to_profile(db: Session, user: User, answers: dict) -> None:
         p.biological_sex = v
     if (v := _enum_or_none(ActivityLevel, answers.get("activity_level"))) is not None:
         p.activity_level = v
-    if (v := _enum_or_none(ExperienceLevel, answers.get("experience_level"))) is not None:
-        p.experience_level = v
+    # O nível de experiência não é mais perguntado — ele é DERIVADO do tempo de
+    # treino consistente. Auto-avaliação é sistematicamente inflada, e o nível
+    # vale 15% do volume semanal (volume_landmarks._LEVEL_FACTOR): quem se
+    # promove a avançado sozinho ganha volume que a recuperação dele não banca.
+    if (v := answers.get("training_time")) is not None:
+        p.training_time = training_brain.one_of(v, training_brain.TRAINING_TIME_VALUES)
+        if (nivel := training_brain.experience_from_training_time(p.training_time)) is not None:
+            p.experience_level = ExperienceLevel(nivel)
     if (v := _enum_or_none(TrainingLocation, answers.get("training_location"))) is not None:
         p.training_location = v
 
@@ -282,7 +335,11 @@ def apply_answers_to_profile(db: Session, user: User, answers: dict) -> None:
         int(answers["training_days_per_week"]) if str(answers.get("training_days_per_week") or "").isdigit() else None
     )
     p.session_length = training_brain.valid_session_length(answers.get("session_length"))
-    training_brain.apply_weak_points(p, answers.get("weak_points"), datetime.now(timezone.utc))
+    # A fila de prioridade vem dos TRÊS campos ordenados da tela, não de uma
+    # lista de checkbox — a posição é a informação (ver questionnaire).
+    training_brain.apply_weak_points(
+        p, questionnaire.ordered_priorities(answers), datetime.now(timezone.utc)
+    )
     p.periodization = training_brain.valid_periodization(answers.get("periodization"))
     if answers.get("wants_cardio") is not None:
         p.wants_cardio = bool(answers["wants_cardio"])
@@ -301,31 +358,66 @@ def apply_answers_to_profile(db: Session, user: User, answers: dict) -> None:
         if not novo_valor:
             workout_builder.revert_technique_cues(db, p.user_id)
         p.allow_advanced_techniques = novo_valor
-    if answers.get("available_days") is not None:
-        p.available_days = list(answers["available_days"] or [])
     if answers.get("dietary_restrictions") is not None:
         p.dietary_restrictions = list(answers["dietary_restrictions"] or [])
-    if answers.get("injuries_limitations") is not None:
-        p.injuries_limitations = answers["injuries_limitations"] or None
-
-    # Respostas que ANTES eram descartadas. Elas constavam do mapa de impacto
-    # (mudá-las remontava o plano), mas nada as gravava — quem respondia
-    # "prefiro máquinas e exercícios estáveis" via o coach montar agachamento
-    # livre do mesmo jeito. exercise_prefs muda a escolha de exercícios de
-    # verdade; os textos entram no contexto do coach de IA.
     if answers.get("exercise_prefs") is not None:
         p.exercise_prefs = training_brain.valid_exercise_prefs(answers.get("exercise_prefs"))
     if answers.get("strong_points") is not None:
         p.strong_points = training_brain.valid_weak_points(answers.get("strong_points"))
-    for campo, chave in (
-        ("exercise_preferences_text", "exercise_preferences"),
-        ("training_history", "training_history"),
-        ("food_dislikes", "food_dislikes"),
-        ("medications", "medications"),
-        ("extra_notes", "notes"),
+
+    # --- AS RESPOSTAS ESTRUTURADAS -----------------------------------------
+    # Substituíram os 6 campos de texto livre do questionário antigo (histórico,
+    # lesões, preferências, alimentos, medicamentos, observações), que eram
+    # gravados e nunca lidos por regra nenhuma. Cada campo abaixo tem consumidor
+    # determinístico — ver o bloco correspondente em models/user_profile.py.
+    #
+    # `is not None` em tudo: None significa "não respondeu" e preserva o valor
+    # anterior. Sem isso, avançar uma etapa sem tocar num campo o apagaria.
+    for campo, permitidos in (
+        ("rir_accuracy", training_brain.RIR_ACCURACY_VALUES),
+        ("failure_comfort", training_brain.FAILURE_COMFORT_VALUES),
+        ("load_preference", training_brain.LOAD_PREFERENCE_VALUES),
+        ("gym_crowding", training_brain.GYM_CROWDING_VALUES),
+        ("split_preference", training_brain.SPLIT_PREFERENCE_VALUES),
+        ("pain_intensity", training_brain.PAIN_INTENSITY_VALUES),
+        ("sleep_quality", training_brain.SLEEP_QUALITY_VALUES),
+        ("stress_level", training_brain.STRESS_LEVEL_VALUES),
+        ("recovery_between", training_brain.RECOVERY_BETWEEN_VALUES),
+        ("other_sport", training_brain.OTHER_SPORT_VALUES),
     ):
-        if answers.get(chave) is not None:
-            setattr(p, campo, (answers.get(chave) or "").strip() or None)
+        if answers.get(campo) is not None:
+            setattr(p, campo, training_brain.one_of(answers.get(campo), permitidos))
+
+    for campo, permitidos in (
+        ("injury_regions", training_brain.BODY_REGION_VALUES),
+        ("pain_regions", training_brain.BODY_REGION_VALUES),
+        ("limitations", training_brain.LIMITATION_VALUES),
+        ("home_equipment", training_brain.HOME_EQUIPMENT_VALUES),
+        ("known_techniques", training_brain.KNOWN_TECHNIQUE_VALUES),
+    ):
+        if answers.get(campo) is not None:
+            setattr(p, campo, training_brain.many_of(answers.get(campo), permitidos))
+
+    if answers.get("food_dislikes_list") is not None:
+        p.food_dislikes_list = training_brain.many_of(
+            answers.get("food_dislikes_list"), {v for v, _ in questionnaire.FOOD_DISLIKES}
+        )
+
+    # Lesão e dor: responder "não" precisa LIMPAR as regiões marcadas antes,
+    # senão quem se recupera continua com exercício bloqueado pra sempre.
+    for flag, dependentes in (
+        ("has_injury", ("injury_regions", "medical_clearance")),
+        ("has_pain", ("pain_regions", "pain_intensity")),
+    ):
+        if answers.get(flag) is None:
+            continue
+        marcado = bool(answers[flag])
+        setattr(p, flag, marcado)
+        if not marcado:
+            for dep in dependentes:
+                setattr(p, dep, [] if dep.endswith("_regions") else None)
+    if answers.get("medical_clearance") is not None and p.has_injury:
+        p.medical_clearance = bool(answers["medical_clearance"])
 
     # Peso é histórico append-only: um valor novo vira um registro novo, nunca
     # sobrescreve o anterior (regra 4 — é a base dos gráficos de evolução).

@@ -1,13 +1,25 @@
 """O QUESTIONÁRIO da aba Objetivo (spec §3.2).
 
-É a coleta única do Coaching Premium: as perguntas que ficavam espalhadas
-(onboarding + "Como eu monto seu treino" na aba Treino) passam a morar aqui,
-em 6 etapas. A lógica de coleta é a que o app já tinha — o que muda é o lugar
-e a experiência, não a inteligência por trás.
+É a coleta única do Coaching Premium: treino E dieta saem daqui. O app monta a
+tela a partir deste módulo e o backend valida com as mesmas regras — sem isso, as
+opções da tela e as aceitas pela API divergem na primeira mudança.
 
-Este módulo é a FONTE ÚNICA da estrutura: o app monta a tela a partir daqui e o
-backend valida com as mesmas regras. Sem isso, as opções da tela e as aceitas
-pela API divergem na primeira mudança.
+REGRA DESTE ARQUIVO, a partir da reescrita de 2026-07-31:
+
+    Toda pergunta precisa mudar um número do plano. Se a resposta não altera
+    nenhum exercício, série, caloria ou macro, ela não é perguntada.
+
+O questionário anterior tinha 6 campos de TEXTO LIVRE (histórico de treino,
+lesões, preferências de exercício, alimentos, medicamentos, observações). Todos
+eram gravados no perfil e NENHUMA regra os lia: quem escrevia "dor no ombro
+direito em supino reto" via o coach montar supino reto do mesmo jeito. Texto
+livre o motor não consegue obedecer; opção ele consegue. Por isso agora tudo é
+escolha única, múltipla escolha ou sim/não — os únicos campos numéricos que
+sobraram são os que viram conta (idade, altura, peso, sono), porque faixa de
+idade estragaria o cálculo de gasto energético.
+
+As opções moram em `training_brain` (o motor lê de lá); aqui fica só a montagem
+das etapas.
 """
 
 from __future__ import annotations
@@ -18,23 +30,17 @@ from app.coaching import training_brain
 from app.models.user_profile import (
     ActivityLevel,
     BiologicalSex,
-    ExperienceLevel,
     Goal,
     GoalPace,
     TrainingLocation,
 )
 
-# Tipos de campo que o app sabe desenhar.
-TEXT = "text"
+# Tipos de campo que o app sabe desenhar. TEXT continua existindo no
+# renderizador, mas o questionário não usa mais nenhum — ver o docstring.
 NUMBER = "number"
 SINGLE = "single"     # escolha única (radio)
 MULTI = "multi"       # múltipla escolha (checkbox)
 BOOL = "bool"
-
-DIAS_SEMANA = [
-    ("seg", "Segunda"), ("ter", "Terça"), ("qua", "Quarta"), ("qui", "Quinta"),
-    ("sex", "Sexta"), ("sab", "Sábado"), ("dom", "Domingo"),
-]
 
 RESTRICOES = [
     ("vegetariano", "Vegetariano"), ("vegano", "Vegano"), ("sem_lactose", "Sem lactose"),
@@ -42,9 +48,32 @@ RESTRICOES = [
     ("low_carb", "Low carb"), ("halal", "Halal"), ("kosher", "Kosher"),
 ]
 
+# Alimentos que a pessoa não come. Era um campo de texto ("Ex.: fígado, jiló,
+# peixe...") que o gerador de dieta não lia. Como lista, ele exclui de verdade.
+# São os rejeitados mais comuns — o que não estiver aqui a pessoa simplesmente
+# troca no plano, que é 1 toque.
+FOOD_DISLIKES = [
+    ("figado", "Fígado e miúdos"), ("peixe", "Peixe"), ("frutos_do_mar", "Frutos do mar"),
+    ("ovo", "Ovo"), ("leite", "Leite puro"), ("queijo_forte", "Queijos fortes"),
+    ("jilo", "Jiló e vegetais amargos"), ("brocolis", "Brócolis e couve-flor"),
+    ("cogumelo", "Cogumelo"), ("tomate", "Tomate"), ("cebola", "Cebola"),
+    ("pimentao", "Pimentão"), ("beterraba", "Beterraba"), ("abobrinha", "Abobrinha"),
+    ("banana", "Banana"), ("mamao", "Mamão"), ("aveia", "Aveia"),
+    ("batata_doce", "Batata-doce"), ("tapioca", "Tapioca"), ("whey", "Whey protein"),
+]
+
 
 def _opts(pairs) -> list[dict]:
+    """Opções (value, label) — sem descrição."""
     return [{"value": v, "label": label} for v, label in pairs]
+
+
+def _opts3(triples) -> list[dict]:
+    """Opções (value, label, desc) — a descrição vira o subtítulo do card."""
+    return [
+        {"value": v, "label": label, **({"desc": desc} if desc else {})}
+        for v, label, desc in triples
+    ]
 
 
 def _enum_opts(enum_cls, labels: dict[str, str]) -> list[dict]:
@@ -56,7 +85,6 @@ GOAL_LABELS = {
     "performance": "Performance", "recomposicao": "Recomposição",
 }
 PACE_LABELS = {"slow": "Devagar e sustentável", "normal": "Equilibrado (recomendado)", "fast": "Mais rápido"}
-EXP_LABELS = {"iniciante": "Iniciante", "intermediario": "Intermediário", "avancado": "Avançado"}
 LOCAL_LABELS = {
     "academia_completa": "Academia completa", "academia_basica": "Academia básica",
     "casa_com_equipamento": "Em casa, com equipamento", "casa_sem_equipamento": "Em casa, sem equipamento",
@@ -67,41 +95,80 @@ ACTIVITY_LABELS = {
 }
 SEX_LABELS = {"female": "Feminino", "male": "Masculino"}
 
+# As três vagas da fila de prioridade muscular. São campos SEPARADOS de escolha
+# única em vez de uma múltipla escolha porque a ORDEM é a informação: quem fica
+# em 1º recebe o topo da faixa de volume, o 2º um pouco menos, o 3º menos ainda
+# (volume_landmarks._WEAK_TOP_BY_RANK). Uma lista de checkbox não tem ordem.
+PRIORITY_KEYS = ("priority_1", "priority_2", "priority_3")
+_PRIORITY_LABELS = ("1ª prioridade", "2ª prioridade", "3ª prioridade")
+_NENHUM = {"value": "", "label": "Nenhum"}
+
+
+def _priority_field(i: int) -> dict:
+    return {
+        "key": PRIORITY_KEYS[i],
+        "label": _PRIORITY_LABELS[i],
+        "type": SINGLE,
+        "required": False,
+        "options": ([] if i == 0 else [_NENHUM]) + _opts(training_brain.WEAK_POINTS),
+    }
+
 
 def steps() -> list[dict]:
-    """As 6 etapas, na ordem da spec §3.2. Cada campo diz seu tipo, se é
-    obrigatório e as opções — o app não precisa saber nada além disto."""
+    """As etapas, na ordem em que a pessoa responde. Cada campo diz seu tipo, se
+    é obrigatório e as opções — o app não precisa saber nada além disto.
+
+    São 8 etapas curtas, e não 3 longas, de propósito: a mesma quantidade de
+    perguntas numa tela só parece um formulário de cadastro; divididas, cada tela
+    tem 3 a 7 escolhas e leva segundos.
+    """
     return [
+        # --- 1 -------------------------------------------------------------
         {
             "key": "objetivo",
-            "title": "Objetivo e dados corporais",
-            "subtitle": "É daqui que saem suas metas de caloria, o ritmo e o tipo de treino.",
+            "title": "Seu objetivo",
+            "subtitle": "É daqui que saem suas metas de caloria e o desenho do treino.",
             "fields": [
-                {"key": "goal", "label": "Seu objetivo principal", "type": SINGLE, "required": True,
+                {"key": "goal", "label": "O que você quer alcançar", "type": SINGLE, "required": True,
                  "options": _enum_opts(Goal, GOAL_LABELS)},
-                {"key": "goal_pace", "label": "Ritmo", "type": SINGLE, "required": False,
+                {"key": "goal_pace", "label": "Em que ritmo", "type": SINGLE, "required": False,
                  "options": _enum_opts(GoalPace, PACE_LABELS),
-                 "help": "O ritmo escala o déficit ou o superávit. Devagar preserva mais músculo e é mais fácil de sustentar."},
+                 "help": "O ritmo escala o déficit ou o superávit. Devagar preserva mais músculo "
+                         "e é mais fácil de sustentar."},
+                {"key": "target_weight_kg", "label": "Peso-alvo (opcional)", "type": NUMBER, "required": False,
+                 "suffix": "kg", "min": 30, "max": 300, "decimal": True},
+            ],
+        },
+        # --- 2 -------------------------------------------------------------
+        {
+            "key": "dados",
+            "title": "Seus dados",
+            "subtitle": "O mínimo pra calcular seu gasto energético.",
+            "fields": [
                 {"key": "biological_sex", "label": "Sexo biológico", "type": SINGLE, "required": True,
                  "options": _enum_opts(BiologicalSex, SEX_LABELS),
                  "help": "Usado só no cálculo do gasto energético."},
-                {"key": "age", "label": "Idade", "type": NUMBER, "required": True, "suffix": "anos", "min": 13, "max": 100},
-                {"key": "height_cm", "label": "Altura", "type": NUMBER, "required": True, "suffix": "cm", "min": 100, "max": 250},
+                {"key": "age", "label": "Idade", "type": NUMBER, "required": True, "suffix": "anos",
+                 "min": 13, "max": 100},
+                {"key": "height_cm", "label": "Altura", "type": NUMBER, "required": True, "suffix": "cm",
+                 "min": 100, "max": 250},
                 {"key": "weight_kg", "label": "Peso atual", "type": NUMBER, "required": True, "suffix": "kg",
                  "min": 30, "max": 300, "decimal": True},
-                {"key": "target_weight_kg", "label": "Peso-alvo (opcional)", "type": NUMBER, "required": False,
-                 "suffix": "kg", "min": 30, "max": 300, "decimal": True},
-                {"key": "activity_level", "label": "Nível de atividade fora do treino", "type": SINGLE,
-                 "required": True, "options": _enum_opts(ActivityLevel, ACTIVITY_LABELS)},
-                {"key": "calorie_goal_mode", "label": "Como definir sua meta calórica", "type": SINGLE,
+                # Cobre também "seu trabalho exige esforço físico?": é a mesma
+                # informação (gasto fora do treino), e perguntar duas vezes só
+                # aumentaria a chance de respostas contraditórias.
+                {"key": "activity_level", "label": "Como é seu dia fora do treino", "type": SINGLE,
+                 "required": True, "options": _enum_opts(ActivityLevel, ACTIVITY_LABELS),
+                 "help": "Conta trabalho e rotina. Quem passa o dia em pé ou carregando peso "
+                         "gasta bem mais que quem fica sentado."},
+                {"key": "calorie_goal_mode", "label": "Sua meta de calorias", "type": SINGLE,
                  "required": True,
                  "options": [
-                     {"value": "auto", "label": "Automática",
-                      "desc": "O Coaching calcula pra você a partir do seu objetivo, ritmo e dados acima."},
-                     {"value": "manual", "label": "Manual",
-                      "desc": "Você define as calorias e a divisão dos macros em porcentagem."},
-                 ],
-                 "help": "Isto substitui a tela de ajuste de meta — a partir de agora ela mora só aqui."},
+                     {"value": "auto", "label": "Calcule pra mim",
+                      "desc": "Saio do seu objetivo, ritmo e dados acima. É o recomendado."},
+                     {"value": "manual", "label": "Eu defino",
+                      "desc": "Você informa as calorias e a divisão dos macros."},
+                 ]},
                 {"key": "manual_kcal", "label": "Calorias por dia", "type": NUMBER, "required": True,
                  "suffix": "kcal", "min": 800, "max": 8000,
                  "shows_if": {"field": "calorie_goal_mode", "equals": "manual"}},
@@ -117,110 +184,176 @@ def steps() -> list[dict]:
                  "help": "A soma de proteína, carboidratos e gordura precisa fechar 100%."},
             ],
         },
+        # --- 3 -------------------------------------------------------------
         {
             "key": "experiencia",
-            "title": "Experiência e histórico de treino",
-            "subtitle": "Quanto tempo de treino você tem e onde treina.",
+            "title": "Sua experiência",
+            "subtitle": "Define seu volume inicial e o quanto eu chego perto do limite.",
             "fields": [
-                {"key": "experience_level", "label": "Sua experiência", "type": SINGLE, "required": True,
-                 "options": _enum_opts(ExperienceLevel, EXP_LABELS)},
-                {"key": "training_location", "label": "Onde você treina", "type": SINGLE, "required": True,
-                 "options": _enum_opts(TrainingLocation, LOCAL_LABELS)},
-                {"key": "training_history", "label": "Histórico de treino (opcional)", "type": TEXT,
-                 "required": False, "multiline": True,
-                 "placeholder": "Há quanto tempo treina, pausas, o que já funcionou pra você..."},
+                # Substitui "você se considera iniciante/intermediário/avançado?".
+                # Tempo é verificável; auto-avaliação é inflada, e o nível decide
+                # 15% do seu volume semanal.
+                {"key": "training_time", "label": "Há quanto tempo você treina de forma consistente",
+                 "type": SINGLE, "required": True,
+                 "options": _opts([(v, label) for v, label, _ in training_brain.TRAINING_TIME]),
+                 "help": "Vale o tempo treinando de verdade, sem contar longas paradas."},
+                {"key": "rir_accuracy",
+                 "label": "Ao terminar uma série, você sabe quantas repetições ainda conseguiria fazer?",
+                 "type": SINGLE, "required": False,
+                 "options": _opts3(training_brain.RIR_ACCURACY),
+                 "help": "Não tem resposta certa. Isso só me diz o tamanho da margem de segurança "
+                         "que eu deixo nas suas séries."},
+                {"key": "failure_comfort", "label": "Você gosta de treinar perto do limite?",
+                 "type": SINGLE, "required": False,
+                 "options": _opts3(training_brain.FAILURE_COMFORT)},
+                {"key": "load_preference", "label": "Prefere carga alta ou mais repetições?",
+                 "type": SINGLE, "required": False,
+                 "options": _opts3(training_brain.LOAD_PREFERENCE)},
             ],
         },
+        # --- 4 -------------------------------------------------------------
+        {
+            "key": "onde",
+            "title": "Onde você treina",
+            "subtitle": "O que existe no seu lugar de treino define o que eu posso montar.",
+            "fields": [
+                {"key": "training_location", "label": "Onde", "type": SINGLE, "required": True,
+                 "options": _enum_opts(TrainingLocation, LOCAL_LABELS)},
+                {"key": "home_equipment", "label": "O que você tem em casa", "type": MULTI,
+                 "required": False, "options": _opts(training_brain.HOME_EQUIPMENT),
+                 "shows_if": {"field": "training_location", "equals": "casa_com_equipamento"}},
+                {"key": "gym_crowding", "label": "Como costuma estar no seu horário",
+                 "type": SINGLE, "required": False,
+                 "options": _opts3(training_brain.GYM_CROWDING),
+                 "help": "Academia cheia muda o treino de verdade: eu evito exercício que "
+                         "depende de segurar dois aparelhos ao mesmo tempo."},
+            ],
+        },
+        # --- 5 -------------------------------------------------------------
         {
             "key": "disponibilidade",
-            "title": "Disponibilidade e rotina",
+            "title": "Quando você treina",
             "subtitle": "É isto que define quantos treinos eu monto e de que tamanho.",
             "fields": [
-                {"key": "training_days_per_week", "label": "Quantos dias por semana você pode treinar",
+                # "QUAIS dias você treina" saiu. O motor lê o NÚMERO de dias
+                # (acima) pra escolher a divisão; os dias específicos nunca
+                # decidiram qual treino cai em qual dia — eram lidos só pra
+                # CONTAR quantos eram, quando o número não tinha sido respondido.
+                # Continuam existindo no perfil (vêm do onboarding), só não são
+                # mais perguntados aqui.
+                {"key": "training_days_per_week", "label": "Dias por semana",
                  "type": SINGLE, "required": True,
                  "options": [{"value": str(n), "label": f"{n} dias"} for n in training_brain.TRAINING_DAYS_OPTIONS]},
-                {"key": "available_days", "label": "Quais dias (opcional)", "type": MULTI, "required": False,
-                 "options": _opts(DIAS_SEMANA)},
-                {"key": "session_length", "label": "Tempo por sessão", "type": SINGLE, "required": True,
+                {"key": "session_length", "label": "Tempo por treino", "type": SINGLE, "required": True,
                  "options": [{"value": v, "label": label, "desc": faixa}
                              for v, label, faixa, _ in training_brain.SESSION_LENGTHS]},
-                # O perfil já tinha `allow_advanced_techniques` e o coach já o
-                # respeitava (training_brain.advanced_allowed), mas ele NÃO
-                # estava no questionário: a pessoa nunca era perguntada, então o
-                # campo ficava null e valia o padrão por nível (iniciante não
-                # recebe técnica, os demais recebem). Agora é uma escolha
-                # explícita — e ela muda o treino: dito "não", o coach fica só
-                # com série normal, sem finisher com técnica e sem dica de
-                # técnica na prévia; volume e carga continuam progredindo igual.
-                {"key": "allow_advanced_techniques",
-                 "label": "Pode usar técnicas avançadas nos seus treinos?",
-                 "type": BOOL, "required": False,
-                 "help": "Myo-reps, rest-pause, muscle round, back-off e superset. Elas rendem mais "
-                         "estímulo no mesmo tempo, mas trabalham perto da falha. Se você está começando, "
-                         "ou prefere série normal, responda não — o treino continua evoluindo sem elas."},
+                {"key": "split_preference", "label": "Divisão dos treinos", "type": SINGLE, "required": False,
+                 "options": _opts3(training_brain.SPLIT_PREFERENCES),
+                 "help": "Todas as opções passam por cada músculo pelo menos 2× na semana — "
+                         "treinar um músculo só por dia rende menos."},
             ],
         },
+        # --- 6 -------------------------------------------------------------
         {
-            "key": "pontos",
-            "title": "Pontos fortes, fracos e limitações",
-            "subtitle": "O que priorizar e o que evitar. Isso muda os exercícios e o volume de verdade.",
+            "key": "saude",
+            "title": "Saúde e limitações",
+            "subtitle": "O que eu preciso evitar. Isso tira exercício do seu plano de verdade.",
             "fields": [
-                {"key": "weak_points", "label": f"Pontos fracos a priorizar (até {training_brain.WEAK_POINTS_MAX})",
+                {"key": "has_injury",
+                 "label": "Você tem alguma lesão, cirurgia, placa, pino ou prótese?",
+                 "type": BOOL, "required": False},
+                {"key": "injury_regions", "label": "Em qual região", "type": MULTI, "required": False,
+                 "options": _opts(training_brain.BODY_REGIONS),
+                 "shows_if": {"field": "has_injury", "equals": "true"}},
+                {"key": "medical_clearance",
+                 "label": "Você tem liberação de um profissional pra treinar com isso?",
+                 "type": BOOL, "required": False,
+                 "shows_if": {"field": "has_injury", "equals": "true"},
+                 "help": "Sem liberação eu trabalho mais conservador nessa região. "
+                         "O app não substitui avaliação médica."},
+                {"key": "has_pain", "label": "Sente dor em algum exercício ou movimento?",
+                 "type": BOOL, "required": False},
+                {"key": "pain_regions", "label": "Onde dói", "type": MULTI, "required": False,
+                 "options": _opts(training_brain.BODY_REGIONS),
+                 "shows_if": {"field": "has_pain", "equals": "true"}},
+                {"key": "pain_intensity", "label": "Quanto dói", "type": SINGLE, "required": False,
+                 "options": _opts3(training_brain.PAIN_INTENSITY),
+                 "shows_if": {"field": "has_pain", "equals": "true"}},
+                {"key": "limitations", "label": "Alguma dessas te limita hoje?", "type": MULTI,
+                 "required": False, "options": _opts3(training_brain.LIMITATIONS)},
+                # Substitui os dois campos de texto "exercícios que você gosta" e
+                # "exercícios que não quer". Cada opção abaixo o montador obedece
+                # (workout_builder.filtrar_por_preferencia); texto ele ignorava.
+                {"key": "exercise_prefs", "label": "Suas preferências de exercício", "type": MULTI,
+                 "required": False, "options": _opts3(training_brain.EXERCISE_PREFS),
+                 "help": "Isto muda os exercícios que eu escolho, não só o texto do plano."},
+            ],
+        },
+        # --- 7 -------------------------------------------------------------
+        {
+            "key": "prioridades",
+            "title": "O que você quer desenvolver",
+            "subtitle": "Em ordem. O 1º recebe mais volume que o 2º, e o 2º mais que o 3º.",
+            "fields": [
+                _priority_field(0),
+                _priority_field(1),
+                _priority_field(2),
+                {"key": "strong_points", "label": "Já está bom, quero só manter (opcional)",
                  "type": MULTI, "required": False, "max_selected": training_brain.WEAK_POINTS_MAX,
                  "options": _opts(training_brain.WEAK_POINTS),
-                 "help": "Grupos que recebem mais volume. O resto é reduzido pra caber na sua recuperação."},
-                {"key": "strong_points", "label": "Pontos já desenvolvidos (opcional)", "type": MULTI,
-                 "required": False, "max_selected": training_brain.WEAK_POINTS_MAX,
-                 "options": _opts(training_brain.WEAK_POINTS),
-                 "help": "Ficam perto do volume mínimo — manter custa menos que crescer."},
-                {"key": "injuries_limitations", "label": "Lesões ou limitações (opcional)", "type": TEXT,
-                 "required": False, "multiline": True,
-                 "placeholder": "Ex.: dor no ombro direito em supino reto, hérnia lombar..."},
-                # Virou opção: texto livre aqui era guardado e nunca lido por
-                # nada, então "prefiro máquinas" não mudava treino nenhum. Cada
-                # opção abaixo tem efeito determinístico na escolha dos
-                # exercícios (ver methods_engine._proibido_por_preferencia).
-                {"key": "exercise_prefs", "label": "Preferências de exercício (opcional)", "type": MULTI,
-                 "required": False,
-                 "options": [{"value": v, "label": label, "desc": desc}
-                             for v, label, desc in training_brain.EXERCISE_PREFS],
-                 "help": "Isto muda os exercícios que eu escolho pra você, não só o texto do plano."},
-                {"key": "exercise_preferences", "label": "Mais alguma preferência? (opcional)", "type": TEXT,
-                 "required": False, "multiline": True,
-                 "placeholder": "Exercício específico que você gosta ou não quer.",
-                 "help": "O que não coube nas opções acima. Eu levo em conta na conversa e ao ajustar o plano."},
+                 "help": "Fica perto do volume mínimo — manter custa bem menos que crescer, e "
+                         "sobra recuperação pras suas prioridades."},
+                {"key": "allow_advanced_techniques",
+                 "label": "Posso usar técnicas avançadas nos seus treinos?",
+                 "type": BOOL, "required": False,
+                 "help": "Myo-reps, rest-pause, muscle round, back-off e superset. Rendem mais "
+                         "estímulo no mesmo tempo, mas trabalham perto da falha."},
+                {"key": "known_techniques", "label": "Quais você já usou", "type": MULTI,
+                 "required": False, "options": _opts(training_brain.KNOWN_TECHNIQUES),
+                 "shows_if": {"field": "allow_advanced_techniques", "equals": "true"},
+                 "help": "Eu começo pelas que você já conhece. As outras entram depois, "
+                         "uma de cada vez."},
+                {"key": "periodization", "label": "Como o treino evolui ao longo dos meses",
+                 "type": SINGLE, "required": False,
+                 "options": _opts3(training_brain.PERIODIZATIONS)},
             ],
         },
+        # --- 8 -------------------------------------------------------------
         {
-            "key": "alimentacao",
-            "title": "Alimentação e restrições",
-            "subtitle": "Base da dieta em PDF e das suas metas de calorias e macros.",
+            "key": "recuperacao",
+            "title": "Recuperação e alimentação",
+            "subtitle": "Quanto você recupera decide quanto volume aguenta.",
             "fields": [
+                # "Quantas horas você dorme" saiu. O número era coletado e
+                # DESCARTADO (não existe coluna pra ele, e nada o lia), e o app
+                # já tem a aba de Sono, onde a pessoa registra o que dormiu de
+                # verdade — perguntar a média aqui competiria com o dado real.
+                # O que ficou é a QUALIDADE, que o registro de sono não captura
+                # e que entra no fator de recuperação.
+                {"key": "sleep_quality", "label": "Como você tem dormido", "type": SINGLE,
+                 "required": False, "options": _opts(training_brain.SLEEP_QUALITY)},
+                {"key": "stress_level", "label": "Como é sua semana", "type": SINGLE,
+                 "required": False, "options": _opts(training_brain.STRESS_LEVEL)},
+                # Uma pergunta no lugar de duas ("costuma estar recuperado?" e
+                # "sente dor prolongada ou queda de desempenho?"): é a mesma
+                # informação perguntada de dois jeitos.
+                {"key": "recovery_between", "label": "Como você chega no treino seguinte",
+                 "type": SINGLE, "required": False,
+                 "options": _opts3(training_brain.RECOVERY_BETWEEN)},
+                {"key": "other_sport", "label": "Pratica outro esporte ou atividade?",
+                 "type": SINGLE, "required": False,
+                 "options": _opts3(training_brain.OTHER_SPORT),
+                 "help": "Não é pra te desencorajar — é pra o treino caber junto, "
+                         "sem te deixar sem recuperação."},
+                {"key": "wants_cardio", "label": "Quer cardio no plano?", "type": BOOL, "required": False},
                 {"key": "dietary_restrictions", "label": "Restrições alimentares", "type": MULTI,
                  "required": False, "options": _opts(RESTRICOES)},
                 {"key": "meals_per_day", "label": "Refeições por dia", "type": SINGLE, "required": False,
                  "options": [{"value": str(n), "label": f"{n} refeições"} for n in (3, 4, 5, 6)]},
-                {"key": "food_dislikes", "label": "Alimentos que você não come (opcional)", "type": TEXT,
-                 "required": False, "multiline": True, "placeholder": "Ex.: fígado, jiló, peixe..."},
-            ],
-        },
-        {
-            "key": "recuperacao",
-            "title": "Recuperação e informações finais",
-            "subtitle": "Sono, cardio e o que mais eu precisar saber pra ajustar o plano.",
-            "fields": [
-                {"key": "sleep_hours", "label": "Quanto você dorme por noite", "type": NUMBER,
-                 "required": False, "suffix": "h", "min": 3, "max": 14, "decimal": True},
-                {"key": "wants_cardio", "label": "Quer cardio no plano?", "type": BOOL, "required": False},
-                {"key": "periodization", "label": "Periodização", "type": SINGLE, "required": False,
-                 "options": [{"value": v, "label": label, "desc": desc}
-                             for v, label, desc in training_brain.PERIODIZATIONS]},
-                {"key": "medications", "label": "Medicamentos ou hormônios (opcional)", "type": TEXT,
-                 "required": False, "multiline": True,
-                 "help": "Só como contexto pro coach — isto não é avaliação médica e não substitui seu médico.",
-                 "placeholder": "Se preferir não informar, tudo bem."},
-                {"key": "notes", "label": "Mais alguma coisa? (opcional)", "type": TEXT, "required": False,
-                 "multiline": True, "placeholder": "Qualquer coisa que eu deva levar em conta."},
+                {"key": "food_dislikes_list", "label": "Alimentos que você não come", "type": MULTI,
+                 "required": False, "options": _opts(FOOD_DISLIKES),
+                 "help": "Eu não coloco nenhum destes na sua dieta. O que não estiver na lista "
+                         "você troca no plano com 1 toque."},
             ],
         },
     ]
@@ -230,13 +363,48 @@ def required_keys() -> list[str]:
     return [f["key"] for s in steps() for f in s["fields"] if f.get("required")]
 
 
+def _cond_str(v: Any) -> str:
+    """Um valor de resposta como o `shows_if` o compara.
+
+    Existe por causa do booleano: o app compara com `String(true)` -> "true",
+    e o Python faria `str(True)` -> "True". Sem normalizar, todo campo que
+    aparece só quando a pessoa responde "sim" (região da lesão, onde dói,
+    técnicas que já usou) ficaria invisível pro backend enquanto está visível na
+    tela — os dois lados precisam enxergar a mesma coisa.
+    """
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    return str(v)
+
+
 def _visivel(field: dict, answers: dict[str, Any]) -> bool:
     """Campo condicional (ex.: os de meta manual só valem quando a pessoa
     escolheu "manual"). Sem `shows_if`, o campo sempre vale."""
     cond = field.get("shows_if")
     if not cond:
         return True
-    return str(answers.get(cond["field"])) == str(cond["equals"])
+    return _cond_str(answers.get(cond["field"])) == _cond_str(cond["equals"])
+
+
+def ordered_priorities(answers: dict[str, Any]) -> list[str]:
+    """Os três campos de prioridade viram a lista ORDENADA de pontos fracos que
+    o motor consome (`weak_points`).
+
+    Vagas em branco são puladas e repetição é descartada — quem escolher "peito"
+    em 1º e 2º acaba com uma prioridade só, que é exatamente o que ele pediu. A
+    ordem da lista é a prioridade: é ela que define o topo da faixa de volume de
+    cada músculo (volume_landmarks._WEAK_TOP_BY_RANK).
+    """
+    return training_brain.valid_weak_points(
+        [answers.get(k) for k in PRIORITY_KEYS]
+    )
+
+
+def priorities_to_answers(weak_points: list[str] | None) -> dict[str, Any]:
+    """O caminho inverso: a lista do perfil de volta pros três campos da tela,
+    pra quem já respondeu ver a própria escolha ao reabrir o questionário."""
+    lista = training_brain.valid_weak_points(weak_points)
+    return {k: (lista[i] if i < len(lista) else None) for i, k in enumerate(PRIORITY_KEYS)}
 
 
 def macro_split_error(answers: dict[str, Any]) -> str | None:

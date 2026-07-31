@@ -165,6 +165,69 @@ class UserProfile(Base):
     # infere dos dias do onboarding). É o que define quantos treinos o coach monta.
     training_days_per_week: Mapped[int | None] = mapped_column(nullable=True)
 
+    # --- RESPOSTAS ESTRUTURADAS DO QUESTIONÁRIO ------------------------------
+    # Substituem os campos de TEXTO LIVRE que existiam antes (histórico de
+    # treino, lesões, preferências, alimentos, medicamentos, observações). Eles
+    # eram gravados e nenhuma regra os lia: quem escrevia "dor no ombro direito
+    # em supino" via o coach montar supino do mesmo jeito. As colunas abaixo o
+    # motor CONSEGUE obedecer — cada uma tem um consumidor determinístico.
+    #
+    # Todas nulas por padrão: perfil que nunca respondeu mantém o comportamento
+    # anterior. Colunas novas -> ensure_columns no init_db (ALTER cedo).
+
+    # Tempo de treino consistente. É daqui que sai o experience_level, no lugar
+    # da auto-avaliação (ver training_brain.experience_from_training_time).
+    training_time: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    # Consegue estimar repetições em reserva? Regula o RIR-alvo e libera (ou não)
+    # técnica que depende de precisão perto da falha.
+    rir_accuracy: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    # Lesão e dor, estruturadas por REGIÃO — o que permite filtrar exercício de
+    # verdade. `medical_clearance` é o portão de segurança: lesão sem liberação
+    # profissional faz o coach trabalhar conservador naquela região.
+    has_injury: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    injury_regions: Mapped[list[str]] = mapped_column(
+        ARRAY(String(16)).with_variant(JSON(), "sqlite"), default=list
+    )
+    medical_clearance: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    has_pain: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    pain_regions: Mapped[list[str]] = mapped_column(
+        ARRAY(String(16)).with_variant(JSON(), "sqlite"), default=list
+    )
+    pain_intensity: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    limitations: Mapped[list[str]] = mapped_column(
+        ARRAY(String(20)).with_variant(JSON(), "sqlite"), default=list
+    )
+
+    # Contexto do lugar. Academia cheia desliga superset (não dá pra segurar duas
+    # estações); equipamento de casa define o que existe pra escolher.
+    gym_crowding: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    home_equipment: Mapped[list[str]] = mapped_column(
+        ARRAY(String(20)).with_variant(JSON(), "sqlite"), default=list
+    )
+
+    # Estilo de treino. `split_preference` só oferece divisões com frequência
+    # ≥2×/semana por grupo — bro-split não está na lista (regra 6 do produto).
+    split_preference: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    load_preference: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    failure_comfort: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    known_techniques: Mapped[list[str]] = mapped_column(
+        ARRAY(String(20)).with_variant(JSON(), "sqlite"), default=list
+    )
+
+    # Recuperação. As quatro entram JUNTAS num único fator que desloca o volume
+    # semanal (training_brain.recovery_factor) — separadas não decidiriam nada.
+    sleep_quality: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    stress_level: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    recovery_between: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    other_sport: Mapped[str | None] = mapped_column(String(10), nullable=True)
+
+    # Alimentos que a pessoa não come, agora como lista de opções — o gerador de
+    # dieta consegue excluir uma lista; não conseguia ler o texto livre.
+    food_dislikes_list: Mapped[list[str]] = mapped_column(
+        ARRAY(String(30)).with_variant(JSON(), "sqlite"), default=list
+    )
+
     # Fuso IANA do aparelho ("America/Sao_Paulo"). É o que define QUE DIA é cada
     # registro pra esta pessoa — sem isso o backend fatiava o dia em UTC e tudo
     # que ela registrava depois das 21h caía no dia seguinte. O app manda o fuso

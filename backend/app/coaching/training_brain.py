@@ -39,9 +39,17 @@ def valid_weak_point(value: str | None) -> str | None:
     return value if value in WEAK_POINT_LABEL else None
 
 
-# Quantos pontos fracos a pessoa pode priorizar de uma vez. Dois é o teto: mais
-# que isso deixa de ser "ponto fraco" e vira o treino inteiro.
-WEAK_POINTS_MAX = 2
+# Quantos pontos fracos a pessoa pode priorizar de uma vez, EM ORDEM.
+#
+# Eram 2 sem ordem. Viraram 3 ORDENADOS porque a ordem muda o cálculo: o manual
+# de regras trata prioridade como uma fila que consome um orçamento finito de
+# recuperação (a "Compensação de Volume"), não como um conjunto onde todo mundo
+# recebe igual. Priorizar peito, costas e braço "empatados" é o mesmo que não
+# priorizar nada — alguém tem que ser o primeiro a receber o volume que sobra.
+#
+# Três continua sendo teto: acima disso não sobra financiador. Com 3 prioridades
+# já são 6 músculos no piso da faixa bancando a conta (ver volume_landmarks).
+WEAK_POINTS_MAX = 3
 
 # ---------------------------------------------------------------------------
 # PREFERÊNCIAS DE EXERCÍCIO — o que a pessoa quer (ou não quer) no treino.
@@ -89,6 +97,280 @@ def valid_exercise_prefs(valores) -> list[str]:
         out.append(v)
     return out
 
+
+# ---------------------------------------------------------------------------
+# AS RESPOSTAS ESTRUTURADAS DO QUESTIONÁRIO NOVO
+# ---------------------------------------------------------------------------
+# Regra de ouro deste bloco: **toda opção aqui precisa ter efeito determinístico
+# no motor**. O questionário antigo tinha 6 campos de texto livre (histórico,
+# lesões, preferências, alimentos, medicamentos, observações) que eram gravados
+# e nunca lidos por regra nenhuma — quem escrevia "dor no ombro em supino" via o
+# coach montar supino do mesmo jeito. Texto livre o motor não consegue obedecer;
+# opção ele consegue.
+#
+# Por isso cada lista abaixo nasce junto com o lugar que a consome. Se uma
+# resposta não muda nenhum número do plano, ela não deveria estar sendo
+# perguntada.
+
+# --- Tempo de treino consistente -> nível de experiência --------------------
+# Substitui a auto-avaliação ("você é iniciante, intermediário ou avançado?").
+# Tempo é verificável; auto-avaliação é sistematicamente inflada, e o nível
+# alimenta o fator de volume (_LEVEL_FACTOR) e a régua de RIR. Quando alguém se
+# promove a avançado sozinho, ganha 15% mais volume sem ter a recuperação pra
+# bancar. "de forma consistente" está no enunciado de propósito: resolve o caso
+# de quem treinou 6 anos e parou 3.
+TRAINING_TIME: list[tuple[str, str, str]] = [
+    ("menos_6m", "Menos de 6 meses", "iniciante"),
+    ("6m_1a", "De 6 meses a 1 ano", "iniciante"),
+    ("1_3a", "De 1 a 3 anos", "intermediario"),
+    ("3_5a", "De 3 a 5 anos", "intermediario"),
+    ("mais_5a", "Mais de 5 anos", "avancado"),
+]
+TRAINING_TIME_VALUES = {v for v, _, _ in TRAINING_TIME}
+_TRAINING_TIME_LEVEL = {v: nivel for v, _, nivel in TRAINING_TIME}
+
+
+def experience_from_training_time(value: str | None) -> str | None:
+    """Nível de experiência derivado do tempo de treino. None quando a pessoa
+    ainda não respondeu — aí quem chama mantém o nível que já estava no perfil.
+
+    O mapa é deliberadamente CONSERVADOR (3–5 anos ainda é intermediário): errar
+    pra baixo custa um pouco de volume, errar pra cima custa recuperação que a
+    pessoa não tem.
+    """
+    return _TRAINING_TIME_LEVEL.get(str(value or ""))
+
+
+# O caminho inverso, só pra MIGRAÇÃO: quem já usava o app respondeu o nível na
+# auto-avaliação antiga e não tem `training_time` gravado. Sem isto o campo (que
+# é obrigatório) apareceria em branco e a pessoa ficaria travada fora do próprio
+# plano até responder de novo. Escolhe a faixa MAIS BAIXA de cada nível — a
+# pessoa confirma ou corrige na tela, e enquanto não corrigir o nível dela
+# continua exatamente o que era.
+_LEVEL_TRAINING_TIME = {"iniciante": "6m_1a", "intermediario": "1_3a", "avancado": "mais_5a"}
+
+
+def training_time_from_experience(level: str | None) -> str | None:
+    return _LEVEL_TRAINING_TIME.get(str(level or ""))
+
+
+# --- Capacidade de estimar RIR ---------------------------------------------
+# Cap. XII do manual: "a precisão do RIR deve ser construída e validada, não
+# presumida". Quem não sabe estimar recebe RIR-alvo mais conservador e não
+# recebe técnica que depende de chegar perto da falha com precisão.
+RIR_ACCURACY: list[tuple[str, str, str]] = [
+    ("sim", "Sim, consigo estimar bem",
+     "Você sabe dizer quantas repetições ainda restavam ao terminar a série."),
+    ("mais_ou_menos", "Mais ou menos",
+     "Tem uma noção, mas erra às vezes."),
+    ("nao", "Não sei estimar",
+     "Sem problema — eu deixo uma margem maior de segurança até você pegar o jeito."),
+]
+RIR_ACCURACY_VALUES = {v for v, _, _ in RIR_ACCURACY}
+
+# --- Regiões de lesão / dor -------------------------------------------------
+# Uma região marcada aqui filtra exercícios de verdade (é o que o texto livre
+# nunca conseguiu fazer). Os valores batem com os padrões de movimento que o
+# montador já conhece.
+BODY_REGIONS: list[tuple[str, str]] = [
+    ("ombro", "Ombro"),
+    ("cotovelo", "Cotovelo"),
+    ("punho", "Punho ou mão"),
+    ("cervical", "Pescoço"),
+    ("lombar", "Lombar (parte baixa das costas)"),
+    ("quadril", "Quadril"),
+    ("joelho", "Joelho"),
+    ("tornozelo", "Tornozelo ou pé"),
+]
+BODY_REGION_VALUES = {v for v, _ in BODY_REGIONS}
+
+# Intensidade da dor. 7+ não é ajuste de treino, é encaminhamento: o app não
+# diagnostica (regra 8 do produto) e não tenta "trabalhar em volta" de dor forte.
+PAIN_INTENSITY: list[tuple[str, str, str]] = [
+    ("leve", "Leve (1 a 3)", "Incomoda, mas dá pra treinar normalmente."),
+    ("moderada", "Moderada (4 a 6)", "Atrapalha o movimento e piora durante a série."),
+    ("forte", "Forte (7 a 10)", "Dói bastante ou impede o movimento."),
+]
+PAIN_INTENSITY_VALUES = {v for v, _, _ in PAIN_INTENSITY}
+
+# --- Limitações funcionais --------------------------------------------------
+LIMITATIONS: list[tuple[str, str, str]] = [
+    ("mobilidade", "Mobilidade reduzida",
+     "Dificuldade de chegar na amplitude completa em alguns movimentos."),
+    ("equilibrio", "Equilíbrio",
+     "Instabilidade em pé ou em exercícios unilaterais."),
+    ("respiracao", "Respiração",
+     "Falta de ar com facilidade — asma, rinite ou similar."),
+    ("condicionamento", "Condicionamento baixo",
+     "Cansa rápido entre as séries."),
+]
+LIMITATION_VALUES = {v for v, _, _ in LIMITATIONS}
+
+# --- Academia cheia ---------------------------------------------------------
+# Cap. XVIII Parte J: uma prescrição que depende de reservar 2 estações numa
+# academia lotada não é executável. Marcar "cheia" desliga superset e prioriza
+# exercício de equipamento abundante.
+GYM_CROWDING: list[tuple[str, str, str]] = [
+    ("vazia", "Costuma estar tranquila", "Dá pra usar qualquer aparelho na hora."),
+    ("normal", "Movimento normal", "Às vezes espera um pouco."),
+    ("cheia", "Costuma estar cheia",
+     "Eu evito exercícios que dependem de segurar duas estações ao mesmo tempo."),
+]
+GYM_CROWDING_VALUES = {v for v, _, _ in GYM_CROWDING}
+
+# --- Equipamento em casa ----------------------------------------------------
+HOME_EQUIPMENT: list[tuple[str, str]] = [
+    ("halteres", "Halteres"),
+    ("barra", "Barra e anilhas"),
+    ("banco", "Banco"),
+    ("elasticos", "Elásticos ou faixas"),
+    ("barra_fixa", "Barra fixa"),
+    ("polia", "Polia ou crossover"),
+    ("kettlebell", "Kettlebell"),
+    ("maquina", "Alguma máquina"),
+]
+HOME_EQUIPMENT_VALUES = {v for v, _ in HOME_EQUIPMENT}
+
+# --- Divisão semanal preferida ---------------------------------------------
+# Bro-split (um músculo por dia) NÃO é oferecido: regra 6 do produto exige
+# frequência mínima de 2×/semana por grupo, e o montador tem trava dura pra
+# isso. Oferecer uma opção que o motor vai recusar seria mentir na tela.
+SPLIT_PREFERENCES: list[tuple[str, str, str]] = [
+    ("auto", "Deixa o app escolher",
+     "Escolho a melhor divisão pros dias que você tem. É o recomendado."),
+    ("full_body", "Corpo inteiro todo treino",
+     "Cada treino passa pelo corpo todo. Bom pra 2 e 3 dias por semana."),
+    ("upper_lower", "Superior e inferior",
+     "Alterna treino de cima e de baixo. Bom pra 4 dias."),
+    ("push_pull_legs", "Empurrar, puxar e pernas",
+     "Peito/ombro/tríceps, costas/bíceps e pernas. Bom pra 6 dias."),
+]
+SPLIT_PREFERENCE_VALUES = {v for v, _, _ in SPLIT_PREFERENCES}
+
+# --- Preferência de carga ---------------------------------------------------
+# Entrada direta do Cap. XI (faixa de repetições): desloca a faixa dentro do que
+# o exercício permite, sem nunca passar de 15 repetições nem descer abaixo do que
+# o exercício suporta com segurança.
+LOAD_PREFERENCE: list[tuple[str, str, str]] = [
+    ("pesado", "Carga alta, menos repetições", "Trabalho mais perto de 5 a 8 repetições."),
+    ("moderado", "Carga moderada", "A faixa de 8 a 12, que é o meio do caminho."),
+    ("leve", "Carga mais leve, mais repetições",
+     "Faixa de 12 a 15. Costuma pegar melhor com articulação sensível."),
+    ("indiferente", "Tanto faz, escolha por mim",
+     "Eu escolho a faixa por exercício, que é o ideal."),
+]
+LOAD_PREFERENCE_VALUES = {v for v, _, _ in LOAD_PREFERENCE}
+
+# --- Conforto perto da falha ------------------------------------------------
+# Entrada direta do Cap. XII (RIR-alvo).
+FAILURE_COMFORT: list[tuple[str, str, str]] = [
+    ("evito", "Prefiro parar com folga",
+     "Você termina a série sentindo que ainda tinha várias repetições."),
+    ("as_vezes", "Às vezes, em alguns exercícios",
+     "Aceita chegar perto do limite em máquina, mas não em peso livre."),
+    ("sim", "Sim, gosto de treinar perto da falha",
+     "Confortável em terminar a série sem sobrar quase nada."),
+]
+FAILURE_COMFORT_VALUES = {v for v, _, _ in FAILURE_COMFORT}
+
+# --- Técnicas que a pessoa já usou ------------------------------------------
+# Cap. XVII Parte D: "experiência geral não substitui domínio específico". Um
+# avançado que nunca fez myo-reps não recebe myo-reps de cara.
+KNOWN_TECHNIQUES: list[tuple[str, str]] = [
+    ("rest_pause", "Rest-pause"),
+    ("myo_reps", "Myo-reps"),
+    ("muscle_round", "Muscle round"),
+    ("back_off", "Back-off (série pesada + série mais leve)"),
+    ("superset", "Superset (dois exercícios seguidos)"),
+]
+KNOWN_TECHNIQUE_VALUES = {v for v, _ in KNOWN_TECHNIQUES}
+
+# --- Recuperação ------------------------------------------------------------
+# Estes quatro campos entram JUNTOS num único fator de recuperação, que desloca o
+# volume semanal dentro da faixa MEV–MRV. Separados eles não decidiriam nada;
+# juntos são a "capacidade de recuperação" que o Cap. III exige antes de fechar
+# o volume. Por isso são 4 perguntas curtas e não 7 (o manual pergunta sono,
+# qualidade do sono, estresse, trabalho físico, esporte, recuperação e dor
+# prolongada — trabalho físico já é o `activity_level`, e "dor prolongada" e
+# "chega recuperado" são a mesma pergunta feita duas vezes).
+SLEEP_QUALITY: list[tuple[str, str]] = [
+    ("boa", "Durmo bem"),
+    ("media", "Durmo mais ou menos"),
+    ("ruim", "Durmo mal"),
+]
+STRESS_LEVEL: list[tuple[str, str]] = [
+    ("baixo", "Tranquilo na maior parte do tempo"),
+    ("medio", "Puxado, mas administrável"),
+    ("alto", "Bem estressante"),
+]
+RECOVERY_BETWEEN: list[tuple[str, str, str]] = [
+    ("recuperado", "Chego inteiro no treino seguinte", "Sem dor limitante, rendendo igual."),
+    ("as_vezes", "Às vezes chego dolorido", "Acontece, mas não atrapalha muito."),
+    ("dolorido", "Quase sempre dolorido ou rendendo menos",
+     "Eu reduzo o volume até isso melhorar."),
+]
+OTHER_SPORT: list[tuple[str, str, str]] = [
+    ("nao", "Não pratico outro esporte", ""),
+    ("leve", "1 a 2 vezes por semana, leve", "Caminhada, pilates, yoga."),
+    ("moderado", "3 a 4 vezes por semana", "Corrida, futebol, natação, luta."),
+    ("intenso", "5 ou mais vezes, ou competitivo",
+     "Eu tiro volume do treino pra isso caber na sua recuperação."),
+]
+SLEEP_QUALITY_VALUES = {v for v, _ in SLEEP_QUALITY}
+STRESS_LEVEL_VALUES = {v for v, _ in STRESS_LEVEL}
+RECOVERY_BETWEEN_VALUES = {v for v, _, _ in RECOVERY_BETWEEN}
+OTHER_SPORT_VALUES = {v for v, _, _ in OTHER_SPORT}
+
+
+def one_of(value, permitidos: set[str]) -> str | None:
+    """Uma resposta de escolha única: o valor quando ele é conhecido, None
+    quando não é (inclusive quando vem vazio). None sempre significa "não
+    respondeu", e quem lê aplica o padrão seguro."""
+    v = str(value or "").strip()
+    return v if v in permitidos else None
+
+
+def many_of(valores, permitidos: set[str]) -> list[str]:
+    """Uma resposta de múltipla escolha: só valores conhecidos, sem repetição e
+    na ordem em que vieram."""
+    out: list[str] = []
+    for v in valores or []:
+        v = str(v).strip()
+        if v in permitidos and v not in out:
+            out.append(v)
+    return out
+
+
+# Quanto cada resposta de recuperação desloca o volume semanal. Somados a 1.0,
+# viram o fator que multiplica o alvo de séries (volume_landmarks).
+_RECOVERY_DELTA: dict[str, dict[str, float]] = {
+    "sleep_quality":  {"boa": +0.05, "media": 0.0, "ruim": -0.10},
+    "stress_level":   {"baixo": +0.05, "medio": 0.0, "alto": -0.05},
+    "recovery_between": {"recuperado": +0.05, "as_vezes": 0.0, "dolorido": -0.15},
+    "other_sport":    {"nao": 0.0, "leve": -0.03, "moderado": -0.08, "intenso": -0.15},
+}
+# Piso e teto do fator. O piso existe pra "tudo ruim" reduzir o treino sem
+# apagá-lo (um plano de 60% do volume ainda é um plano); o teto, pra dormir bem
+# não virar licença pra volume ilimitado — quem manda no topo continua sendo o
+# MRV do músculo.
+RECOVERY_FACTOR_MIN = 0.70
+RECOVERY_FACTOR_MAX = 1.15
+
+
+def recovery_factor(profile) -> float:
+    """O quanto a recuperação da pessoa desloca o volume semanal, de 0.70 a 1.15.
+
+    É AQUI que sono, estresse, dor entre sessões e outro esporte viram número.
+    Sozinha, nenhuma dessas respostas decide nada — quatro perguntas curtas que
+    produzem um fator só, em vez das sete do manual produzindo texto nenhum.
+
+    Perfil sem resposta nenhuma devolve 1.0 (neutro): o fator só existe pra
+    ajustar quem respondeu, nunca pra punir quem pulou.
+    """
+    fator = 1.0
+    for campo, deltas in _RECOVERY_DELTA.items():
+        fator += deltas.get(str(getattr(profile, campo, None) or ""), 0.0)
+    return max(RECOVERY_FACTOR_MIN, min(RECOVERY_FACTOR_MAX, round(fator, 3)))
 
 
 def valid_weak_points(values) -> list[str]:
@@ -152,10 +434,14 @@ def apply_weak_points(profile, valores, now) -> list[str]:
     data que só um dos dois carimbasse seria pior que data nenhuma — o coach
     cobraria a revisão de umas pessoas e de outras não.
 
-    A data só é REINICIADA quando o conjunto muda de verdade. Reescrever a mesma
+    A data só é REINICIADA quando a escolha muda de verdade. Reescrever a mesma
     escolha (salvar o questionário de novo sem mexer no ponto fraco) não zera o
     relógio: senão bastaria abrir e salvar as preferências pra a especialização
     nunca vencer, que é justamente o que este mecanismo existe pra impedir.
+
+    A comparação é de LISTA, não de conjunto: a ordem é a prioridade, e trocar
+    peito↔costas de posição muda quem recebe o volume de topo. É uma
+    especialização nova, e o relógio dela começa agora.
     """
     novos = valid_weak_points(valores)
     atuais = valid_weak_points(getattr(profile, "weak_points", None))
@@ -163,7 +449,7 @@ def apply_weak_points(profile, valores, now) -> list[str]:
     profile.weak_point = novos[0] if novos else None  # mantém o legado em sincronia
     if not novos:
         profile.weak_points_since = None
-    elif set(novos) != set(atuais) or getattr(profile, "weak_points_since", None) is None:
+    elif novos != atuais or getattr(profile, "weak_points_since", None) is None:
         profile.weak_points_since = now
     return novos
 
