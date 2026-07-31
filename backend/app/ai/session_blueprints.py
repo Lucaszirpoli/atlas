@@ -378,19 +378,27 @@ def blueprint_for(focus: str) -> list[SlotSpec]:
     return BLUEPRINTS.get(focus, FULL_BODY_A)
 
 
-def fit_to_target(blueprint: list[SlotSpec], target: int | None) -> list[SlotSpec]:
+def fit_to_target(
+    blueprint: list[SlotSpec], target: int | None, *, protegidas: frozenset[int] = frozenset()
+) -> list[SlotSpec]:
     """Recorta o blueprint pro nº-alvo de exercícios da sessão (tempo disponível).
 
     Ordem do corte: primeiro as vagas de MAIOR `priority` (3, depois 2, depois
     1) e, dentro da mesma prioridade, as que estão mais perto do FIM do treino —
     que são as que a pessoa já ia cortar por cansaço.
 
-    A ÚNICA garantia absoluta é a vaga 1: quem ABRE o treino nunca sai — seja o
-    composto prioritário (a maioria dos dias) ou a vaga de prioridade do dia de
-    membros. As de `priority=1` são as últimas a cair, mas caem se o alvo for
-    menor que o número delas — o tempo é uma restrição física, e entregar 7
-    exercícios pra quem tem tempo de 5 só faz a pessoa não terminar o treino.
-    Nesse caso o que sobra é o começo do treino, que é a escolha certa.
+    A vaga 1 (quem ABRE o treino) nunca sai — seja o composto prioritário (a
+    maioria dos dias) ou a vaga de prioridade do dia de membros. `protegidas`
+    estende essa garantia a outros índices específicos: é assim que TODO ponto
+    fraco marcado sobrevive ao corte, não só o que ganhou a abertura do dia. Só
+    um músculo pode abrir (é uma vaga só), mas a pessoa pode marcar até 2 pontos
+    fracos — sem proteger os dois, o segundo "perdia" pro primeiro e era cortado
+    do mesmo jeito que se ninguém o tivesse marcado.
+    Fora de `protegidas` e da vaga 0, as de `priority=1` são as últimas a cair,
+    mas caem se o alvo for menor que o número delas — o tempo é uma restrição
+    física, e entregar 7 exercícios pra quem tem tempo de 5 só faz a pessoa não
+    terminar o treino. Nesse caso o que sobra é o começo do treino, que é a
+    escolha certa.
 
     Alvo maior que o blueprint não acrescenta vaga aqui: quem faz o treino
     crescer é o volume semanal (workout_builder.add_accessory_slot), que sabe
@@ -406,7 +414,7 @@ def fit_to_target(blueprint: list[SlotSpec], target: int | None) -> list[SlotSpe
     for i in fila_de_corte:
         if len(blueprint) - len(cortadas) <= alvo:
             break
-        if i == 0:
-            continue  # o composto prioritário nunca sai
+        if i == 0 or i in protegidas:
+            continue  # o composto prioritário e todo ponto fraco nunca saem
         cortadas.add(i)
     return [s for i, s in enumerate(blueprint) if i not in cortadas]

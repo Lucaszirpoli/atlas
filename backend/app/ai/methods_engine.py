@@ -396,12 +396,24 @@ def _priorizar_ponto_fraco(
         novo[primeiro + 1] = replace(rebaixada, role=promovida.role)
         return novo
 
-    # Rota 2: nenhum composto do ponto fraco neste dia. Promove o primeiro
-    # isolador dele — se o dia treina o músculo. Dia que não treina o ponto fraco
-    # segue como está (não vale enfiar rosca no dia de perna só pra abrir com o
-    # ponto fraco: o volume dele é resolvido por VAGA, não por sequestro de dia).
+    # Rota 2: nenhum composto do ponto fraco neste dia. Promove a primeira vaga
+    # NÃO-composta dele — se o dia treina o músculo. Dia que não treina o ponto
+    # fraco segue como está (não vale enfiar rosca no dia de perna só pra abrir
+    # com o ponto fraco: o volume dele é resolvido por VAGA, não por sequestro
+    # de dia).
+    #
+    # "Não-composta" e não "só Pattern.ISO" de propósito: panturrilha é
+    # Pattern.CALF (o próprio tornozelo, não "isolamento" genérico) e glúteo via
+    # abdução é Pattern.ABDUCTION — as duas são pontos fracos VÁLIDOS
+    # (training_brain.WEAK_POINTS) e as duas ficavam de fora com o filtro restrito
+    # a Pattern.ISO. Panturrilha marcada como ponto fraco continuava sem nenhum
+    # exercício dedicado em boa parte das combinações — o mesmo bug do braço,
+    # só que sobrevivendo ao conserto do braço porque o padrão era outro.
     iso = next(
-        (i for i, s in enumerate(blueprint) if s.muscle in weak_points and s.pattern is Pattern.ISO),
+        (
+            i for i, s in enumerate(blueprint)
+            if s.muscle in weak_points and s.pattern not in _PADROES_COMPOSTOS
+        ),
         None,
     )
     if iso is None or iso == 0:
@@ -479,8 +491,29 @@ def build_plan(
 
     used_na_semana: set[int] = set()
     for i, focus in enumerate(split):
-        blueprint = bp.fit_to_target(bp.blueprint_for(focus), session_target)
-        blueprint = _priorizar_ponto_fraco(blueprint, wp_list)
+        # PRIORIZA antes de CORTAR — nessa ordem, e não na outra. `fit_to_target`
+        # só protege a vaga que já está na posição 0; se o corte por tempo
+        # rodasse primeiro, a vaga do ponto fraco podia já ter sido cortada antes
+        # de a promoção existir, e promover um exercício que não está mais na
+        # lista não devolve exercício nenhum. Era exatamente isso: ponto fraco em
+        # braço (sem vaga de composto pra promover) ficava sem nenhum exercício
+        # dedicado em boa parte das combinações de tempo/frequência, porque o
+        # isolador de braço já tinha sido cortado antes da promoção acontecer.
+        blueprint = _priorizar_ponto_fraco(bp.blueprint_for(focus), wp_list)
+        # UMA vaga de cada ponto fraco sobrevive ao corte por tempo, sempre.
+        #
+        # Só a primeira de cada músculo: proteger todas encheria um dia curto de
+        # rosca e deixaria o resto do corpo de fora — o volume EXTRA do ponto
+        # fraco é trabalho do preenchimento semanal (workout_builder), que sabe
+        # quantas séries faltam. O que se garante aqui é o piso: quem marcou um
+        # músculo como prioridade nunca termina a semana sem UM exercício dele.
+        protegidas: set[int] = set()
+        vistos: set[MuscleGroup] = set()
+        for i, spec in enumerate(blueprint):
+            if spec.muscle in wp_list and spec.muscle not in vistos:
+                protegidas.add(i)
+                vistos.add(spec.muscle)
+        blueprint = bp.fit_to_target(blueprint, session_target, protegidas=frozenset(protegidas))
 
         session = PlannedSession(day_index=i, day_label=f"Dia {i + 1}", focus=focus, phase_name=None)
         ids_na_sessao: set[int] = set()
@@ -552,6 +585,7 @@ def add_accessory_slot(
     region: str | None = None,
     seed: int | None = None,
     session: PlannedSession | None = None,
+    permitir_musculo_novo: bool = False,
 ) -> PlannedSlot | None:
     """Acrescenta UMA vaga do `muscle` ao plano e devolve a vaga criada (None se
     não houver exercício novo, nenhuma sessão que treine o músculo, ou todas as
@@ -575,21 +609,25 @@ def add_accessory_slot(
     """
     usados = {sl.exercise_id for s in plan.sessions for sl in s.slots if sl.exercise_id is not None}
 
+    def ja_treina(s: PlannedSession) -> bool:
+        # `permitir_musculo_novo` abre a exceção: um ponto fraco que não tem vaga
+        # em NENHUM dia da semana (glúteo no full body de 2 dias, por exemplo)
+        # não tem como entrar pela regra normal — ela exige que o dia já treine o
+        # músculo, e nenhum treina. Sem a exceção, a pessoa marca o músculo como
+        # prioridade e recebe zero exercício dele, que é o oposto de priorizar.
+        return permitir_musculo_novo or any(sl.muscle_group == muscle.value for sl in s.slots)
+
     if session is not None:
         # Quem chama já sabe QUAL dia precisa da vaga (o reforço de sessão curta,
         # que está consertando um dia específico, não procurando onde caberia
         # mais volume). O dia continua tendo que treinar o músculo: acessório em
         # dia que não é dele não é volume, é exercício solto.
-        if len(session.slots) >= max_per_session:
-            return None
-        if not any(sl.muscle_group == muscle.value for sl in session.slots):
+        if len(session.slots) >= max_per_session or not ja_treina(session):
             return None
         sessao = session
     else:
         candidatas = [
-            s
-            for s in plan.sessions
-            if len(s.slots) < max_per_session and any(sl.muscle_group == muscle.value for sl in s.slots)
+            s for s in plan.sessions if len(s.slots) < max_per_session and ja_treina(s)
         ]
         if not candidatas:
             return None

@@ -338,6 +338,42 @@ def build_and_save(db: Session, user: User) -> dict:
         exercicios_extras.append(slot.exercise_name)
         ids_extras.add(slot.exercise_id)
 
+    # --- TODO PONTO FRACO TEM EXERCÍCIO NA SEMANA ---------------------------
+    # A promoção (methods_engine._priorizar_ponto_fraco) e a proteção contra o
+    # corte por tempo cobrem o caso normal: o músculo tem vaga em algum dia e
+    # essa vaga sobrevive. Sobra um canto que nenhuma das duas alcança — o
+    # músculo não ter vaga em blueprint NENHUM da divisão. Glúteo em quem treina
+    # 2 dias é o caso real: o full body de 2 dias não tem vaga de glúteo, então
+    # não há o que promover nem o que proteger, e a pessoa marcava glúteo como
+    # prioridade pra receber zero exercício dele.
+    #
+    # Aqui a regra é dita direto, sem depender do desenho de cada blueprint:
+    # quem marcou um músculo como prioridade termina a semana com pelo menos um
+    # exercício dele. O resto do volume vem pelos caminhos de sempre.
+    for muscle in wps:
+        if slot_count_by_muscle.get(muscle.value, 0) > 0:
+            continue
+        slot = methods_engine.add_accessory_slot(
+            db, plan, muscle, prefer_machines=curto,
+            exercise_prefs=prefs_exercicio,
+            max_per_session=_MAX_EXERCICIOS_POR_SESSAO,
+            seed=user.id,
+            permitir_musculo_novo=True,
+        )
+        if slot is None:
+            continue  # a base não tem exercício desse músculo — reportado na revisão
+        slot_count_by_muscle[muscle.value] = 1
+        exercicios_extras.append(slot.exercise_name)
+        ids_extras.add(slot.exercise_id)
+        # O músculo passa a existir no plano da semana, então precisa de alvo de
+        # volume — senão a distribuição de séries mais abaixo não sabe o que
+        # fazer com ele e cai no padrão de 3.
+        if muscle not in plano_semanal:
+            musculos.append(muscle)
+            plano_semanal[muscle] = volume_landmarks.weekly_target_sets(
+                muscle, exp, weeks_acc, priority="alta"
+            )
+
     # --- PISO DE EXERCÍCIOS POR SESSÃO --------------------------------------
     # O volume da SEMANA fecha por muitos caminhos, e nenhum deles pode ser
     # entregar um dia com 3 exercícios. A poda já respeita o piso, mas ela não é

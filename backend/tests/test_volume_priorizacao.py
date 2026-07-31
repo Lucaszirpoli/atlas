@@ -447,3 +447,55 @@ def test_piso_de_sessao_nao_fura_o_teto_por_exercicio(db):
         ).scalars().all()
         assert max(sets) <= volume_landmarks.PER_EXERCISE_MAX
         assert min(sets) >= volume_landmarks.PER_EXERCISE_MIN
+
+
+# --- PONTO FRACO NUNCA FICA SEM EXERCÍCIO ---------------------------------
+@pytest.mark.parametrize("sessao", ("curto", "medio", "longo"))
+@pytest.mark.parametrize("dias", (2, 3, 4, 5, 6))
+@pytest.mark.parametrize(
+    "fraco",
+    ("chest", "back", "shoulders", "biceps", "triceps",
+     "quads", "hamstrings", "glutes", "calves"),
+)
+def test_ponto_fraco_sempre_tem_exercicio_dedicado(db, sessao, dias, fraco):
+    """A pergunta que o usuário fez: "existe risco de algum dia ficar sem
+    exercício de algum grupo muscular?"
+
+    A resposta tem que ser NÃO para todo músculo que a pessoa marcou como
+    prioridade — marcar um músculo e receber zero exercício dele é o oposto de
+    priorizar, e era o que acontecia em 21 das 195 combinações. Três causas
+    diferentes, todas escondidas em cantos distintos:
+
+      1. o corte por tempo rodava ANTES da promoção, então a vaga do ponto fraco
+         já tinha sido cortada quando a promoção foi procurar o que promover;
+      2. a promoção só reconhecia Pattern.ISO, e panturrilha é Pattern.CALF —
+         panturrilha priorizada ficava sem exercício mesmo depois do conserto (1);
+      3. com DOIS pontos fracos, só um pode abrir o dia; o outro voltava a ser
+         cortado como se ninguém o tivesse marcado.
+
+    A matriz inteira está aqui porque cada uma dessas apareceu num canto
+    diferente, e nenhuma aparecia no caminho comum.
+    """
+    with usuario(db, handle=f"pf{sessao[0]}{dias}{fraco[:3]}", weak_points=[fraco], dias=dias) as u:
+        u.profile.session_length = sessao
+        db.commit()
+        workout_builder.build_and_save(db, u)
+        series = series_por_musculo(db, u)
+        assert series[M(fraco)] > 0, (
+            f"{fraco} foi marcado como ponto fraco e terminou a semana com ZERO séries "
+            f"({sessao}, {dias} dias)"
+        )
+
+
+@pytest.mark.parametrize("dias", (2, 4, 6))
+def test_dois_pontos_fracos_juntos_ambos_recebem(db, dias):
+    """Só um músculo pode ABRIR o dia — mas os dois marcados têm que receber
+    exercício. O segundo não pode "perder" pro primeiro."""
+    with usuario(db, handle=f"dois{dias}", weak_points=["biceps", "triceps"], dias=dias) as u:
+        u.profile.session_length = "curto"
+        db.commit()
+        workout_builder.build_and_save(db, u)
+        series = series_por_musculo(db, u)
+        assert series[M.BICEPS] > 0 and series[M.TRICEPS] > 0, (
+            f"bíceps={series[M.BICEPS]} tríceps={series[M.TRICEPS]} — os dois foram marcados"
+        )
