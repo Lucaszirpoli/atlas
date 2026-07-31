@@ -611,9 +611,14 @@ def build_and_save(db: Session, user: User) -> dict:
         if ganhos:
             priority_note = f"Seu ponto fraco puxa o volume da semana: {ganhos}."
             if financiadores:
-                nomes = ", ".join(_label(m) for m in financiadores)
+                # NÃO reusar o nome `nomes` aqui: ele é a lista de nomes das
+                # ROTINAS criadas logo acima, e é o que alimenta "days",
+                # "routines" e a mensagem final. Sobrescrever com uma string
+                # fazia o coach responder "montei 25 treino(s)" — 25 é o
+                # comprimento do texto "Costas, Peito, Quadríceps".
+                nomes_financiadores = ", ".join(_label(m) for m in financiadores)
                 priority_note += (
-                    f" Pra isso eu segurei {nomes} em {volume_landmarks.BASE_MIN} séries — "
+                    f" Pra isso eu segurei {nomes_financiadores} em {volume_landmarks.BASE_MIN} séries — "
                     "manter um músculo custa muito menos que fazer ele crescer, e a recuperação "
                     "é do corpo inteiro, não de um grupo por vez."
                 )

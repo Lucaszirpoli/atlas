@@ -507,12 +507,16 @@ def build_plan(
         # fraco é trabalho do preenchimento semanal (workout_builder), que sabe
         # quantas séries faltam. O que se garante aqui é o piso: quem marcou um
         # músculo como prioridade nunca termina a semana sem UM exercício dele.
+        # Nomes próprios (`pos`/`vaga`) e não `i`/`spec`: `i` é o índice do DIA,
+        # do laço de fora, e reusá-lo aqui fazia todo dia nascer com o day_index
+        # da última vaga do blueprint — as rotinas saíam nomeadas "Dia 7" e
+        # "Dia 8" num treino de 4 dias.
         protegidas: set[int] = set()
         vistos: set[MuscleGroup] = set()
-        for i, spec in enumerate(blueprint):
-            if spec.muscle in wp_list and spec.muscle not in vistos:
-                protegidas.add(i)
-                vistos.add(spec.muscle)
+        for pos, vaga in enumerate(blueprint):
+            if vaga.muscle in wp_list and vaga.muscle not in vistos:
+                protegidas.add(pos)
+                vistos.add(vaga.muscle)
         blueprint = bp.fit_to_target(blueprint, session_target, protegidas=frozenset(protegidas))
 
         session = PlannedSession(day_index=i, day_label=f"Dia {i + 1}", focus=focus, phase_name=None)

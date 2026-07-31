@@ -23,7 +23,7 @@ from collections import Counter
 from contextlib import contextmanager
 
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 
 from app.coaching import volume_landmarks, workout_builder
 from app.core.db import SessionLocal
@@ -499,3 +499,44 @@ def test_dois_pontos_fracos_juntos_ambos_recebem(db, dias):
         assert series[M.BICEPS] > 0 and series[M.TRICEPS] > 0, (
             f"bíceps={series[M.BICEPS]} tríceps={series[M.TRICEPS]} — os dois foram marcados"
         )
+
+
+# --- O RESUMO DA MONTAGEM DIZ A VERDADE -----------------------------------
+def test_resumo_da_montagem_bate_com_o_que_foi_gravado(db):
+    """Dois bugs de SHADOWING de variável, os dois só visíveis no resultado:
+
+      - o bloco que monta o texto da priorização reusava o nome `nomes`, que já
+        era a lista de rotinas criadas. O coach respondia "montei 25 treino(s)"
+        num treino de 4 dias — 25 é o comprimento do texto "Costas, Peito,
+        Quadríceps";
+      - o laço que marca as vagas protegidas do ponto fraco reusava `i`, que era
+        o índice do DIA no laço de fora. Toda rotina nascia nomeada com o índice
+        da última vaga do blueprint: "Dia 7" e "Dia 8" num treino de 4 dias.
+
+    Nenhum dos dois quebra nada — por isso passaram. O teste compara o que o
+    resumo AFIRMA com o que existe no banco.
+    """
+    with usuario(db, handle="resumo", weak_points=["biceps"], dias=4) as u:
+        resultado = workout_builder.build_and_save(db, u)
+
+        gravadas = [
+            r.name
+            for r in db.execute(
+                select(Routine).where(Routine.user_id == u.id, Routine.is_archived.is_(False))
+            ).scalars()
+        ]
+        assert resultado["days"] == len(gravadas) == 4
+        assert sorted(resultado["routines"]) == sorted(gravadas)
+        assert f"montei {len(gravadas)} treino(s)" in resultado["message"]
+
+        # Os dias são numerados de 1 a N, na ordem — é o que a pessoa lê na lista
+        # de rotinas.
+        for numero, nome in enumerate(resultado["routines"], start=1):
+            assert f"Dia {numero} " in nome, f"esperado 'Dia {numero}' em {nome!r}"
+
+        total_no_banco = db.execute(
+            select(func.count(RoutineExercise.id))
+            .join(Routine, Routine.id == RoutineExercise.routine_id)
+            .where(Routine.user_id == u.id, Routine.is_archived.is_(False))
+        ).scalar_one()
+        assert resultado["total_exercises"] == total_no_banco
