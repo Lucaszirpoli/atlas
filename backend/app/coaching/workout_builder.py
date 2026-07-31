@@ -9,17 +9,16 @@ ativas — arquivando as antigas (nunca deleta, regra 4).
 
 from __future__ import annotations
 
-import re
 from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai import methods_engine, plan_review
+from app.ai import exercise_taxonomy, methods_engine, plan_review
 from app.ai.exercise_taxonomy import Pattern
 from app.ai.methods import coach_custom_spec
 from app.ai.methods_engine import build_plan
-from app.coaching import cycle_state, training_brain, volume_landmarks
+from app.coaching import cycle_state, prescription, training_brain, volume_landmarks
 from app.models.coaching_technique_cue import CoachingTechniqueCue
 from app.models.exercise import MuscleGroup
 from app.models.routine import Routine, RoutineExercise
@@ -51,22 +50,19 @@ _MIN_VAGAS_POR_MUSCULO = 2
 _MAX_VAGAS_PODADAS = 24
 
 
-def _first_int(s, default: int) -> int:
-    m = re.search(r"\d+", str(s or ""))
-    return int(m.group()) if m else default
+# `_parse_reps` e `_first_int` viviam aqui pra ler "8-12" e "90-120" do TEXTO do
+# MethodSpec. Sumiram junto com a fonte: reps e descanso agora saem da mecânica
+# do exercício (`prescription`), não de uma string igual pra todo mundo.
 
 
-def _parse_reps(s) -> tuple[int, int]:
-    """Faixa de reps a partir do texto do método ('8-12', '6', '15-30+')."""
-    txt = str(s or "")
-    m = re.search(r"(\d+)\s*[-–]\s*(\d+)", txt)
-    if m:
-        return int(m.group(1)), int(m.group(2))
-    one = re.search(r"\d+", txt)
-    if one:
-        n = int(one.group())
-        return n, n
-    return 8, 12
+def _muscle_or_none(valor: str | None) -> MuscleGroup | None:
+    """O músculo da vaga como enum. A vaga guarda o VALOR em texto, e um valor
+    que o enum não conhece não pode derrubar a montagem — só significa que a
+    taxonomia vai cair no palpite conservador dela."""
+    try:
+        return MuscleGroup(valor) if valor else None
+    except ValueError:
+        return None
 
 
 def revert_technique_cues(db: Session, user_id: int) -> int:
@@ -484,7 +480,23 @@ def build_and_save(db: Session, user: User) -> dict:
         db.add(routine)
         db.flush()
         for i, sl in enumerate(slots):
-            rmin, rmax = _parse_reps(sl.reps)
+            # FAIXA DE REPETIÇÕES E DESCANSO saem do EXERCÍCIO, não do método.
+            #
+            # Antes `sl.reps` trazia o 8-12 fixo do MethodSpec pra tudo, e o
+            # descanso vinha do objetivo da pessoa. Agachamento livre e elevação
+            # lateral recebiam a mesma prescrição, o que o manual rejeita: a
+            # faixa é consequência da estabilidade, do perfil de resistência, do
+            # risco articular e de quem encerra a série (Cap. XI); o descanso, do
+            # custo real do movimento (Cap. XV).
+            taxon = exercise_taxonomy.taxon_for(
+                sl.exercise_name, _muscle_or_none(sl.muscle_group), bool(sl.is_compound)
+            )
+            rmin, rmax = prescription.rep_band(
+                taxon, load_preference=getattr(profile, "load_preference", None)
+            )
+            descanso = prescription.rest_seconds(
+                taxon, goal=goal, limitations=getattr(profile, "limitations", None)
+            )
             # Base do volume-alvo do músculo dividido pelas vagas; o resto da
             # divisão vai pro(s) primeiro(s) exercício(s) do músculo na semana.
             sets = base_by_muscle.get(sl.muscle_group, 3)
@@ -501,7 +513,7 @@ def build_and_save(db: Session, user: User) -> dict:
                 routine_id=routine.id, exercise_id=sl.exercise_id, sort_order=i,
                 target_sets=sets,
                 target_reps_min=max(1, rmin), target_reps_max=max(rmin, rmax),
-                rest_seconds=max(0, _first_int(sl.rest_seconds, 90)),
+                rest_seconds=descanso,
                 notes=sl.note,
                 set_intents=training_brain.set_intents_for(sets, sl.is_compound),
             )

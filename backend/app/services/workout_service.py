@@ -3,7 +3,8 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.coaching import cycle_state, training_brain
+from app.ai import exercise_taxonomy
+from app.coaching import cycle_state, prescription, training_brain
 from app.models.coaching_action import CoachingAction
 from app.models.exercise import Exercise
 from app.models.routine import Routine
@@ -157,7 +158,8 @@ def get_last_performance(db: Session, user_id: int, exercise_id: int) -> dict | 
 
 def build_prefill(db: Session, user: User, routine: Routine) -> list[dict]:
     period = cycle_state.current_period(db, user.id)
-    suggested_rir = training_brain.suggested_work_rir(period)
+    rir_do_ciclo = training_brain.suggested_work_rir(period)
+    profile = user.profile
     prefill = []
     # Aquecimento entra APENAS quando a sessão começa a trabalhar um grupo
     # ainda não preparado (§6.3). Percorre os exercícios na ORDEM do treino e
@@ -170,7 +172,6 @@ def build_prefill(db: Session, user: User, routine: Routine) -> list[dict]:
             "exercise_id": routine_exercise.exercise_id, "last_performed_at": None, "sets": [],
         }
         item = dict(item)
-        item["suggested_rir"] = suggested_rir
         # Aquecimento/feeder se baseiam na carga MAIS PESADA das séries de
         # trabalho/falha da última vez (o "mais pesado entre os dois"). Sem
         # histórico o peso vem None (warmup_feeder_ramp_for já trata isso).
@@ -178,6 +179,34 @@ def build_prefill(db: Session, user: User, routine: Routine) -> list[dict]:
 
         exercise = routine_exercise.exercise or db.get(Exercise, routine_exercise.exercise_id)
         muscle = exercise.primary_muscle_group if exercise else None
+
+        # RIR-ALVO por EXERCÍCIO, não um número só pro treino inteiro (Cap. XII).
+        # Antes toda série de todo exercício recebia o mesmo RIR do período, o
+        # que o manual rejeita: "o RIR não é uma propriedade fixa da categoria do
+        # exercício" — ele depende da estabilidade, do risco, de quem encerra a
+        # série e da capacidade da pessoa de estimar esforço. Chegar perto da
+        # falha num agachamento livre e numa cadeira extensora custa coisas
+        # diferentes, e agora a prescrição diz isso.
+        #
+        # O RIR do ciclo continua mandando quando é ele o mais conservador: na
+        # fase de intensificação o motor aperta, mas nunca afrouxa o piso de
+        # segurança de um exercício arriscado.
+        item["suggested_rir"] = max(
+            rir_do_ciclo - 1,
+            prescription.target_rir(
+                exercise_taxonomy.taxon_for(
+                    exercise.name if exercise else "",
+                    muscle,
+                    bool(exercise.is_compound) if exercise else False,
+                ),
+                experience=(
+                    profile.experience_level.value
+                    if profile is not None and profile.experience_level else None
+                ),
+                rir_accuracy=getattr(profile, "rir_accuracy", None),
+                failure_comfort=getattr(profile, "failure_comfort", None),
+            ),
+        )
         aquecer = muscle is None or training_brain.needs_warmup(muscle, ja_preparados)
         item["warmup_feeder"] = training_brain.warmup_feeder_ramp_for(
             base_weight,

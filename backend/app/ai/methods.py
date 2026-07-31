@@ -184,9 +184,18 @@ def coach_split_for(days: int, weak_points: list[str] | None = None) -> list[str
     return [ciclo[i % len(ciclo)] for i in range(max(1, days))]
 
 # Parâmetros da sessão por objetivo — proporção composto/isolado, RIR, descanso.
-# REPS: o coach trabalha com 8-12 em todo objetivo (a faixa-padrão de
-# hipertrofia, o consenso mais robusto de estímulo x recuperação x adesão) —
-# não varia por objetivo; o que muda é ratio/rir/descanso.
+#
+# ATENÇÃO: `reps`, `rir` e `rest` daqui NÃO decidem mais nada do treino salvo.
+# Desde a implementação dos Caps. XI/XII/XV do manual de regras, a faixa de
+# repetições, o RIR-alvo e o descanso saem da MECÂNICA DE CADA EXERCÍCIO
+# (`coaching/prescription.py` + os atributos em `ai/exercise_taxonomy.py`),
+# porque o manual rejeita explicitamente uma faixa única pra biblioteca inteira:
+# agachamento livre e elevação lateral não se prescrevem igual.
+#
+# Estes valores sobraram como texto descritivo do MethodSpec. Mudar o "8-12"
+# abaixo não muda treino nenhum — mexa em `prescription.REP_BANDS` e nos
+# atributos do exercício. O que ainda TEM efeito aqui é `ratio` (proporção
+# composto/isolado) e `family` (a progressão).
 _COACH_REPS = "8-12"
 _COACH_GOAL_PARAMS: dict[str, dict] = {
     "hipertrofia": {"reps": _COACH_REPS, "ratio": 0.5, "rir": "1-2", "rest": "90-120",
