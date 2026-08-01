@@ -261,6 +261,21 @@ def _igual(a: Any, b: Any) -> bool:
     return str(a) == str(b)
 
 
+# Campos que o questionário ATUAL usa pra decidir o treino. Um plano salvo que
+# não conhece nenhum deles veio de um questionário anterior — ver `activate`.
+#
+# São chaves que só existem no esquema novo (não é o caso de "a pessoa deixou em
+# branco": elas nem eram perguntadas antes), então a ausência de TODAS é o sinal
+# de esquema defasado. Basta uma presente pra o plano ser considerado atual.
+_CHAVES_DO_ESQUEMA_ATUAL = ("priority_1", "training_time", "has_injury")
+
+
+def _de_esquema_antigo(respostas: dict) -> bool:
+    """True quando as respostas salvas não conhecem nenhum campo do
+    questionário atual — ou seja, vieram de uma versão anterior dele."""
+    return not any(k in respostas for k in _CHAVES_DO_ESQUEMA_ATUAL)
+
+
 def diff_answers(antigas: dict, novas: dict) -> list[dict]:
     """O que mudou, campo a campo, com rótulo humano — vira o "resumo das
     mudanças" que a pessoa lê depois de atualizar (§3.6)."""
@@ -499,7 +514,25 @@ def activate(db: Session, user: User, answers: dict, *, reason: str = "atualizac
     anterior = active_plan(db, user.id)
     respostas_antigas = dict(anterior.answers or {}) if anterior else {}
     mudancas = diff_answers(respostas_antigas, answers) if anterior else []
-    componentes_alvo = impacted_components(mudancas) if anterior else list(TODOS_COMPONENTES)
+    # Plano de um questionário ANTERIOR ao atual: regera TUDO, sem confiar no
+    # diff campo-a-campo.
+    #
+    # A atualização conservadora (só refaz o que mudou) pressupõe que os dois
+    # lados falam a mesma língua. Quando o questionário é reescrito, o plano
+    # antigo guarda respostas de um esquema que não existe mais — e o diff passa
+    # a comparar campos novos contra o vazio. Isso já produziu o pior tipo de
+    # falha: silenciosa. A pessoa respondia o questionário novo inteiro, o
+    # sistema dizia "plano atualizado", e o TREINO continuava sendo o montado
+    # pelo questionário velho, porque o componente "treino" não entrou na conta.
+    #
+    # A checagem é estrutural, não por versão: o plano é considerado defasado
+    # quando não conhece os campos que HOJE decidem o treino. Assim ela continua
+    # valendo na próxima vez que o questionário mudar, sem ninguém lembrar de
+    # bumpar um número.
+    if anterior is not None and _de_esquema_antigo(respostas_antigas):
+        componentes_alvo = list(TODOS_COMPONENTES)
+    else:
+        componentes_alvo = impacted_components(mudancas) if anterior else list(TODOS_COMPONENTES)
     proxima_versao = (anterior.version + 1) if anterior else 1
 
     # O plano descreve o ESTADO ATIVO inteiro, não só o delta: o que não foi

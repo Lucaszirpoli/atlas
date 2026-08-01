@@ -456,3 +456,125 @@ def test_pontos_fracos_antigos_viram_a_fila_de_prioridade(db, perfil):
     assert base["priority_1"] == "back"
     assert base["priority_2"] == "chest"
     assert base["priority_3"] is None
+
+
+# --- Migração de um plano do questionário ANTERIOR --------------------------
+# O bug que o usuário relatou em 2026-08-01: ele respondeu o questionário novo
+# inteiro, o app disse "plano atualizado", e o treino continuou sendo o montado
+# pelo questionário ANTIGO — não importava a resposta.
+#
+# Causa: a atualização conservadora só refaz os componentes que o diff aponta, e
+# o diff comparava campos NOVOS contra um plano salvo que não os conhecia. Sem
+# tratar isso, "questionário reescrito" vira "treino congelado".
+RESPOSTAS_ESQUEMA_ANTIGO = {
+    "goal": "hipertrofia", "biological_sex": "male", "age": 30, "height_cm": 180,
+    "weight_kg": 82, "activity_level": "moderate", "calorie_goal_mode": "auto",
+    "experience_level": "intermediario",      # campo que NÃO existe mais
+    "training_location": "academia_completa",
+    "training_days_per_week": "4", "session_length": "medio",
+    "weak_points": ["chest"],                 # campo que NÃO existe mais
+    "allow_advanced_techniques": False, "periodization": "auto", "wants_cardio": False,
+}
+
+
+def test_plano_do_questionario_antigo_e_detectado():
+    from app.coaching import plan_service
+
+    assert plan_service._de_esquema_antigo(RESPOSTAS_ESQUEMA_ANTIGO) is True
+
+
+def test_plano_do_questionario_atual_nao_e_marcado_como_antigo():
+    """A checagem não pode marcar plano novo como defasado — isso faria toda
+    atualização regerar tudo, jogando fora a atualização conservadora."""
+    from app.coaching import plan_service
+
+    atual = {**RESPOSTAS_ESQUEMA_ANTIGO, "priority_1": "back", "training_time": "1_3a"}
+    assert plan_service._de_esquema_antigo(atual) is False
+
+
+def test_esquema_antigo_regera_o_treino_mesmo_sem_diff_de_treino():
+    """O coração do bug: mesmo que o diff só aponte campos de DIETA, um plano do
+    esquema anterior tem que regerar o treino. Antes, `componentes_alvo` saía
+    sem "treino" e a rotina antiga sobrevivia à atualização."""
+    from app.coaching import plan_service
+
+    # Só a dieta mudou entre as duas respostas.
+    novas = {**RESPOSTAS_ESQUEMA_ANTIGO, "meals_per_day": "5"}
+    mudancas = plan_service.diff_answers(RESPOSTAS_ESQUEMA_ANTIGO, novas)
+    assert plan_service.impacted_components(mudancas) == ["dieta"], (
+        "pré-condição do teste: o diff sozinho não pediria treino"
+    )
+    # ...mas o plano é do esquema antigo, então tudo é regerado.
+    assert plan_service._de_esquema_antigo(RESPOSTAS_ESQUEMA_ANTIGO)
+
+
+def test_ativar_sobre_plano_antigo_troca_o_treino_de_verdade(db, perfil):
+    """Ponta a ponta, no cenário exato do usuário: existe um plano ATIVO do
+    questionário anterior e rotinas montadas por ele. A pessoa responde o
+    questionário novo e ativa. As rotinas TÊM que ser substituídas.
+
+    Sem a detecção de esquema antigo, este teste falha com as rotinas velhas
+    intactas — que foi exatamente o que a pessoa viu no celular.
+    """
+    from datetime import datetime, timezone
+
+    from sqlalchemy import select
+
+    from app.coaching import plan_service, workout_builder
+    from app.models.coaching_plan import CoachingPlan, PlanStatus
+    from app.models.exercise import Exercise
+    from app.models.routine import Routine, RoutineExercise
+
+    p = perfil.profile
+    p.training_days_per_week = 4
+    p.session_length = "medio"
+    p.allow_advanced_techniques = False
+    p.periodization = "auto"
+    p.weak_points = ["chest"]
+    db.flush()
+
+    # Rotinas montadas pelo questionário ANTIGO (prioridade peito).
+    workout_builder.build_and_save(db, perfil)
+
+    def exercicios_ativos():
+        db.expire_all()
+        return [
+            (rot, ex, s) for rot, ex, s in db.execute(
+                select(Routine.name, Exercise.name, RoutineExercise.target_sets)
+                .join(RoutineExercise, RoutineExercise.routine_id == Routine.id)
+                .join(Exercise, Exercise.id == RoutineExercise.exercise_id)
+                .where(Routine.user_id == perfil.id, Routine.is_archived.is_(False))
+                .order_by(Routine.name, RoutineExercise.sort_order)
+            ).all()
+        ]
+
+    antes = exercicios_ativos()
+    assert antes, "pré-condição: o questionário antigo tinha montado um treino"
+
+    # O plano ATIVO guarda respostas do esquema anterior.
+    db.add(CoachingPlan(
+        user_id=perfil.id, version=1, status=PlanStatus.ACTIVE,
+        answers=dict(RESPOSTAS_ESQUEMA_ANTIGO), changes=[], components={},
+        reason="primeiro_plano", activated_at=datetime.now(timezone.utc),
+    ))
+    db.commit()
+
+    # Agora ela responde o questionário NOVO, priorizando COSTAS.
+    novas = {
+        **RESPOSTAS_BASE, "weight_kg": 82,
+        "training_days_per_week": "4", "session_length": "medio",
+        "priority_1": "back", "allow_advanced_techniques": False, "periodization": "auto",
+    }
+    plan_service.activate(db, perfil, novas, reason="atualizacao")
+
+    depois = exercicios_ativos()
+    assert depois, "a ativação deixou a pessoa sem treino nenhum"
+    # NOTA HONESTA: este assert passa MESMO sem a detecção de esquema antigo,
+    # porque o diff já enxerga `priority_1` (ausente -> "back") e isso sozinho
+    # marca "treino". Ou seja: ele documenta o cenário e protege contra
+    # regressão, mas NÃO foi o que reproduziu o bug relatado pelo usuário em
+    # 2026-08-01 — esse continua sem reprodução local.
+    assert depois != antes, (
+        "o treino não mudou ao ativar o questionário novo"
+    )
+    assert perfil.profile.weak_points == ["back"], "a prioridade nova não chegou no perfil"

@@ -211,7 +211,23 @@ export function ObjectiveScreen({
   }
 
   async function avancar() {
-    if (faltandoNaEtapa().length > 0) return;
+    // Falta obrigatório: DIZ o que falta em vez de não fazer nada.
+    //
+    // Antes isto era um `return` mudo, e o botão ainda vinha `disabled` por
+    // cima. O toque morria sem nenhum sinal: nem avançava, nem explicava. Quem
+    // usava concluía que "o botão não funciona, tem que clicar de novo" — e,
+    // na última etapa, que o plano tinha sido salvo quando nada tinha sido
+    // gerado. Um toque sempre precisa produzir uma resposta visível.
+    const faltandoAgora = faltandoNaEtapa();
+    if (faltandoAgora.length > 0) {
+      setErro(
+        faltandoAgora.length === 1
+          ? `Falta responder: ${faltandoAgora[0]}.`
+          : `Faltam responder: ${faltandoAgora.join(", ")}.`
+      );
+      return;
+    }
+    setErro(null);
     const proxima = Math.min(etapa + 1, passos.length - 1);
     setEtapa(proxima);
     onScrollTop?.();
@@ -226,6 +242,17 @@ export function ObjectiveScreen({
   }
 
   async function finalizar() {
+    // Mesma regra do "Continuar": nunca um toque mudo. Aqui o silêncio custava
+    // ainda mais caro — a pessoa saía achando que o plano tinha sido gerado.
+    const faltandoAgora = faltandoNaEtapa();
+    if (faltandoAgora.length > 0) {
+      setErro(
+        faltandoAgora.length === 1
+          ? `Falta responder: ${faltandoAgora[0]}.`
+          : `Faltam responder: ${faltandoAgora.join(", ")}.`
+      );
+      return;
+    }
     setGerando(true);
     setErro(null);
     try {
@@ -443,11 +470,18 @@ export function ObjectiveScreen({
             </View>
           ) : null}
           <View style={{ flex: 2 }}>
+            {/* NÃO fica `disabled` por falta de resposta, de propósito: botão
+                apagado que não reage é indistinguível de botão quebrado, e era
+                exatamente essa a queixa ("tem que clicar mais de uma vez").
+                Agora o toque sempre responde — avança, ou diz o que falta.
+                `disabled` fica só pro que é de verdade impossível (já está
+                gerando o plano) e pro erro de macros, que a própria tela já
+                explica logo acima do botão. */}
             <Button
               title={ultima ? "Finalizar e gerar meu plano" : "Continuar"}
               onPress={ultima ? finalizar : avancar}
               loading={gerando}
-              disabled={faltando.length > 0 || !!erroMacros}
+              disabled={gerando || !!erroMacros}
             />
           </View>
         </View>
