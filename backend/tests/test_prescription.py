@@ -186,6 +186,27 @@ def test_conforto_com_a_falha_move_o_alvo_nos_dois_sentidos():
     )
 
 
+def test_nenhum_exercicio_arriscado_da_biblioteca_inteira_vai_a_falha():
+    """Auditoria do Cap. XVIII sobre a biblioteca real (não uma amostra
+    sintética): "evitar RIR 0 de maneira rotineira" pra exercício livre de alto
+    risco (Cap. XII Parte C) tem que valer pros 119 exercícios, em QUALQUER
+    combinação de respostas — inclusive a mais agressiva (avançado, gosta da
+    falha, última série). Se algum exercício de estabilidade baixa ou custo
+    sistêmico alto algum dia chegar em RIR < 2 aqui, o piso de segurança
+    (`_RIR_FLOOR_ARRISCADO`) quebrou e isto pega antes de virar prescrição
+    real."""
+    arriscados = [
+        (nome, t) for nome, t in tx.TAXONOMY.items()
+        if t.stability is Stability.BAIXA or t.systemic is Systemic.ALTO
+    ]
+    assert len(arriscados) >= 10, "poucos exercícios de risco na amostra — o teste não estaria testando nada"
+    for nome, t in arriscados:
+        pior_caso = prescription.target_rir(
+            t, experience="avancado", rir_accuracy="sim", failure_comfort="sim", is_last_set=True,
+        )
+        assert pior_caso >= 2, f"{nome} (risco) chegaria a RIR {pior_caso} na combinação mais agressiva"
+
+
 def test_rir_fica_sempre_dentro_da_escala():
     """Nenhuma combinação de respostas pode produzir RIR negativo ou absurdo."""
     for t in tx.TAXONOMY.values():

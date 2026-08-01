@@ -19,7 +19,7 @@ from app.coaching.robust_stats import robust_average
 from app.core.usertime import local_date, profile_tz, today_local
 from app.models.calorie_goal import CalorieGoal
 from app.models.coaching_baseline import CoachingBaseline
-from app.models.exercise import Exercise
+from app.models.exercise import Exercise, MuscleGroup
 from app.models.meal import MealLog
 from app.models.sleep_log import SleepLog
 from app.models.user_profile import UserProfile
@@ -277,10 +277,6 @@ def _stalled_lifts(db: Session, user_id: int, since: datetime, tz: ZoneInfo) -> 
     ]
 
 
-# Reps que marcam o topo de uma boa faixa de trabalho — bateu isto com folga,
-# está na hora de subir a carga. Peso corporal aguenta mais reps antes do sinal.
-_PROG_REP_CEIL_WEIGHTED = 12
-_PROG_REP_CEIL_BODYWEIGHT = 18
 # set_types que NÃO são série de trabalho (não valem pro sinal de progressão).
 _NON_WORKING_SETS = {"warmup", "feeder"}
 
@@ -295,15 +291,35 @@ def _sem_bloco():
 
 
 def _progression_lifts(
-    db: Session, user_id: int, since: datetime, stalled_ids: set[int], tz: ZoneInfo
+    db: Session, user_id: int, since: datetime, stalled_ids: set[int], tz: ZoneInfo,
+    profile: UserProfile | None = None,
 ) -> list[dict]:
     """Exercícios prontos pra subir a carga: no treino mais recente a pessoa
-    bateu o TOPO da faixa de reps na série mais pesada, com folga (RIR ≥ 1 ou não
-    informado). É o oposto do platô — por isso exclui quem já está travado. Sinal
-    de coach de verdade: 'você tá voando nesse peso, sobe'.
+    bateu o TOPO DA FAIXA PRESCRITA PRA AQUELE EXERCÍCIO na série mais pesada,
+    com folga (RIR observado ≥ RIR-alvo daquele exercício, ou não informado). É
+    o oposto do platô — por isso exclui quem já está travado. Sinal de coach de
+    verdade: 'você tá voando nesse peso, sobe'.
+
+    Cap. XVI Parte D do manual: "compare o RIR-alvo com o RIR observado" antes
+    de decidir progressão — nunca um número fixo pra qualquer exercício. Até
+    2026-07-31 este sinal usava um teto de 12 reps (18 pra peso corporal) igual
+    pra TODOS os exercícios. Deixou de fazer sentido quando a faixa de reps
+    passou a variar por exercício (Cap. XI): um agachamento livre prescrito em
+    5-9 quase nunca bateria 12 reps (o sinal nunca disparava), e uma elevação
+    lateral prescrita em 10-15 disparava aos 12 — antes do topo real da faixa
+    dela. Agora o teto e o RIR-alvo vêm da MESMA função que prescreveu o
+    exercício (`prescription`), então progressão nunca diverge do que o treino
+    realmente pede.
 
     Devolve no máximo 3, compostos primeiro (subir num composto rende mais)."""
+    from app.ai import exercise_taxonomy
+    from app.coaching import prescription
     from app.models.exercise import Equipment
+
+    experience = profile.experience_level.value if profile and profile.experience_level else None
+    rir_accuracy = getattr(profile, "rir_accuracy", None)
+    failure_comfort = getattr(profile, "failure_comfort", None)
+    load_preference = getattr(profile, "load_preference", None)
 
     rows = db.execute(
         select(
@@ -356,8 +372,23 @@ def _progression_lifts(
             continue
         _, (peso, reps, rir) = dias[-1]  # treino mais recente
         is_bw = d["equipment"] == Equipment.BODYWEIGHT.value
-        teto = _PROG_REP_CEIL_BODYWEIGHT if is_bw else _PROG_REP_CEIL_WEIGHTED
-        folga = rir is None or rir >= 1
+
+        # O teto de reps e o RIR-alvo vêm da MESMA prescrição que o motor usou
+        # pra montar o treino desse exercício — nunca um número fixo. Exercício
+        # que já saiu da taxonomia (renomeado, removido da biblioteca) cai no
+        # palpite conservador de `taxon_for`, que ainda assim é MELHOR que um
+        # teto igual pra tudo: nunca dispara cedo demais.
+        try:
+            musculo_enum = MuscleGroup(d["muscle"])
+        except ValueError:
+            musculo_enum = None
+        taxon = exercise_taxonomy.taxon_for(d["name"], musculo_enum, d["is_compound"])
+        _, teto = prescription.rep_band(taxon, load_preference=load_preference)
+        rir_alvo = prescription.target_rir(
+            taxon, experience=experience, rir_accuracy=rir_accuracy,
+            failure_comfort=failure_comfort, is_last_set=True,
+        )
+        folga = rir is None or rir >= rir_alvo
         if reps >= teto and folga and (is_bw or peso > 0):
             out.append({
                 "exercise_id": ex_id, "name": d["name"], "is_compound": d["is_compound"],
@@ -396,7 +427,8 @@ def _volume_trend(db: Session, user_id: int, since: datetime) -> float | None:
 
 
 def _training_metrics(
-    db: Session, user_id: int, since: datetime, window_days: int, tz: ZoneInfo
+    db: Session, user_id: int, since: datetime, window_days: int, tz: ZoneInfo,
+    profile: UserProfile | None = None,
 ) -> TrainingMetrics:
     # Só sessões CONCLUÍDAS contam como treino feito. Diferente da nutrição, um
     # treino concluído JÁ é um evento fechado — não depende da virada do dia
@@ -419,7 +451,7 @@ def _training_metrics(
         sessions_per_week=round(n / weeks, 2),
         window_days=window_days,
         stalled_lifts=stalled,
-        progression_lifts=_progression_lifts(db, user_id, since, stalled_ids, tz),
+        progression_lifts=_progression_lifts(db, user_id, since, stalled_ids, tz, profile),
         volume_trend_pct=_volume_trend(db, user_id, since),
     )
 
@@ -507,7 +539,7 @@ def _assemble_metrics(
         weight_kg=weight.latest_kg or latest_any,
         weight=weight,
         nutrition=_nutrition_metrics(db, user_id, since, window_days, tz),
-        training=_training_metrics(db, user_id, since, window_days, tz),
+        training=_training_metrics(db, user_id, since, window_days, tz, profile),
         sleep=_sleep_metrics(db, user_id, since),
         baseline_at=baseline_at,
     )
