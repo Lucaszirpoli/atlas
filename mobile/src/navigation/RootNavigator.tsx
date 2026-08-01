@@ -20,7 +20,9 @@ import { WeightScreen } from "../screens/weight/WeightScreen";
 import { useTheme } from "../theme/ThemeProvider";
 import { BrandSplash } from "../components/BrandSplash";
 import { AuthStack } from "./AuthStack";
+import { headerPadrao } from "./headerOptions";
 import { navigationRef } from "./navigationRef";
+import { voltarParaNaRaiz } from "./voltarPara";
 import { NutritionStack } from "./NutritionStack";
 import { SocialStack } from "./SocialStack";
 import { TrainingStack } from "./TrainingStack";
@@ -30,15 +32,7 @@ const Stack = createNativeStackNavigator();
 function AppStack() {
   const { colors } = useTheme();
   return (
-    <Stack.Navigator
-      screenOptions={{
-        headerShown: false,
-        headerStyle: { backgroundColor: colors.bg },
-        headerShadowVisible: false,
-        headerTintColor: colors.textPrimary,
-        headerTitleStyle: { fontWeight: "700" },
-      }}
-    >
+    <Stack.Navigator screenOptions={{ ...headerPadrao(colors), headerShown: false }}>
       {/* Home = Coaching. É a primeira tela do app (Pro vê o hub; Free vê a
           grade de módulos). Sem header — a própria tela tem o seu cabeçalho. */}
       <Stack.Screen name="Home" component={CoachingScreen} />
@@ -110,9 +104,14 @@ function ActiveWorkoutBadge() {
         activeOpacity={0.85}
         accessibilityLabel={`Treino em andamento: ${active.routineName}. Toque para voltar.`}
         onPress={() => {
-          if (!navigationRef.isReady()) return;
           // Reabre exatamente a tela de execução do treino em andamento.
-          (navigationRef.navigate as any)("TrainingModule", {
+          //
+          // `voltarParaNaRaiz` e não `navigate`: o módulo de treino quase sempre
+          // JÁ está na pilha (foi de lá que a pessoa minimizou o treino), e no
+          // React Navigation 7 o navigate empilharia um segundo módulo em cima
+          // do primeiro — a seta de voltar passaria a devolver pro anterior em
+          // vez de sair.
+          voltarParaNaRaiz(navigationRef as any, "TrainingModule", {
             screen: "WorkoutExecution",
             params: {
               sessionId: active.sessionId,

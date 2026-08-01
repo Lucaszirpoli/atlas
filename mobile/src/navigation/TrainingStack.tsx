@@ -2,6 +2,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import React from "react";
 
 import { HeaderBack } from "../components/HeaderBack";
+import { headerPadrao } from "./headerOptions";
 import { ExercisePickerScreen } from "../screens/training/ExercisePickerScreen";
 import { ImportRoutinesScreen } from "../screens/training/ImportRoutinesScreen";
 import { RoutineBuilderScreen } from "../screens/training/RoutineBuilderScreen";
@@ -20,14 +21,7 @@ export function TrainingStack() {
   const { colors } = useTheme();
 
   return (
-    <Stack.Navigator
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.bg },
-        headerShadowVisible: false,
-        headerTintColor: colors.textPrimary,
-        headerTitleStyle: { fontWeight: "700" },
-      }}
-    >
+    <Stack.Navigator screenOptions={headerPadrao(colors)}>
       <Stack.Screen
         name="RoutineList"
         component={RoutineListScreen}

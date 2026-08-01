@@ -25,6 +25,7 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { HelpDot } from "../../components/HelpDot";
 import { PaceSelector } from "../../components/PaceSelector";
 import { useAuth } from "../../context/AuthContext";
+import { voltarPara } from "../../navigation/voltarPara";
 import { useTheme } from "../../theme/ThemeProvider";
 import { mensagemDeErro } from "../../utils/errorMessage";
 
@@ -140,7 +141,13 @@ function ProRedirectCard() {
         num lugar só.
       </Text>
       <View style={{ marginTop: spacing.lg, alignSelf: "stretch" }}>
-        <Button title="Ir pra aba Objetivo" onPress={() => navigation.navigate("Home", { section: "objetivo" })} />
+        {/* Home está no stack PAI (o de nutrição fica dentro dele). `navigate`
+            empilharia uma segunda Home em cima de tudo; voltarPara desempilha
+            até a que já existe. */}
+        <Button
+          title="Ir pra aba Objetivo"
+          onPress={() => voltarPara(navigation, "Home", { section: "objetivo" })}
+        />
       </View>
     </View>
   );

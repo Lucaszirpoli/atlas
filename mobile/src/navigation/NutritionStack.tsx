@@ -2,6 +2,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import React from "react";
 
 import { HeaderBack } from "../components/HeaderBack";
+import { headerPadrao } from "./headerOptions";
 import { AiDietScreen } from "../screens/ai/AiDietScreen";
 import { AddFoodScreen } from "../screens/nutrition/AddFoodScreen";
 import { BarcodeScannerScreen } from "../screens/nutrition/BarcodeScannerScreen";
@@ -20,14 +21,7 @@ export function NutritionStack() {
   const { colors } = useTheme();
 
   return (
-    <Stack.Navigator
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.bg },
-        headerShadowVisible: false,
-        headerTintColor: colors.textPrimary,
-        headerTitleStyle: { fontWeight: "700" },
-      }}
-    >
+    <Stack.Navigator screenOptions={headerPadrao(colors)}>
       <Stack.Screen
         name="Diary"
         component={DiaryScreen}

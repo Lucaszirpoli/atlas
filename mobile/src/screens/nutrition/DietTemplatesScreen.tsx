@@ -16,6 +16,7 @@ import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { InfoDialog } from "../../components/InfoDialog";
+import { voltarPara } from "../../navigation/voltarPara";
 import { useTheme } from "../../theme/ThemeProvider";
 import { exportDietAsPdf } from "../../utils/pdfExport";
 
@@ -290,7 +291,9 @@ export function DietTemplatesScreen() {
         visible={success !== null}
         onClose={() => {
           setSuccess(null);
-          navigation.navigate("Diary");
+          // Volta pro diário que já está na pilha; `navigate` empilharia outro
+          // e a seta de voltar traria a pessoa pra cá de novo (ver voltarPara).
+          voltarPara(navigation, "Diary");
         }}
         title="Dieta registrada ✓"
         message={success ?? undefined}

@@ -11,6 +11,7 @@ import {
 } from "../../api/foods";
 import { logMeal } from "../../api/meals";
 import { Button } from "../../components/Button";
+import { voltarPara } from "../../navigation/voltarPara";
 import { UnitPicker } from "../../components/UnitPicker";
 import type { QuantityValue } from "../../components/QuantityEditor";
 import { useTheme } from "../../theme/ThemeProvider";
@@ -110,7 +111,11 @@ export function FoodDetailScreen() {
     setSalvando(false);
     // Volta direto pro diário (e não pra busca): o registro terminou, e o
     // diário recarrega sozinho ao ganhar foco.
-    navigation.navigate("Diary");
+    //
+    // `voltarPara` e não `navigate`: no React Navigation 7 o navigate EMPILHA um
+    // diário novo em cima da busca e do alimento, e a seta de voltar levava a
+    // pessoa de volta pra dentro do alimento que ela acabara de registrar.
+    voltarPara(navigation, "Diary");
   }
 
   return (

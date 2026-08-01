@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-nati
 
 import { getNutritionHistory, type NutritionHistory } from "../../api/evolution";
 import { Card } from "../../components/Card";
+import { voltarPara } from "../../navigation/voltarPara";
 import { useTheme } from "../../theme/ThemeProvider";
 
 const PERIODOS: { dias: number; label: string }[] = [
@@ -118,7 +119,10 @@ export function CalorieHistoryScreen() {
               dias={data?.days ?? []}
               maxKcal={stats.maxKcal}
               meta={meta}
-              onSelectDay={(iso) => navigation.navigate("Diary", { date: iso })}
+              // Volta pro diário JÁ existente, trocando o dia. `navigate`
+              // empilharia um segundo diário e deixaria o histórico preso no
+              // meio da pilha (ver voltarPara).
+              onSelectDay={(iso) => voltarPara(navigation, "Diary", { date: iso })}
             />
             <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm }]}>
               Cada barra é um dia — toque pra ver e editar o que foi registrado. A linha tracejada é a sua meta.

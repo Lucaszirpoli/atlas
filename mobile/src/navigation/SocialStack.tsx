@@ -8,6 +8,7 @@ import { GymScreen } from "../screens/social/GymScreen";
 import { PrivacyScreen } from "../screens/social/PrivacyScreen";
 import { SocialFeedScreen } from "../screens/social/SocialFeedScreen";
 import { useTheme } from "../theme/ThemeProvider";
+import { headerPadrao } from "./headerOptions";
 
 const Stack = createNativeStackNavigator();
 
@@ -15,14 +16,7 @@ export function SocialStack() {
   const { colors } = useTheme();
 
   return (
-    <Stack.Navigator
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.bg },
-        headerShadowVisible: false,
-        headerTintColor: colors.textPrimary,
-        headerTitleStyle: { fontWeight: "700" },
-      }}
-    >
+    <Stack.Navigator screenOptions={headerPadrao(colors)}>
       <Stack.Screen name="SocialFeed" component={SocialFeedScreen} options={{ headerShown: false }} />
       <Stack.Screen name="Friends" component={FriendsScreen} options={{ title: "Amigos" }} />
       <Stack.Screen name="Privacy" component={PrivacyScreen} options={{ title: "Privacidade" }} />
