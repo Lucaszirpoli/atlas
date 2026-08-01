@@ -64,7 +64,17 @@ export function RoutineListScreen() {
     }
   }
 
+  // "Treinar agora" abre uma sessão no servidor ANTES de navegar, e essa ida e
+  // volta leva perto de 1 segundo no celular (o cálculo no servidor é de ~30ms;
+  // o resto é rede). Sem sinal nenhum na tela, o toque parecia não ter
+  // funcionado e a pessoa tocava de novo — o que abria uma SEGUNDA sessão de
+  // treino. `iniciando` resolve as duas coisas: mostra que está carregando e
+  // trava o botão até terminar.
+  const [iniciando, setIniciando] = useState<number | null>(null);
+
   async function handleStart(routine: Routine) {
+    if (iniciando !== null) return;
+    setIniciando(routine.id);
     try {
       const { session, prefill } = await startWorkoutSession(routine.id);
       startWorkout({
@@ -81,6 +91,8 @@ export function RoutineListScreen() {
       });
     } catch (err: any) {
       Alert.alert("Não foi possível iniciar", mensagemDeErro(err, "Tente novamente."));
+    } finally {
+      setIniciando(null);
     }
   }
 
@@ -229,7 +241,12 @@ export function RoutineListScreen() {
                   <MetaInfo icon="repeat" text={`${totalSets} séries`} />
                 </View>
               </TouchableOpacity>
-              <Button title="Treinar agora" onPress={() => handleStart(item)} />
+              <Button
+                title="Treinar agora"
+                onPress={() => handleStart(item)}
+                loading={iniciando === item.id}
+                disabled={iniciando !== null && iniciando !== item.id}
+              />
             </Card>
           );
         }}
