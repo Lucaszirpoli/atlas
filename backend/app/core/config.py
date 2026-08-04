@@ -28,6 +28,16 @@ class Settings(BaseSettings):
     google_oauth_client_id: str = ""
     apple_oauth_client_id: str = ""
 
+    # E-mail transacional (Brevo) — hoje só usado pra "esqueci minha senha".
+    # Sem a chave, o app não quebra: forgot-password sempre responde 200 (pra
+    # não revelar se o e-mail existe), só que ninguém recebe o código — ver
+    # services/email_service.
+    brevo_api_key: str = ""
+    # Precisa ser um remetente VERIFICADO na conta Brevo (Settings › Senders),
+    # senão a API da Brevo recusa o envio.
+    brevo_sender_email: str = "atlas@appfit.com"
+    brevo_sender_name: str = "ATLAS"
+
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-5"
 

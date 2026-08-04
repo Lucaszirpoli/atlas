@@ -35,6 +35,16 @@ class User(Base):
     # Isca da IA: créditos grátis de chat para o plano Free provar o assistente
     # antes do paywall. Pro é ilimitado e ignora esse contador.
     ai_free_credits: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
+    # "Esqueci minha senha" — um código de 6 dígitos, de curta duração, em vez
+    # de link por e-mail: o app não tem site nem deep link configurado, e um
+    # código digitado NO PRÓPRIO APP evita montar esse caminho só pra isto.
+    # Hash (não texto puro) pelo mesmo motivo da senha: um vazamento do banco
+    # não pode virar reset de conta alheia. Um único código ativo por vez —
+    # pedir de novo sobrescreve o anterior, não empilha.
+    reset_code_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    reset_code_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

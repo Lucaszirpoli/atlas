@@ -51,3 +51,7 @@ class ObjectiveState(BaseModel):
     # Campos obrigatórios ainda em branco: impedem concluir/atualizar.
     missing_required: list[str]
     history: list[PlanSummary]
+    # Quantas versões existem AO TODO. A lista acima é limitada (as mais
+    # recentes), então `len(history)` travava no teto — quem estava na v36 via
+    # "Histórico de planos · 20" pra sempre, como se tivesse parado de evoluir.
+    history_total: int = 0

@@ -112,6 +112,7 @@ def get_state(
         impacted_components=plan_service.impacted_components(pendentes) if pendentes else [],
         missing_required=questionnaire.missing_required(rascunho),
         history=[_plan_summary(p) for p in plan_service.plan_history(db, current_user.id)],
+        history_total=plan_service.plan_history_total(db, current_user.id),
     )
 
 

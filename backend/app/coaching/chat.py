@@ -72,6 +72,9 @@ def _perfil_lines(profile) -> list[str]:
         ("Tempo por sessão", getattr(profile, "session_length", None)),
         ("Divisão preferida",
          _um(training_brain.SPLIT_PREFERENCES, getattr(profile, "split_preference", None))),
+        ("Pode misturar superior e inferior no mesmo treino",
+         "NÃO — nunca coloque os dois juntos numa sessão (bloqueia corpo inteiro e Torso/Limbs)"
+         if getattr(profile, "avoid_mixing_upper_lower", None) else None),
         # A ORDEM importa: é ela que define quem recebe mais volume.
         ("Prioridades, em ordem",
          " > ".join(training_brain.WEAK_POINT_LABEL.get(m, m) for m in prioridades) or None),
@@ -156,6 +159,12 @@ def _system_prompt(analysis: WeeklyAnalysis, profile=None, retrato=None, medido=
         "- Se a ferramenta devolver \"erro\" ou \"nao_pude_aplicar\", conte isso à pessoa COM O MOTIVO e "
         "ofereça o caminho que existe (ex.: a divisão que ela quer precisa de mais dias por semana). "
         "Nunca disfarce uma recusa como sucesso.",
+        "- Se a ferramenta devolver \"sem_efeito\" (nada mudou porque já estava assim), NÃO responda só "
+        "'nada mudou' — reconecte com o que você mesmo já tinha explicado antes na conversa, pra não "
+        "soar como uma contradição (ex.: 'É por isso que o upper/lower resolve: cada dia já é só "
+        "superior OU só inferior, nunca os dois — e seu treino já roda assim, então não precisei mudar "
+        "nada'). Se o que ela sente na prática (ex.: 'ainda sinto que mistura') não bate com o que a "
+        "ferramenta diz, diga isso com honestidade em vez de insistir que está tudo certo.",
         "- Se ela pedir algo pra que você não tem ferramenta, diga onde ela faz isso no app.",
         "Use uma ferramenta SÓ quando a pessoa claramente pedir/contar aquilo. Depois de agir, confirme "
         "em 1-2 frases o que você fez.",

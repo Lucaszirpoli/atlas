@@ -78,6 +78,7 @@ def _ensure_profile_columns() -> None:
         ("gym_crowding", "VARCHAR(10)", "VARCHAR(10)"),
         ("home_equipment", "VARCHAR(20)[]", "TEXT"),
         ("split_preference", "VARCHAR(16)", "VARCHAR(16)"),
+        ("avoid_mixing_upper_lower", "BOOLEAN", "BOOLEAN"),
         ("load_preference", "VARCHAR(12)", "VARCHAR(12)"),
         ("failure_comfort", "VARCHAR(12)", "VARCHAR(12)"),
         ("known_techniques", "VARCHAR(20)[]", "TEXT"),
@@ -96,6 +97,28 @@ def _ensure_profile_columns() -> None:
                 conn.execute(text(f"ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS {col} {pg_type}"))
             else:
                 conn.execute(text(f"ALTER TABLE user_profiles ADD COLUMN {col} {sqlite_type}"))
+
+
+def _ensure_user_columns() -> None:
+    """ALTER idempotente pras colunas de 'esqueci minha senha' em users
+    (reset_code_hash, reset_code_expires_at). Mesma regra: select(User) roda
+    em todo login, então precisam existir antes de qualquer consulta."""
+    from sqlalchemy import inspect, text
+
+    existentes = {c["name"] for c in inspect(engine).get_columns("users")}
+    add_cols = [
+        ("reset_code_hash", "VARCHAR(255)", "VARCHAR(255)"),
+        ("reset_code_expires_at", "TIMESTAMPTZ", "TIMESTAMP"),
+    ]
+    pg = engine.dialect.name == "postgresql"
+    with engine.begin() as conn:
+        for col, pg_type, sqlite_type in add_cols:
+            if col in existentes:
+                continue
+            if pg:
+                conn.execute(text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {pg_type}"))
+            else:
+                conn.execute(text(f"ALTER TABLE users ADD COLUMN {col} {sqlite_type}"))
 
 
 def _ensure_routine_exercise_columns() -> None:
@@ -202,6 +225,9 @@ def run() -> None:
     # select(UserProfile) o tempo todo, então num banco antigo essas colunas
     # PRECISAM existir antes de qualquer consulta, senão o boot morre (502).
     _ensure_profile_columns()
+
+    # reset_code_hash/reset_code_expires_at em users — mesma regra.
+    _ensure_user_columns()
 
     # set_intents em routine_exercises — mesma regra (select(RoutineExercise)
     # roda o tempo todo em prod).

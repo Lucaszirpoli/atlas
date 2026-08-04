@@ -78,6 +78,9 @@ export type ObjectiveState = {
   impacted_components: string[];
   missing_required: string[];
   history: PlanSummary[];
+  /** Total de versões existentes. `history` vem limitada às mais recentes, então
+   * contar o tamanho dela travava o número no teto (ver backend). */
+  history_total?: number;
 };
 
 export async function getQuestionnaire(): Promise<Questionnaire> {

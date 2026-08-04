@@ -246,20 +246,30 @@ def split_preference_note(preference: str | None, days: int) -> str | None:
 
 
 def coach_split_for(
-    days: int, weak_points: list[str] | None = None, preference: str | None = None
+    days: int,
+    weak_points: list[str] | None = None,
+    preference: str | None = None,
+    avoid_mixing: bool = False,
 ) -> list[str]:
     """O split do coach pra `days` dias, considerando ponto fraco e a divisão
     que a pessoa escolheu.
 
     Ordem de decisão:
     1. preferência explícita que CABE na frequência — manda;
-    2. 4 dias com ponto fraco em músculo menor vira Torso/Limbs;
-    3. o mapa por número de dias.
+    2. 4 dias com ponto fraco em músculo menor vira Torso/Limbs — PULADO
+       quando `avoid_mixing` (o dia "membros" combina perna com braço de
+       propósito, exatamente o que a pessoa pediu pra nunca acontecer);
+    3. o mapa por número de dias (`_COACH_SPLITS`) — em 4-6 dias já é
+       superior/inferior ou push/pull/legs (não mistura); em 2-3 dias é
+       corpo inteiro, que SEMPRE mistura por definição — `avoid_mixing`
+       não tem como evitar isso sem furar a frequência mínima de 2×/semana
+       por grupo (regra 6), então o motor cai no corpo inteiro mesmo e
+       `mixing_conflict_note` avisa por quê.
     """
     if split_preference_fits(preference, days):
         ciclo = _PREFERRED_CYCLES[preference]  # type: ignore[index]
         return [ciclo[i % len(ciclo)] for i in range(days)]
-    if days == 4 and any(w in TORSO_LIMBS_WEAK_POINTS for w in (weak_points or [])):
+    if not avoid_mixing and days == 4 and any(w in TORSO_LIMBS_WEAK_POINTS for w in (weak_points or [])):
         return list(TORSO_LIMBS_SPLIT)
     base = _COACH_SPLITS.get(days)
     if base:
@@ -268,6 +278,21 @@ def coach_split_for(
     # se chegar, repete o ciclo de 3 dias em vez de estourar.
     ciclo = _COACH_SPLITS[3]
     return [ciclo[i % len(ciclo)] for i in range(max(1, days))]
+
+
+def mixing_conflict_note(avoid_mixing: bool, days: int) -> str | None:
+    """A frase honesta pra quem pediu pra nunca misturar superior e inferior
+    mas treina 2-3 dias por semana — nessa frequência só o corpo inteiro
+    cobre cada músculo 2×/semana (regra 6), e corpo inteiro mistura por
+    definição. None quando não há conflito a explicar."""
+    if not avoid_mixing or days > 3:
+        return None
+    return (
+        f"Você pediu pra nunca misturar superior e inferior no mesmo treino, mas com {days} "
+        "dias por semana só o corpo inteiro treina cada músculo 2× — abaixo disso a frequência "
+        "cai demais. Montei corpo inteiro mesmo; suba pra 4+ dias pra eu conseguir separar de "
+        "verdade."
+    )
 
 # Parâmetros da sessão por objetivo — proporção composto/isolado, RIR, descanso.
 #

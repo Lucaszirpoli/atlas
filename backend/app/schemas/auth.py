@@ -39,3 +39,20 @@ class SocialAuthRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(min_length=1, max_length=255)
+
+
+class ForgotPasswordResponse(BaseModel):
+    # Mensagem GENÉRICA de propósito — nunca diz se o e-mail existe. Dizer
+    # "e-mail não encontrado" é dar de bandeja pra quem tenta descobrir contas
+    # reais testando endereços um a um.
+    message: str = "Se esse e-mail tiver uma conta, enviamos um código pra ela."
+
+
+class ResetPasswordRequest(BaseModel):
+    email: str = Field(min_length=1, max_length=255)
+    code: str = Field(min_length=6, max_length=6)
+    new_password: str = Field(min_length=8, max_length=128)

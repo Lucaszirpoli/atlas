@@ -48,7 +48,8 @@
         }
       ],
       "./plugins/withCleartextTraffic",
-      "./plugins/withOptionalHardwareFeatures"
+      "./plugins/withOptionalHardwareFeatures",
+      "@react-native-google-signin/google-signin"
     ],
     "extra": {
       "eas": {

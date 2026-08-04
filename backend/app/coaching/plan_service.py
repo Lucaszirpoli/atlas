@@ -40,6 +40,7 @@ from app.models.user_profile import (
     Goal,
     GoalPace,
     TrainingLocation,
+    TrainingStylePreference,
     UserProfile,
 )
 from app.models.weight_log import WeightLog
@@ -123,6 +124,19 @@ def active_plan(db: Session, user_id: int) -> CoachingPlan | None:
     ).scalar_one_or_none()
 
 
+def plan_history_total(db: Session, user_id: int) -> int:
+    """Quantas versões de plano a pessoa tem AO TODO — o número que a tela
+    mostra. `plan_history` devolve só as mais recentes (teto de `limit`), e
+    contar o tamanho daquela lista congelava o total no teto."""
+    from sqlalchemy import func
+
+    return int(
+        db.execute(
+            select(func.count(CoachingPlan.id)).where(CoachingPlan.user_id == user_id)
+        ).scalar_one()
+    )
+
+
 def plan_history(db: Session, user_id: int, limit: int = 20) -> list[CoachingPlan]:
     return list(
         db.execute(
@@ -157,7 +171,11 @@ def answers_from_profile(db: Session, user: User) -> dict[str, Any]:
     preferências de treino). Ninguém deveria redigitar altura e idade."""
     p: UserProfile | None = user.profile
     if p is None:
-        return {}
+        # Sem perfil ainda (o questionário é o cadastro — ver
+        # apply_answers_to_profile). Mesmo assim o nome da conta já vai
+        # preenchido: é a única resposta que o app JÁ sabe nesse momento, e
+        # devolver {} fazia a pessoa redigitar o próprio nome na primeira tela.
+        return {"display_name": user.display_name}
     peso = db.execute(
         select(WeightLog.weight_kg)
         .where(WeightLog.user_id == user.id)
@@ -172,6 +190,9 @@ def answers_from_profile(db: Session, user: User) -> dict[str, Any]:
     ).scalar_one_or_none()
     meta_atual = _goal_answers(goal)
     return {
+        # Vem preenchido com o nome da conta — a pessoa só ajusta se quiser ser
+        # chamada de outro jeito pelo coach.
+        "display_name": user.display_name,
         "goal": p.goal.value if p.goal else None,
         "goal_pace": p.goal_pace.value if p.goal_pace else None,
         "biological_sex": p.biological_sex.value if p.biological_sex else None,
@@ -206,6 +227,7 @@ def answers_from_profile(db: Session, user: User) -> dict[str, Any]:
         "home_equipment": list(p.home_equipment or []),
         "gym_crowding": p.gym_crowding,
         "split_preference": p.split_preference,
+        "avoid_mixing_upper_lower": p.avoid_mixing_upper_lower,
         "has_injury": p.has_injury,
         "injury_regions": list(p.injury_regions or []),
         "medical_clearance": p.medical_clearance,
@@ -322,7 +344,39 @@ def apply_answers_to_profile(db: Session, user: User, answers: dict) -> None:
     preferências de treino). Não commita — quem chama controla a transação."""
     p = user.profile
     if p is None:
-        raise ValueError("Complete seu cadastro antes de responder o questionário.")
+        # O QUESTIONÁRIO É O CADASTRO. Antes isto era um erro ("complete seu
+        # cadastro antes"), o que só fazia sentido quando todo mundo passava por
+        # um onboarding obrigatório ao criar a conta. Agora criar conta não pede
+        # nada: quem assina o Pro chega aqui SEM perfil, e é este questionário
+        # que o cria. Os campos obrigatórios dele (sexo, idade, altura, peso,
+        # atividade, objetivo) são exatamente os que o perfil precisa, e
+        # `missing_required` já barrou a ativação se algum faltasse.
+        # As colunas NOT NULL nascem com um padrão seguro ANTES das respostas
+        # entrarem por cima. Sem isto, uma resposta ausente ou fora do
+        # vocabulário (ex.: `training_time` que não casa com nenhuma opção, e aí
+        # `experience_level` nunca é derivado) estourava NOT NULL no INSERT e a
+        # pessoa via só "não consegui gerar seu plano agora" — um formulário
+        # inteiro respondido e nenhuma pista do que faltava.
+        p = UserProfile(
+            user_id=user.id,
+            biological_sex=BiologicalSex.MALE,
+            age=30,
+            height_cm=170.0,
+            activity_level=ActivityLevel.MODERATE,
+            goal=Goal.MANUTENCAO,
+            experience_level=ExperienceLevel.INICIANTE,
+            training_location=TrainingLocation.ACADEMIA_COMPLETA,
+            training_style_preference=TrainingStylePreference.IA_DECIDE,
+        )
+        db.add(p)
+        user.profile = p
+
+    # O nome pelo qual a pessoa quer ser chamada mora no USUÁRIO (é o mesmo
+    # display_name que aparece no app inteiro), não no perfil — por isso é
+    # gravado aqui e não no bloco do UserProfile abaixo.
+    if (nome := (answers.get("display_name") or "").strip()):
+        user.display_name = nome[:40]
+        db.add(user)
 
     if (v := _enum_or_none(Goal, answers.get("goal"))) is not None:
         p.goal = v
@@ -375,6 +429,8 @@ def apply_answers_to_profile(db: Session, user: User, answers: dict) -> None:
         if not novo_valor:
             workout_builder.revert_technique_cues(db, p.user_id)
         p.allow_advanced_techniques = novo_valor
+    if answers.get("avoid_mixing_upper_lower") is not None:
+        p.avoid_mixing_upper_lower = bool(answers["avoid_mixing_upper_lower"])
     if answers.get("dietary_restrictions") is not None:
         p.dietary_restrictions = list(answers["dietary_restrictions"] or [])
     if answers.get("exercise_prefs") is not None:
@@ -507,6 +563,40 @@ def _rebuild_goals(db: Session, user: User, answers: dict[str, Any]) -> int:
     return goal.id
 
 
+CONSENT_VERSION = "1.0"
+
+
+def _registrar_consentimentos(db: Session, user: User, answers: dict) -> None:
+    """Grava o aceite como REGISTRO (append-only, com data e versão do texto).
+
+    Não é um booleano no perfil: consentimento é prova, e prova precisa dizer
+    QUANDO e a QUE TEXTO a pessoa disse sim. Só grava quando ainda não existe
+    aceite da versão atual — reativar o plano não deve empilhar registros
+    idênticos.
+    """
+    from app.models.consent import ConsentRecord, ConsentType
+
+    alvos = (
+        (ConsentType.LGPD_HEALTH_DATA, answers.get("accepted_lgpd_health_data")),
+        (ConsentType.MEDICAL_DISCLAIMER, answers.get("accepted_medical_disclaimer")),
+    )
+    for tipo, aceito in alvos:
+        if not aceito:
+            continue
+        ja_tem = db.execute(
+            select(ConsentRecord).where(
+                ConsentRecord.user_id == user.id,
+                ConsentRecord.consent_type == tipo,
+                ConsentRecord.version == CONSENT_VERSION,
+                ConsentRecord.accepted.is_(True),
+            ).limit(1)
+        ).scalar_one_or_none()
+        if ja_tem is None:
+            db.add(ConsentRecord(
+                user_id=user.id, consent_type=tipo, version=CONSENT_VERSION, accepted=True
+            ))
+
+
 # ---------------------------------------------------------------------------
 # Ativação atômica
 # ---------------------------------------------------------------------------
@@ -524,6 +614,12 @@ def activate(db: Session, user: User, answers: dict, *, reason: str = "atualizac
     erro_macros = questionnaire.macro_split_error(answers)
     if erro_macros:
         raise ValueError(erro_macros)
+    # Dado de saúde só entra com consentimento explícito (LGPD). Este
+    # questionário é o cadastro do Coaching, então é aqui que a autorização é
+    # dada — e sem ela nada é gerado.
+    erro_consentimento = questionnaire.consent_error(answers)
+    if erro_consentimento:
+        raise ValueError(erro_consentimento)
 
     anterior = active_plan(db, user.id)
     respostas_antigas = dict(anterior.answers or {}) if anterior else {}
@@ -601,6 +697,15 @@ def activate(db: Session, user: User, answers: dict, *, reason: str = "atualizac
             draft.answers = answers
             draft.completed = True
             draft.step = 0
+
+        # 7) Registra o consentimento (prova de que foi dado, com data e versão)
+        #    e marca o cadastro como concluído — este questionário É o cadastro
+        #    do Coaching, então concluí-lo é o que tira a pessoa da tela de
+        #    cadastro. Sem isto ela responderia tudo e voltaria pro formulário.
+        _registrar_consentimentos(db, user, answers)
+        if not user.onboarding_completed:
+            user.onboarding_completed = True
+            db.add(user)
 
         db.commit()
         db.refresh(plano)

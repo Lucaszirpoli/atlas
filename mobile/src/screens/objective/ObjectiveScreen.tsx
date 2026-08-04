@@ -750,7 +750,7 @@ export function ObjectiveScreen({
           >
             <Ionicons name="time-outline" size={16} color={colors.primary} />
             <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "700", flex: 1 }]}>
-              Histórico de planos · {state.history.length}
+              Histórico de planos · {state.history_total ?? state.history.length}
             </Text>
             <Ionicons name={verHistorico ? "chevron-up" : "chevron-down"} size={18} color={colors.textSecondary} />
           </TouchableOpacity>

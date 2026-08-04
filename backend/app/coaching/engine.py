@@ -168,8 +168,16 @@ def _calorias_insight(m: Metrics) -> Insight:
         return Insight("calorias", SEV_INFO, "Calorias na meta", f"Média de {n.avg_kcal_logged} kcal/dia, "
                        f"batendo a meta de {round(n.goal_kcal)} pro seu objetivo.", chart="calorias")
     sentido = "acima" if diff > 0 else "abaixo"
-    return Insight("calorias", SEV_ATTENTION, f"Calorias {sentido} da meta", f"Média de {n.avg_kcal_logged} "
-                   f"kcal/dia — {abs(diff)} {sentido} da meta de {round(n.goal_kcal)} pro seu objetivo.",
+    # O número de dias e o método PRECISAM aparecer. Sem eles a pessoa compara a
+    # média com a conta de cabeça dela ("domingo + segunda eu passei 173") e o
+    # app parece estar errando: são dias diferentes (só dia ENCERRADO entra) e
+    # não é média simples — é mediana/winsorizada, pra um churrasco não mandar
+    # na leitura do mês. O número estava certo; faltava dizer de onde saiu.
+    return Insight("calorias", SEV_ATTENTION, f"Calorias {sentido} da meta",
+                   f"{n.avg_method.capitalize()} de {n.avg_kcal_logged} kcal/dia nos últimos "
+                   f"{n.days_logged} {'dia' if n.days_logged == 1 else 'dias'} fechado"
+                   f"{'' if n.days_logged == 1 else 's'} — {abs(diff)} {sentido} da meta de "
+                   f"{round(n.goal_kcal)} pro seu objetivo. O dia de hoje só entra amanhã.",
                    chart="calorias")
 
 
@@ -189,6 +197,32 @@ def _macros_insight(m: Metrics) -> Insight:
     desvio = round(avg - goal)
     resumo = ", ".join(f"{n_}: {a:.0f}/{g:.0f}{u}" for n_, a, g, u in trios)
     if abs(desvio) <= max(goal * 0.12, 8):
+        # A MÉDIA bate — mas bater a média oscilando não é bater a meta. Um dia
+        # com 48 g de carbo e outro com 283 g dão mediana 165 contra meta 161, e
+        # o coach dizia "macros no alvo" sem nenhum dos dois dias ter batido.
+        # `swing_*_pct` mede o desvio DIA A DIA (ver metrics), então oscilação
+        # oposta não se cancela. Acima de 35% é gangorra, não ajuste fino.
+        balancos = [
+            (nome_, s)
+            for nome_, s in (
+                ("proteína", n.swing_protein_pct),
+                ("carboidrato", n.swing_carbs_pct),
+                ("gordura", n.swing_fat_pct),
+            )
+            if s is not None
+        ]
+        instaveis = [(nome_, s) for nome_, s in balancos if s >= 35]
+        if instaveis:
+            pior_nome, pior_swing = max(instaveis, key=lambda t: t[1])
+            quais = ", ".join(nome_ for nome_, _ in instaveis)
+            return Insight(
+                "macros", SEV_ATTENTION, "Macros oscilando muito",
+                f"Na média seus macros fecham ({resumo}), mas os dias variam demais — "
+                f"{quais} ficam em média {pior_swing:.0f}% longe da meta em cada dia. "
+                "Bater a meta na média oscilando não é a mesma coisa que bater a meta: "
+                "tente aproximar cada dia em vez de compensar no seguinte.",
+                chart="macros",
+            )
         return Insight("macros", SEV_INFO, "Macros no alvo", f"Média diária dentro do esperado ({resumo}).",
                        chart="macros")
     sentido = "acima" if desvio > 0 else "abaixo"

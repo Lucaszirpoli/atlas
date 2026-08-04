@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -12,7 +13,7 @@ from app.models.user_profile import UserProfile
 from app.models.weight_log import WeightLog
 from app.schemas.onboarding import OnboardingRequest, OnboardingResponse
 from app.schemas.profile import ProfileCalcRead, ProfileCalcUpdate, TimezoneUpdate
-from app.schemas.user import HandleAvailabilityResponse, UserRead
+from app.schemas.user import HandleAvailabilityResponse, ResetDataResponse, UserRead
 from app.services import goal_service, user_service
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -219,3 +220,89 @@ def complete_onboarding(
     db.commit()
 
     return OnboardingResponse(onboarding_completed=True)
+
+
+@router.post("/reset-data", response_model=ResetDataResponse)
+def reset_data(
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> ResetDataResponse:
+    """Apaga TODO o histórico da pessoa, mantendo a conta e o login.
+
+    Por que existe: a regra 4 do projeto (histórico append-only) protege o dado
+    de ser sobrescrito por um UPDATE — ela não obriga a pessoa a conviver com um
+    começo bagunçado. Quem testou o app por semanas antes de começar pra valer
+    fica com gráficos que descrevem os testes, não a vida dela, e não tinha
+    saída a não ser criar outra conta.
+
+    O que NÃO sai: a conta, o e-mail, o plano (Pro continua Pro), os
+    consentimentos LGPD (são registro legal de uma escolha que ela fez — apagar
+    o consentimento não é limpar dado, é perder a prova) e as rotinas
+    arquivadas... não: rotinas saem também, ver abaixo. O que fica é só conta,
+    plano e consentimento.
+    """
+    from app.models.body_measurement import BodyMeasurement, ProgressPhoto
+    from app.models.calorie_goal import CalorieGoal
+    from app.models.coaching_action import CoachingAction
+    from app.models.coaching_adjustment import CoachingAdjustment
+    from app.models.coaching_baseline import CoachingBaseline
+    from app.models.coaching_plan import CoachingPlan, QuestionnaireDraft
+    from app.models.coaching_technique_cue import CoachingTechniqueCue
+    from app.models.coaching_transition import CoachingTransition
+    from app.models.day_quality import NutritionDayMark
+    from app.models.exercise_history_link import ExerciseHistoryLink
+    from app.models.meal import MealLog
+    from app.models.routine import Routine
+    from app.models.sleep_log import SleepLog
+    from app.models.water_log import WaterLog
+    from app.models.workout_session import WorkoutSession
+
+    uid = current_user.id
+    apagados: dict[str, int] = {}
+
+    # MealLog / WorkoutSession / Routine saem pelo ORM (um a um) porque têm
+    # filhos em cascade (itens da refeição, séries da sessão, exercícios da
+    # rotina): um DELETE em massa por query não dispara a cascade do ORM e
+    # deixaria os filhos órfãos.
+    for rotulo, modelo in (
+        ("refeições", MealLog),
+        ("treinos", WorkoutSession),
+        ("rotinas", Routine),
+    ):
+        linhas = list(db.execute(select(modelo).where(modelo.user_id == uid)).scalars())
+        for linha in linhas:
+            db.delete(linha)
+        apagados[rotulo] = len(linhas)
+
+    # O resto não tem filhos — delete direto por query é seguro e barato.
+    for rotulo, modelo in (
+        ("peso", WeightLog),
+        ("sono", SleepLog),
+        ("água", WaterLog),
+        ("medidas", BodyMeasurement),
+        ("fotos", ProgressPhoto),
+        ("metas", CalorieGoal),
+        ("dias marcados", NutritionDayMark),
+        ("planos do coach", CoachingPlan),
+        ("rascunho do questionário", QuestionnaireDraft),
+        ("ações do coach", CoachingAction),
+        ("ajustes do coach", CoachingAdjustment),
+        ("marcos do coach", CoachingBaseline),
+        ("técnicas do coach", CoachingTechniqueCue),
+        ("transições do coach", CoachingTransition),
+        ("heranças de exercício", ExerciseHistoryLink),
+    ):
+        apagados[rotulo] = int(
+            db.execute(delete(modelo).where(modelo.user_id == uid)).rowcount or 0
+        )
+
+    # O perfil volta pro estado "nunca respondeu": sem isso a pessoa apagaria a
+    # história mas continuaria com o plano montado em cima dela.
+    if current_user.profile is not None:
+        db.delete(current_user.profile)
+        apagados["perfil"] = 1
+    current_user.onboarding_completed = False
+    db.add(current_user)
+
+    db.commit()
+    apagados = {k: v for k, v in apagados.items() if v}
+    return ResetDataResponse(apagados=apagados, total=sum(apagados.values()))

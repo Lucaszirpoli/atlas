@@ -209,6 +209,14 @@ class UserProfile(Base):
     # Estilo de treino. `split_preference` só oferece divisões com frequência
     # ≥2×/semana por grupo — bro-split não está na lista (regra 6 do produto).
     split_preference: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # "Pode colocar exercícios de superior e inferior no mesmo treino?" —
+    # pergunta direta que falta em `split_preference` sozinho: alguém com
+    # braço/panturrilha como ponto fraco podia cair no split Torso/Limbs
+    # (methods.TORSO_LIMBS_SPLIT), cujo dia "membros" MISTURA perna com braço
+    # de propósito, sem que a pessoa tivesse como recusar isso sem saber o
+    # nome técnico da divisão. False bloqueia full_body E o Torso/Limbs;
+    # None (padrão) deixa o coach decidir como hoje.
+    avoid_mixing_upper_lower: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     load_preference: Mapped[str | None] = mapped_column(String(12), nullable=True)
     failure_comfort: Mapped[str | None] = mapped_column(String(12), nullable=True)
     known_techniques: Mapped[list[str]] = mapped_column(

@@ -5,10 +5,13 @@ import React, { useCallback, useState } from "react";
 import { Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { syncPlan } from "../../api/billing";
+import { resetAppData } from "../../api/profile";
 import { configurePurchases, getEntitlementActive, isNativePurchasesAvailable } from "../../api/purchases";
 import { ActionSheet, type ActionSheetOption } from "../../components/ActionSheet";
 import { Avatar } from "../../components/Avatar";
 import { Card } from "../../components/Card";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { InfoDialog } from "../../components/InfoDialog";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme, type ThemeMode } from "../../theme/ThemeProvider";
 import { useProfilePhoto } from "../../utils/profilePhoto";
@@ -19,6 +22,31 @@ export function ProfileScreen() {
   const { user, signOut, refreshUser } = useAuth();
   const profilePhoto = useProfilePhoto();
   const [showPhotoMenu, setShowPhotoMenu] = useState(false);
+  // Resetar dados: confirmação -> execução -> resumo do que saiu.
+  const [confirmarReset, setConfirmarReset] = useState(false);
+  const [resetando, setResetando] = useState(false);
+  const [resultadoReset, setResultadoReset] = useState<string | null>(null);
+
+  async function executarReset() {
+    setConfirmarReset(false);
+    setResetando(true);
+    try {
+      const r = await resetAppData();
+      const linhas = Object.entries(r.apagados).map(([k, v]) => `${v} ${k}`);
+      setResultadoReset(
+        linhas.length
+          ? `Apaguei ${linhas.join(", ")}. Sua conta e seu plano continuam iguais.`
+          : "Não havia nada registrado pra apagar."
+      );
+      // O perfil e o questionário também foram apagados — sem recarregar o
+      // usuário, o app continuaria achando que o onboarding está completo.
+      await refreshUser().catch(() => {});
+    } catch {
+      setResultadoReset("Não consegui apagar agora. Seus dados continuam como estavam — tente de novo.");
+    } finally {
+      setResetando(false);
+    }
+  }
 
   async function escolherFoto() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -237,6 +265,11 @@ export function ProfileScreen() {
         <MenuRow icon="trending-up-outline" label="Evolução" onPress={() => navigation.navigate("Evolution")} first={user?.plan !== "pro"} />
         <MenuRow icon="moon-outline" label="Sono" onPress={() => navigation.navigate("Sleep")} />
         <MenuRow icon="mail" label="E-mail" trailing={user?.email} />
+        <MenuRow
+          icon="refresh-outline"
+          label={resetando ? "Apagando..." : "Resetar dados do app"}
+          onPress={resetando ? undefined : () => setConfirmarReset(true)}
+        />
       </Card>
 
       <TouchableOpacity
@@ -247,6 +280,28 @@ export function ProfileScreen() {
         <Ionicons name="log-out-outline" size={18} color={colors.danger} />
         <Text style={[type.body, { color: colors.danger, fontWeight: "600" }]}>Sair da conta</Text>
       </TouchableOpacity>
+
+      {/* Recomeçar do zero sem perder a conta. Quem testou o app por semanas
+          antes de começar pra valer ficava com gráficos que descrevem os testes,
+          não a vida dela — e a única saída era criar outra conta. */}
+      <ConfirmDialog
+        visible={confirmarReset}
+        title="Resetar dados do app?"
+        message={
+          "Apaga TODO o seu histórico: refeições, treinos, peso, sono, medidas, metas e os planos do " +
+          "coach. Sua conta, seu e-mail e seu plano continuam. Isso não tem como desfazer."
+        }
+        confirmLabel="Apagar tudo"
+        destructive
+        onClose={() => setConfirmarReset(false)}
+        onConfirm={executarReset}
+      />
+      <InfoDialog
+        visible={resultadoReset !== null}
+        title="Pronto"
+        message={resultadoReset ?? undefined}
+        onClose={() => setResultadoReset(null)}
+      />
     </ScrollView>
   );
 }

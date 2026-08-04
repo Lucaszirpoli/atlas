@@ -116,6 +116,17 @@ TOOLS = [
                     ),
                 },
                 "periodizacao": {"type": "string", "enum": ["auto", "linear", "ondulatoria"]},
+                "nunca_misturar_superior_inferior": {
+                    "type": "boolean",
+                    "description": (
+                        "true = cada treino fica só com a parte de cima OU só com a de baixo do "
+                        "corpo, nunca as duas juntas (bloqueia corpo inteiro e o split Torso/Limbs, "
+                        "que combina perna com braço de propósito). false = sem essa restrição. Use "
+                        "quando a pessoa disser algo como 'não quero treinar superior e inferior "
+                        "juntos' — é mais direto que mexer em `divisao` e cobre também o Torso/Limbs, "
+                        "que `divisao` sozinho não bloqueia."
+                    ),
+                },
                 "tecnicas_avancadas": {"type": "boolean"},
                 "quer_cardio": {"type": "boolean"},
                 "refeicoes_por_dia": {"type": "integer", "description": "3 a 6."},
@@ -275,6 +286,7 @@ _AJUSTES: dict[str, tuple[str, Any]] = {
     "divisao": ("split_preference", lambda v: str(v)),
     "dias_por_semana": ("training_days_per_week", lambda v: str(int(v))),
     "tempo_por_sessao": ("session_length", lambda v: str(v)),
+    "nunca_misturar_superior_inferior": ("avoid_mixing_upper_lower", bool),
     "periodizacao": ("periodization", lambda v: str(v)),
     "tecnicas_avancadas": ("allow_advanced_techniques", bool),
     "quer_cardio": ("wants_cardio", bool),
@@ -286,6 +298,7 @@ _AJUSTES: dict[str, tuple[str, Any]] = {
 _ROTULO_AJUSTE = {
     "divisao": "divisão do treino", "dias_por_semana": "dias por semana",
     "tempo_por_sessao": "tempo por treino", "prioridades": "prioridades",
+    "nunca_misturar_superior_inferior": "misturar superior e inferior no mesmo treino",
     "periodizacao": "periodização", "tecnicas_avancadas": "técnicas avançadas",
     "quer_cardio": "cardio", "refeicoes_por_dia": "refeições por dia",
     "restricoes_alimentares": "restrições alimentares",

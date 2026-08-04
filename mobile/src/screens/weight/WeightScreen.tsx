@@ -4,8 +4,9 @@ import React, { useCallback, useState } from "react";
 import { ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { listWeightLogs, logWeight, type WeightLog } from "../../api/weight";
+import { deleteWeightLog, listWeightLogs, logWeight, type WeightLog } from "../../api/weight";
 import { Card } from "../../components/Card";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { LineChart, type ChartPoint } from "../../components/LineChart";
 import { useTheme } from "../../theme/ThemeProvider";
 import { serieDiaria, tsDoDia } from "../../utils/serieDiaria";
@@ -22,6 +23,9 @@ export function WeightScreen() {
   const [logs, setLogs] = useState<WeightLog[]>([]);
   const [input, setInput] = useState("");
   const [saving, setSaving] = useState(false);
+  // Registro que a pessoa pediu pra apagar (aguardando confirmação). ConfirmDialog
+  // e não Alert.alert: Alert é no-op silencioso no React Native Web.
+  const [aExcluir, setAExcluir] = useState<WeightLog | null>(null);
 
   const load = useCallback(() => {
     listWeightLogs()
@@ -210,17 +214,55 @@ export function WeightScreen() {
                   borderTopColor: colors.border,
                 }}
               >
-                <Text style={[type.bodySmall, { color: colors.textSecondary }]}>
+                <Text style={[type.bodySmall, { color: colors.textSecondary, flex: 1 }]}>
                   {new Date(log.recorded_at).toLocaleDateString("pt-BR", { weekday: "short", day: "numeric", month: "short" })}
                 </Text>
                 <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "700" }]}>
                   {log.weight_kg.toString().replace(".", ",")} kg
                 </Text>
+                <TouchableOpacity
+                  onPress={() => setAExcluir(log)}
+                  hitSlop={10}
+                  accessibilityLabel={`Excluir registro de ${log.weight_kg} kg`}
+                  style={{ marginLeft: spacing.sm }}
+                >
+                  <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
+                </TouchableOpacity>
               </View>
             ))}
           </Card>
         </>
       ) : null}
+
+      {/* Excluir um registro. O histórico é append-only por regra (é a base dos
+          gráficos), mas isso vale pro que a pessoa REGISTROU de verdade — um
+          número digitado errado não é histórico, é erro, e sem poder apagar ele
+          distorce a tendência que o coach lê pra sempre. */}
+      <ConfirmDialog
+        visible={aExcluir !== null}
+        title="Excluir este registro?"
+        message={
+          aExcluir
+            ? `${aExcluir.weight_kg.toString().replace(".", ",")} kg de ` +
+              `${new Date(aExcluir.recorded_at).toLocaleDateString("pt-BR", { day: "numeric", month: "long" })}. ` +
+              "O gráfico e a tendência são recalculados sem ele."
+            : undefined
+        }
+        confirmLabel="Excluir"
+        destructive
+        onClose={() => setAExcluir(null)}
+        onConfirm={async () => {
+          const alvo = aExcluir;
+          setAExcluir(null);
+          if (!alvo) return;
+          try {
+            await deleteWeightLog(alvo.id);
+          } catch {
+            /* silencioso: o load() abaixo mostra o estado real de qualquer jeito */
+          }
+          load();
+        }}
+      />
     </ScrollView>
   );
 }

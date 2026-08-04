@@ -1,3 +1,6 @@
+import random
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -6,13 +9,22 @@ from app.core.db import get_db
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.user import AuthProvider, User
 from app.schemas.auth import (
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
     LoginRequest,
     RegisterRequest,
+    ResetPasswordRequest,
     SocialAuthRequest,
     TokenResponse,
 )
-from app.services import user_service
+from app.services import email_service, user_service
 from app.services.social_auth import verify_apple_id_token, verify_google_id_token
+
+# Código de 15 minutos: curto o bastante pra não valer a pena forçar (6
+# dígitos = 1 milhão de combinações; o rate-limit implícito de "um código por
+# pedido" já torna força bruta impraticável nesse intervalo), longo o
+# bastante pra dar tempo de abrir o e-mail no outro app e voltar.
+RESET_CODE_TTL_MINUTES = 15
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -57,6 +69,49 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="E-mail/usuário ou senha incorretos.",
         )
+    return TokenResponse(access_token=create_access_token(str(user.id)))
+
+
+@router.post("/forgot-password", response_model=ForgotPasswordResponse)
+def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)) -> ForgotPasswordResponse:
+    """Gera um código de 6 dígitos e manda por e-mail. SEMPRE responde 200
+    com a mesma mensagem genérica — e-mail existindo ou não, código enviado
+    ou a Brevo tendo falhado — pra não dar pista de quais e-mails têm conta."""
+    user = user_service.get_by_email(db, payload.email.strip().lower())
+    if user is not None:
+        codigo = f"{random.randint(0, 999999):06d}"
+        user.reset_code_hash = hash_password(codigo)
+        user.reset_code_expires_at = datetime.now(timezone.utc) + timedelta(minutes=RESET_CODE_TTL_MINUTES)
+        db.add(user)
+        db.commit()
+        email_service.send_password_reset_code(user.email, user.display_name, codigo)
+    return ForgotPasswordResponse()
+
+
+@router.post("/reset-password", response_model=TokenResponse)
+def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)) -> TokenResponse:
+    """Troca a senha se o código bater e ainda estiver dentro da validade.
+    Devolve token de acesso — a pessoa já entra logada, sem precisar logar
+    de novo com a senha que acabou de criar."""
+    user = user_service.get_by_email(db, payload.email.strip().lower())
+    erro_generico = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Código inválido ou expirado. Peça um novo.",
+    )
+    if user is None or user.reset_code_hash is None or user.reset_code_expires_at is None:
+        raise erro_generico
+    if datetime.now(timezone.utc) > user.reset_code_expires_at:
+        raise erro_generico
+    if not verify_password(payload.code, user.reset_code_hash):
+        raise erro_generico
+
+    user.password_hash = hash_password(payload.new_password)
+    # Código é de USO ÚNICO: limpa depois de aplicado, senão o mesmo código
+    # continuaria trocando a senha até expirar sozinho.
+    user.reset_code_hash = None
+    user.reset_code_expires_at = None
+    db.add(user)
+    db.commit()
     return TokenResponse(access_token=create_access_token(str(user.id)))
 
 

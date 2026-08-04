@@ -38,3 +38,13 @@ export async function reportDeviceTimezone(): Promise<void> {
     // sem rede / fuso desconhecido: o backend usa o padrão do produto
   }
 }
+
+export type ResetDataResult = { apagados: Record<string, number>; total: number };
+
+/** Apaga TODO o histórico da conta (refeições, treinos, peso, sono, planos do
+ * coach), mantendo login e plano. Devolve o que saiu, por tipo — quem apaga a
+ * própria história merece ver o que foi apagado. */
+export async function resetAppData(): Promise<ResetDataResult> {
+  const { data } = await api.post<ResetDataResult>("/users/reset-data", {});
+  return data;
+}

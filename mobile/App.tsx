@@ -8,6 +8,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { View } from "react-native";
 
+import { iniciarAquecimento } from "./src/api/warmup";
 import { ErrorBoundary } from "./src/components/ErrorBoundary";
 import { ActiveWorkoutProvider } from "./src/context/ActiveWorkoutContext";
 import { AuthProvider } from "./src/context/AuthContext";
@@ -36,6 +37,10 @@ export default function App() {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded]);
+
+  // Acorda o backend enquanto a pessoa ainda está abrindo o app, pra o primeiro
+  // toque não pagar o tempo de o servidor sair da hibernação. Ver api/warmup.
+  useEffect(() => iniciarAquecimento(), []);
 
   if (!fontsLoaded) {
     // NUNCA retornar null aqui: null renderiza NADA e o Android mostra o fundo

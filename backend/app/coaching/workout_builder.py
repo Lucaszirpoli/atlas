@@ -192,12 +192,14 @@ def build_and_save(db: Session, user: User) -> dict:
     divisao = training_brain.one_of(
         getattr(profile, "split_preference", None), training_brain.SPLIT_PREFERENCE_VALUES
     )
-    split_note = methods.split_preference_note(divisao, days)
+    evitar_mistura = bool(getattr(profile, "avoid_mixing_upper_lower", False))
+    split_note = methods.split_preference_note(divisao, days) or methods.mixing_conflict_note(evitar_mistura, days)
     plan = build_plan(
         db, method, available_days=days, weak_points=wps,
         session_target=session_target, time_efficient=curto,
         restricoes=restricoes,
         split_preference=divisao,
+        avoid_mixing_upper_lower=evitar_mistura,
         # Preferências marcadas no questionário (máquinas x peso livre, evitar
         # agachamento livre/acima da cabeça/impacto, unilateral). Chegam até a
         # escolha de cada exercício — é o que faz a resposta virar treino.

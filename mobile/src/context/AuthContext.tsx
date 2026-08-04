@@ -27,6 +27,17 @@ type AuthContextValue = {
     display_name: string;
     keepSignedIn?: boolean;
   }) => Promise<void>;
+  /** Entrar com Google. `handle`/`displayName` só são exigidos no PRIMEIRO
+   * acesso com essa conta Google (o backend cria o usuário na hora); num login
+   * seguinte eles são ignorados. */
+  signInWithGoogle: (
+    idToken: string,
+    extra?: { handle?: string; displayName?: string },
+    keepSignedIn?: boolean
+  ) => Promise<void>;
+  /** Usa um access_token que a pessoa já tem em mãos (ex.: o reset de senha
+   * devolve um, pra ela entrar direto sem digitar a senha nova de novo). */
+  signInWithToken: (accessToken: string, keepSignedIn?: boolean) => Promise<void>;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<authApi.UserRead | null>;
 };
@@ -129,6 +140,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await persistTokenAndLoadUser(access_token, keepSignedIn);
   }
 
+  async function signInWithGoogle(
+    idToken: string,
+    extra?: { handle?: string; displayName?: string },
+    keepSignedIn = true
+  ) {
+    const { access_token } = await authApi.loginWithGoogle({
+      id_token: idToken,
+      handle: extra?.handle,
+      display_name: extra?.displayName,
+    });
+    await persistTokenAndLoadUser(access_token, keepSignedIn);
+  }
+
+  async function signInWithToken(accessToken: string, keepSignedIn = true) {
+    await persistTokenAndLoadUser(accessToken, keepSignedIn);
+  }
+
   async function signOut() {
     await AsyncStorage.multiRemove([TOKEN_STORAGE_KEY, KEEP_SIGNED_IN_KEY]);
     setUser(null);
@@ -142,7 +170,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ isLoading, user, signIn, signUp, signOut, refreshUser }}
+      value={{ isLoading, user, signIn, signUp, signInWithGoogle, signInWithToken, signOut, refreshUser }}
     >
       {children}
     </AuthContext.Provider>

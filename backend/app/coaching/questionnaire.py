@@ -41,6 +41,12 @@ NUMBER = "number"
 SINGLE = "single"     # escolha única (radio)
 MULTI = "multi"       # múltipla escolha (checkbox)
 BOOL = "bool"
+# TEXT voltou pra UM caso só: o nome pelo qual a pessoa quer ser chamada. A
+# regra deste arquivo (toda pergunta muda um número do plano) continua valendo
+# pro resto — o nome é a exceção porque ele muda como o COACH FALA, e isso o
+# motor consegue obedecer (vai direto pro prompt), diferente dos textos livres
+# antigos, que ninguém lia.
+TEXT = "text"
 
 RESTRICOES = [
     ("vegetariano", "Vegetariano"), ("vegano", "Vegano"), ("sem_lactose", "Sem lactose"),
@@ -152,6 +158,12 @@ def steps() -> list[dict]:
             "title": "Seu objetivo",
             "subtitle": "É daqui que saem suas metas de caloria e o desenho do treino.",
             "fields": [
+                # O coach conversa com a pessoa — precisa saber como chamá-la.
+                # Vem preenchido com o nome da conta; aqui ela escolhe o nome
+                # pelo qual quer ser chamada, que nem sempre é o do cadastro.
+                {"key": "display_name", "label": "Como você quer ser chamado(a)",
+                 "type": TEXT, "required": False, "max_length": 40,
+                 "help": "É como o coach vai falar com você."},
                 {"key": "goal", "label": "O que você quer alcançar", "type": SINGLE, "required": True,
                  "options": _enum_opts(Goal, GOAL_LABELS)},
                 {"key": "goal_pace", "label": "Em que ritmo", "type": SINGLE, "required": False,
@@ -302,6 +314,16 @@ def steps() -> list[dict]:
                  "help": "Cada divisão precisa de uma quantidade mínima de dias pra treinar "
                          "cada músculo 2× na semana. Se a que você escolher não couber nos seus "
                          "dias, eu monto a melhor possível e te explico por quê."},
+                # Pergunta direta — "upper/lower" é jargão, e quem não conhece o
+                # termo não tem como recusar um dia que mistura os dois sem antes
+                # descobrir o nome técnico da divisão que evita isso.
+                {"key": "avoid_mixing_upper_lower",
+                 "label": "Pode colocar exercícios de superior e inferior no mesmo treino?",
+                 "type": BOOL, "required": False,
+                 "help": "Não = cada treino fica só com a parte de cima OU só com a de baixo do "
+                         "corpo, nunca as duas. Isso pode afastar o coach da divisão automática "
+                         "quando ela precisaria combinar as duas pra caber nos seus dias — "
+                         "eu aviso quando isso acontecer."},
             ],
         },
         # --- 6 -------------------------------------------------------------
@@ -405,6 +427,23 @@ def steps() -> list[dict]:
                  "required": False, "options": _opts(FOOD_DISLIKES),
                  "help": "Eu não coloco nenhum destes na sua dieta. O que não estiver na lista "
                          "você troca no plano com 1 toque."},
+                # CONSENTIMENTO (LGPD). Vive aqui porque este questionário virou
+                # o CADASTRO do Coaching: criar conta não pede mais nada, então
+                # é neste ponto — e só neste — que a pessoa passa a entregar dado
+                # de saúde. Dado de saúde é sensível pela LGPD e exige
+                # consentimento explícito; sem os dois marcados a ativação é
+                # recusada em `activate` (marcar não é opcional nem implícito).
+                {"key": "accepted_lgpd_health_data",
+                 "label": "Autorizo o ATLAS a usar meus dados de saúde (peso, medidas, dieta, sono e "
+                          "treino) para montar e ajustar meu plano",
+                 "type": BOOL, "required": True,
+                 "help": "São dados sensíveis pela LGPD. Ficam na sua conta, não são vendidos, e você "
+                         "pode apagar tudo a qualquer momento em Perfil › Resetar dados do app."},
+                {"key": "accepted_medical_disclaimer",
+                 "label": "Entendo que o ATLAS não substitui acompanhamento médico ou nutricional",
+                 "type": BOOL, "required": True,
+                 "help": "O coach é baseado em ciência do treino, mas não dá diagnóstico. Em caso de "
+                         "lesão, dor ou condição de saúde, procure um profissional."},
             ],
         },
     ]
@@ -456,6 +495,26 @@ def priorities_to_answers(weak_points: list[str] | None) -> dict[str, Any]:
     pra quem já respondeu ver a própria escolha ao reabrir o questionário."""
     lista = training_brain.valid_weak_points(weak_points)
     return {k: (lista[i] if i < len(lista) else None) for i, k in enumerate(PRIORITY_KEYS)}
+
+
+CONSENT_KEYS = ("accepted_lgpd_health_data", "accepted_medical_disclaimer")
+
+
+def consent_error(answers: dict[str, Any]) -> str | None:
+    """Os dois consentimentos precisam estar marcados de verdade.
+
+    `missing_required` não serve aqui: pra ele um bool False está "preenchido"
+    (não é None nem string vazia). Sem esta checagem, desmarcar o consentimento
+    passaria batido — e o app estaria tratando dado de saúde sem autorização,
+    que é justamente o que a LGPD proíbe.
+    """
+    if not answers.get("accepted_lgpd_health_data"):
+        return ("Pra montar seu plano eu preciso da sua autorização pra usar seus dados de "
+                "saúde. Sem isso não consigo continuar.")
+    if not answers.get("accepted_medical_disclaimer"):
+        return ("Preciso que você confirme que entende que o ATLAS não substitui "
+                "acompanhamento médico ou nutricional.")
+    return None
 
 
 def macro_split_error(answers: dict[str, Any]) -> str | None:

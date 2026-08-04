@@ -1208,11 +1208,12 @@ function BlockChip({
         borderColor: selected ? colors.primary : status ? cor : colors.border,
       }}
     >
-      {completed ? (
-        <Ionicons name="checkmark" size={16} color={cor} />
-      ) : (
-        <Text style={[type.caption, { color: status ? cor : colors.textSecondary, fontWeight: "800" }]}>B{number}</Text>
-      )}
+      {/* O número do bloco fica SEMPRE visível. Antes o check substituía o
+          rótulo quando o bloco era concluído, e aí a pessoa perdia a
+          referência de qual bloco era qual justamente nos que já fez — a
+          conclusão já está dita pela cor (verde fechou, âmbar parcial,
+          vermelho não saiu), então o check só tirava informação. */}
+      <Text style={[type.caption, { color: status ? cor : colors.textSecondary, fontWeight: "800" }]}>B{number}</Text>
     </TouchableOpacity>
   );
 }

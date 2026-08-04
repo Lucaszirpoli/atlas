@@ -60,6 +60,17 @@ class NutritionMetrics:
     # Dias com algum registro, incluindo os que ficaram fora das médias. Base
     # da métrica de adesão AO REGISTRO, separada da adesão à dieta.
     days_with_any_log: int = 0
+    # QUANTO OS DIAS OSCILAM em torno da meta — desvio absoluto médio de cada
+    # dia até a meta, em % da meta, por macro.
+    #
+    # Existe porque a média central MENTE sobre consistência: 48 g de carbo num
+    # dia e 283 g no outro tem mediana 165 g contra meta 161 g, e o coach
+    # dizia "macros no alvo" — sendo que NENHUM dos dois dias bateu a meta. O
+    # desvio se calcula dia a dia ANTES de resumir, então oscilações opostas
+    # não se cancelam.
+    swing_protein_pct: float | None = None
+    swing_carbs_pct: float | None = None
+    swing_fat_pct: float | None = None
 
 
 @dataclass
@@ -183,6 +194,17 @@ def _nutrition_metrics(
     def _round(r, nd: int = 0) -> float | None:
         return None if r.value is None else round(r.value, nd)
 
+    def _swing(valores: list[float], alvo: float | None) -> float | None:
+        """Desvio absoluto MÉDIO dos dias até a meta, em % da meta.
+
+        Dia a dia, e só então resumido — é isso que impede 48 g e 283 g de
+        virarem "na meta" por se cancelarem. Precisa de pelo menos 3 dias:
+        com 1 ou 2, oscilação é ruído, não hábito.
+        """
+        if not alvo or len(valores) < 3:
+            return None
+        return round(sum(abs(v - alvo) for v in valores) / len(valores) / alvo * 100, 1)
+
     return NutritionMetrics(
         goal_kcal=goal.kcal if goal else None,
         goal_protein_g=goal.protein_g if goal else None,
@@ -199,6 +221,9 @@ def _nutrition_metrics(
         outlier_days=kcal.outliers,
         days_needing_attention=[d.day.isoformat() for d in dias if d.needs_attention],
         days_with_any_log=len(dias),
+        swing_protein_pct=_swing([d.protein_g for d in validos], goal.protein_g if goal else None),
+        swing_carbs_pct=_swing([d.carbs_g for d in validos], goal.carbs_g if goal else None),
+        swing_fat_pct=_swing([d.fat_g for d in validos], goal.fat_g if goal else None),
     )
 
 

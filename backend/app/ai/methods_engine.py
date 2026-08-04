@@ -451,6 +451,7 @@ def build_plan(
     seed: int | None = None,
     restricoes: restrictions.Perfil = restrictions.PERFIL_LIVRE,
     split_preference: str | None = None,
+    avoid_mixing_upper_lower: bool = False,
 ) -> WorkoutPlan:
     """Monta a semana inteira preenchendo os blueprints de cada dia.
 
@@ -484,7 +485,7 @@ def build_plan(
     days = resolve_days(method, available_days)
     # A divisão que a pessoa escolheu manda, quando cabe na frequência dela;
     # quando não cabe, `coach_split_for` volta ao automático (e quem chama avisa).
-    split = coach_split_for(days, [m.value for m in wp_list], split_preference)
+    split = coach_split_for(days, [m.value for m in wp_list], split_preference, avoid_mixing_upper_lower)
 
     sets = method.sets_per_exercise or "—"
     reps = method.reps or "—"

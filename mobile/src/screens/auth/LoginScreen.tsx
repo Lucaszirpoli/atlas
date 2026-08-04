@@ -1,19 +1,31 @@
+import { GoogleSignin, statusCodes } from "@react-native-google-signin/google-signin";
 import { useNavigation } from "@react-navigation/native";
 import React, { useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { ATLAS_SLOGAN, AtlasLogo } from "../../components/AtlasLogo";
 import { Button } from "../../components/Button";
 import { Checkbox } from "../../components/Checkbox";
+import { GoogleHandleModal } from "../../components/GoogleHandleModal";
 import { InfoDialog } from "../../components/InfoDialog";
 import { TextField } from "../../components/TextField";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
 import { mensagemDeErro } from "../../utils/errorMessage";
 
+GoogleSignin.configure({
+  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  // Web + Android usam o MESMO cliente OAuth ("Web") como audiência do
+  // idToken — é o `GOOGLE_OAUTH_CLIENT_ID` que o backend valida em
+  // social_auth.verify_google_id_token. O que autoriza ESTE app a pedir esse
+  // token é o cliente Android (pacote + SHA-1) cadastrado no Google Cloud,
+  // não algo que se configure aqui.
+  offlineAccess: false,
+});
+
 export function LoginScreen() {
   const { colors, type, spacing, shadow } = useTheme();
-  const { signIn } = useAuth();
+  const { signIn, signInWithGoogle } = useAuth();
   const navigation = useNavigation<any>();
 
   const [email, setEmail] = useState("");
@@ -23,6 +35,12 @@ export function LoginScreen() {
   // todo mundo quer. A caixa existe pra quem entrou no aparelho de outra pessoa.
   const [manterConectado, setManterConectado] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
+
+  const [googleLoading, setGoogleLoading] = useState(false);
+  // Guarda o idToken entre a tentativa que falhou por falta de @handle (só no
+  // PRIMEIRO login com essa conta Google) e a confirmação do modal — sem
+  // guardar, a pessoa teria que passar pela tela do Google de novo.
+  const [googlePendente, setGooglePendente] = useState<{ idToken: string; nome: string } | null>(null);
 
   async function handleSubmit() {
     const login = email.trim().toLowerCase();
@@ -40,6 +58,50 @@ export function LoginScreen() {
       setErro(mensagemDeErro(err, "E-mail/usuário ou senha incorretos. Confira e tente de novo."));
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleGoogleSignIn() {
+    setGoogleLoading(true);
+    try {
+      await GoogleSignin.hasPlayServices();
+      const resp = await GoogleSignin.signIn();
+      if (resp.type !== "success") return; // pessoa cancelou — sem erro, sem ação
+      const idToken = resp.data.idToken;
+      if (!idToken) {
+        setErro("O Google não devolveu um token válido. Tente novamente.");
+        return;
+      }
+      try {
+        // Tenta como LOGIN (conta que já existe). Se for a primeira vez com
+        // essa conta Google, o backend recusa (422) pedindo @handle — é o
+        // catch abaixo que abre o modal pra completar o cadastro.
+        await signInWithGoogle(idToken, undefined, manterConectado);
+      } catch (err: any) {
+        if (err?.response?.status === 422) {
+          setGooglePendente({ idToken, nome: resp.data.user.name ?? resp.data.user.email.split("@")[0] });
+          return;
+        }
+        throw err;
+      }
+    } catch (err: any) {
+      if (err?.code === statusCodes.SIGN_IN_CANCELLED) return;
+      setErro(mensagemDeErro(err, "Não foi possível entrar com o Google. Tente novamente."));
+    } finally {
+      setGoogleLoading(false);
+    }
+  }
+
+  async function confirmarHandleGoogle(handle: string, displayName: string) {
+    if (!googlePendente) return;
+    setGoogleLoading(true);
+    try {
+      await signInWithGoogle(googlePendente.idToken, { handle, displayName }, manterConectado);
+      setGooglePendente(null);
+    } catch (err: any) {
+      setErro(mensagemDeErro(err, "Não foi possível concluir seu cadastro com o Google."));
+    } finally {
+      setGoogleLoading(false);
     }
   }
 
@@ -112,9 +174,27 @@ export function LoginScreen() {
             label="Manter conectado neste aparelho"
           />
 
+          <TouchableOpacity onPress={() => navigation.navigate("ForgotPassword")} style={{ alignSelf: "flex-end", marginBottom: spacing.sm }}>
+            <Text style={[type.bodySmall, { color: colors.primary, fontWeight: "600" }]}>Esqueceu sua senha?</Text>
+          </TouchableOpacity>
+
           <View style={{ marginTop: spacing.sm }}>
-            <Button title="Entrar" onPress={handleSubmit} loading={isSubmitting} />
+            <Button title="Entrar" onPress={handleSubmit} loading={isSubmitting} disabled={googleLoading} />
           </View>
+
+          <View style={{ flexDirection: "row", alignItems: "center", marginVertical: spacing.md }}>
+            <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+            <Text style={[type.caption, { color: colors.textSecondary, marginHorizontal: spacing.sm }]}>ou</Text>
+            <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+          </View>
+
+          <Button
+            title="Continuar com Google"
+            variant="secondary"
+            onPress={handleGoogleSignIn}
+            loading={googleLoading}
+            disabled={isSubmitting}
+          />
         </View>
 
         <View style={{ flexDirection: "row", justifyContent: "center", marginTop: spacing.lg }}>
@@ -133,6 +213,14 @@ export function LoginScreen() {
         onClose={() => setErro(null)}
         title="Não foi possível entrar"
         message={erro ?? undefined}
+      />
+
+      <GoogleHandleModal
+        visible={googlePendente !== null}
+        defaultName={googlePendente?.nome ?? ""}
+        submitting={googleLoading}
+        onCancel={() => setGooglePendente(null)}
+        onConfirm={confirmarHandleGoogle}
       />
     </KeyboardAvoidingView>
   );

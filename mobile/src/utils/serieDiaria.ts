@@ -41,7 +41,10 @@ export function tsDoDia(valor: string | number | Date): number {
 
 const UM_DIA = 86400000;
 
-export type PontoDiario = { x: number; y: number };
+/** `real: true` só no dia em que a pessoa de fato registrou algo — os dias
+ * herdados (último valor conhecido) vêm com `real: false`, pra quem desenha
+ * o gráfico saber onde NÃO desenhar uma bolinha (herança não é um evento). */
+export type PontoDiario = { x: number; y: number; real?: boolean };
 
 /** Ordena por dia, resolve empates (dois registros no mesmo dia → vale o
  * último) e preenche os dias vagos com o último valor conhecido.
@@ -79,8 +82,9 @@ export function serieDiaria(
   }
   for (let dia = inicio; dia <= fim; dia += UM_DIA) {
     const valor = porDia.get(dia);
-    if (valor !== undefined) ultimo = valor;
-    if (ultimo !== null) saida.push({ x: dia, y: ultimo });
+    const real = valor !== undefined;
+    if (real) ultimo = valor;
+    if (ultimo !== null) saida.push({ x: dia, y: ultimo, real });
   }
   return saida;
 }

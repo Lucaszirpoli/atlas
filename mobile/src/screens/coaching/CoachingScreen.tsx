@@ -331,15 +331,21 @@ export function CoachingScreen() {
     [load]
   );
 
-  // Sem onboarding de entrada: o objetivo é criado AQUI, na primeira vez que a
-  // pessoa entra no Coaching. Vale pra Free e Pro (definir objetivo é básico) —
-  // depois o Free vê o paywall e o Pro vê a análise. Ao concluir, recarrega.
-  if (user && !user.onboarding_completed) {
-    return <OnboardingScreen onDone={load} />;
-  }
-
+  // QUEM É FREE NUNCA RESPONDE QUESTIONÁRIO. Criar conta dá acesso imediato ao
+  // app manual (dieta, treino, peso, sono) — nada de formulário antes de
+  // conhecer o produto. O questionário é o cadastro do PRO: é ele que alimenta
+  // o coach, e só faz sentido pra quem tem coach.
+  //
+  // A ordem destes dois blocos É a regra: antes, o `!onboarding_completed`
+  // vinha primeiro e pegava todo mundo, então quem criava conta levava um
+  // formulário de 9 etapas na cara antes de ver qualquer tela do app.
   if (!isPro) {
     return <FreeHome navigation={navigation} user={user} />;
+  }
+
+  // Pro sem questionário respondido: aqui ele é o cadastro do Coaching.
+  if (user && !user.onboarding_completed) {
+    return <OnboardingScreen onDone={load} />;
   }
 
   return (
@@ -712,9 +718,18 @@ function AprendizadoBlock({ learned }: { learned: LearnedModel | null }) {
                       borderRadius: radius.pill,
                       paddingVertical: 2,
                       paddingHorizontal: 8,
+                      // Sem isto o badge era ESPREMIDO pelo título (que tem
+                      // flex:1): num título de duas linhas o selo perdia
+                      // largura e "já dá pra confiar" aparecia cortado como
+                      // "já dá pra". O selo tem tamanho próprio; quem cede
+                      // espaço é o título.
+                      flexShrink: 0,
                     }}
                   >
-                    <Text style={[type.caption, { color: forca.cor, fontWeight: "700", fontSize: 10 }]}>
+                    <Text
+                      numberOfLines={1}
+                      style={[type.caption, { color: forca.cor, fontWeight: "700", fontSize: 10 }]}
+                    >
                       {forca.rotulo}
                     </Text>
                   </View>

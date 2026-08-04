@@ -43,6 +43,20 @@ export async function loginWithGoogle(payload: {
   return data;
 }
 
+export async function forgotPassword(email: string): Promise<{ message: string }> {
+  const { data } = await api.post("/auth/forgot-password", { email });
+  return data;
+}
+
+export async function resetPassword(payload: {
+  email: string;
+  code: string;
+  new_password: string;
+}): Promise<TokenResponse> {
+  const { data } = await api.post<TokenResponse>("/auth/reset-password", payload);
+  return data;
+}
+
 export async function loginWithApple(payload: {
   id_token: string;
   handle?: string;

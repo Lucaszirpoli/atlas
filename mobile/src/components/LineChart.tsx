@@ -4,7 +4,7 @@ import Svg, { Circle, Defs, LinearGradient, Path, Stop, Line as SvgLine, Text as
 
 import { useTheme } from "../theme/ThemeProvider";
 
-export type ChartPoint = { x: number; y: number; label?: string };
+export type ChartPoint = { x: number; y: number; label?: string; real?: boolean };
 
 type Series = {
   data: ChartPoint[];
@@ -178,9 +178,10 @@ export function LineChart({
             const p = s.data[0];
             return <Circle key={si} cx={sx(p.x)} cy={sy(p.y)} r={4} fill={s.color} />;
           }
-          const d = s.data.map((p, i) => `${i === 0 ? "M" : "L"} ${sx(p.x)} ${sy(p.y)}`).join(" ");
+          const screenPts = s.data.map((p) => ({ x: sx(p.x), y: sy(p.y) }));
+          const d = smoothPathD(screenPts);
           const areaD = s.area
-            ? `${d} L ${sx(s.data[s.data.length - 1].x)} ${padTop + plotH} L ${sx(s.data[0].x)} ${padTop + plotH} Z`
+            ? `${d} L ${screenPts[screenPts.length - 1].x} ${padTop + plotH} L ${screenPts[0].x} ${padTop + plotH} Z`
             : null;
           return (
             <React.Fragment key={si}>
@@ -195,9 +196,15 @@ export function LineChart({
                 strokeDasharray={s.dashed ? "5 4" : undefined}
               />
               {s.showDots
-                ? s.data.map((p, i) => (
-                    <Circle key={i} cx={sx(p.x)} cy={sy(p.y)} r={3} fill={colors.surface} stroke={s.color} strokeWidth={2} />
-                  ))
+                ? s.data
+                    // `real === false` é um dia herdado (serieDiaria) repetindo o
+                    // último valor conhecido — não é um evento, não ganha bolinha.
+                    // Sem essa marcação (real undefined) o ponto sempre desenha,
+                    // que é o comportamento de sempre pra série sem forward-fill.
+                    .filter((p) => p.real !== false)
+                    .map((p, i) => (
+                      <Circle key={i} cx={sx(p.x)} cy={sy(p.y)} r={3} fill={colors.surface} stroke={s.color} strokeWidth={2} />
+                    ))
                 : null}
             </React.Fragment>
           );
@@ -211,4 +218,29 @@ export function LineChart({
 // geram atributos inválidos ou instáveis entre renders na web).
 function gradId(index: number): string {
   return `lc-grad-${index}`;
+}
+
+/** Curva suave (Catmull-Rom convertida em Bézier cúbica) entre os pontos —
+ * troca o "serrote" de segmentos retos por uma linha que passa por cima dos
+ * mesmos pontos sem inventar dado novo, só sem quina. `smoothing` baixo
+ * (0.2) mantém a curva fiel ao dado — não é o "S" exagerado de spline livre,
+ * que pode overshoot além do valor real perto de picos. */
+function smoothPathD(pts: { x: number; y: number }[]): string {
+  if (pts.length < 2) return "";
+  if (pts.length === 2) return `M ${pts[0].x} ${pts[0].y} L ${pts[1].x} ${pts[1].y}`;
+
+  const smoothing = 0.2;
+  let d = `M ${pts[0].x} ${pts[0].y}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i === 0 ? 0 : i - 1];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2 < pts.length ? i + 2 : i + 1];
+    const c1x = p1.x + (p2.x - p0.x) * smoothing;
+    const c1y = p1.y + (p2.y - p0.y) * smoothing;
+    const c2x = p2.x - (p3.x - p1.x) * smoothing;
+    const c2y = p2.y - (p3.y - p1.y) * smoothing;
+    d += ` C ${c1x} ${c1y}, ${c2x} ${c2y}, ${p2.x} ${p2.y}`;
+  }
+  return d;
 }
