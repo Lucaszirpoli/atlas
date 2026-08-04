@@ -10,12 +10,20 @@ import { useCallback, useEffect, useState } from "react";
  * abaixo dele é reordenável.
  */
 
-export type HomeBlockId = "hero" | "missoes" | "tudo_certo" | "explorar" | "pergunte_coach" | "o_que_mudou";
+export type HomeBlockId =
+  | "hero"
+  | "missoes"
+  | "tudo_certo"
+  | "aprendizado"
+  | "explorar"
+  | "pergunte_coach"
+  | "o_que_mudou";
 
 export const DEFAULT_HOME_ORDER: HomeBlockId[] = [
   "hero",
   "missoes",
   "tudo_certo",
+  "aprendizado",
   "explorar",
   "pergunte_coach",
   "o_que_mudou",
@@ -28,6 +36,11 @@ export const HOME_BLOCK_META: Record<
   hero: { label: "Seu coaching", description: "Objetivo, fase e constância", icon: "compass" },
   missoes: { label: "Missões da semana", description: "O que precisa de atenção agora", icon: "flag" },
   tudo_certo: { label: "Tudo certo", description: "O que já está indo bem", icon: "checkmark-circle" },
+  aprendizado: {
+    label: "O que eu aprendi com você",
+    description: "Os números que medi em você e já uso no seu plano",
+    icon: "school",
+  },
   explorar: { label: "Explorar", description: "Objetivo, treino, dieta, peso e sono", icon: "grid" },
   pergunte_coach: { label: "Pergunte ao coach", description: "Atalho pro chat", icon: "chatbubbles" },
   o_que_mudou: { label: "O que o coach mudou", description: "Ajustes aplicados e histórico", icon: "time" },

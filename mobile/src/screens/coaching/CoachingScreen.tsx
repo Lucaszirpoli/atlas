@@ -20,6 +20,7 @@ import {
   type CoachingChart,
   type CoachingCheckin,
   type CoachingInsight,
+  type LearnedModel,
 } from "../../api/coaching";
 import { getConsistency, type ConsistencyHistory } from "../../api/evolution";
 import { AtlasLogo } from "../../components/AtlasLogo";
@@ -622,6 +623,128 @@ function semanaLabel(baseline: string | null): string | null {
 // e em que fase estou (topo) · como estou indo, com constância gamificada
 // (progresso) · o que fazer agora (missões) · pra onde ir (mapa de 4 seções).
 // Tudo que é denso (prefs, gráficos, "o que mudou") mora dentro das seções.
+/** "O QUE EU APRENDI COM VOCÊ" — os parâmetros que o coach MEDIU nesta pessoa
+ * e já usa nas contas do plano dela (gasto energético real, quanto volume ela
+ * aguenta, o ritmo dela por série).
+ *
+ * Por que isto existe como tela e não só como número escondido: o motor mudar
+ * sozinho, em silêncio, é indistinguível de um motor com bug — a pessoa vê a
+ * meta de caloria mudar, não entende por quê, e conclui que o app é aleatório.
+ * Cada linha aqui vem com a evidência que a justifica.
+ *
+ * Enquanto ele ainda não sabe nada, o bloco diz isso com honestidade em vez de
+ * sumir: saber que o coach está aprendendo é parte do valor. */
+function AprendizadoBlock({ learned }: { learned: LearnedModel | null }) {
+  const { colors, type, spacing, radius } = useTheme();
+  if (!learned) return null;
+
+  const ordem: (keyof Pick<LearnedModel, "energia" | "tolerancia_volume" | "ritmo_sessao">)[] = [
+    "energia",
+    "tolerancia_volume",
+    "ritmo_sessao",
+  ];
+  const params = ordem.map((k) => learned[k]).filter(Boolean);
+  const sabidos = params.filter((p) => p.confianca !== "nenhuma");
+
+  const FORCA: Record<string, { rotulo: string; cor: string }> = {
+    baixa: { rotulo: "primeiros sinais", cor: colors.textSecondary },
+    media: { rotulo: "já dá pra confiar", cor: colors.primary },
+    alta: { rotulo: "bem medido", cor: colors.success },
+  };
+
+  return (
+    <View style={{ marginBottom: spacing.md }}>
+      <Text
+        style={[
+          type.caption,
+          { color: colors.textSecondary, letterSpacing: 1, textTransform: "uppercase", marginBottom: spacing.sm },
+        ]}
+      >
+        O que eu aprendi com você
+      </Text>
+
+      {sabidos.length === 0 ? (
+        <Card>
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+            <View
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 13,
+                backgroundColor: colors.primary + "22",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="school-outline" size={20} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>
+                Ainda estou te conhecendo
+              </Text>
+              <Text style={[type.caption, { color: colors.textSecondary, marginTop: 2, lineHeight: 17 }]}>
+                Por enquanto seu plano usa as fórmulas padrão. Conforme você registra comida, peso e
+                treinos, eu meço como o SEU corpo responde e troco a fórmula pelos seus números.
+              </Text>
+            </View>
+          </View>
+        </Card>
+      ) : (
+        <Card padded={false}>
+          {sabidos.map((p, i) => {
+            const forca = FORCA[p.confianca] ?? FORCA.baixa;
+            return (
+              <View
+                key={p.chave}
+                style={{
+                  padding: spacing.md,
+                  borderTopWidth: i === 0 ? 0 : 1,
+                  borderTopColor: colors.border,
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                  <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "700", flex: 1 }]}>
+                    {learned.rotulos?.[p.chave] ?? p.chave}
+                  </Text>
+                  <View
+                    style={{
+                      backgroundColor: forca.cor + "22",
+                      borderRadius: radius.pill,
+                      paddingVertical: 2,
+                      paddingHorizontal: 8,
+                    }}
+                  >
+                    <Text style={[type.caption, { color: forca.cor, fontWeight: "700", fontSize: 10 }]}>
+                      {forca.rotulo}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={[type.caption, { color: colors.textSecondary, lineHeight: 17 }]}>
+                  {p.evidencia}
+                </Text>
+              </View>
+            );
+          })}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              paddingHorizontal: spacing.md,
+              paddingBottom: spacing.md,
+            }}
+          >
+            <Ionicons name="checkmark-circle" size={13} color={colors.success} />
+            <Text style={[type.caption, { color: colors.textSecondary, flex: 1 }]}>
+              Isto já está valendo no seu plano — não é só informação.
+            </Text>
+          </View>
+        </Card>
+      )}
+    </View>
+  );
+}
+
 function CoachingHub({
   order,
   onReorder,
@@ -735,6 +858,8 @@ function CoachingHub({
         <StatusPills bars={ok} onOpenChart={onOpenChart} />
       </View>
     ) : null,
+
+    aprendizado: <AprendizadoBlock learned={analysis.metrics.learned} />,
 
     explorar: (
       <View style={{ marginBottom: spacing.md }}>

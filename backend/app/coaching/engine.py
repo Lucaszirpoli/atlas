@@ -274,23 +274,37 @@ def _carga_insight(
 _BIG_LOWER = {"quads", "hamstrings", "glutes"}
 
 
-def progression_step(muscle: str, equipment: str, top_weight: float) -> tuple[float | None, float | None, str]:
+def progression_step(
+    muscle: str, equipment: str, top_weight: float, passo_aprendido: float | None = None
+) -> tuple[float | None, float | None, str]:
     """Passo de progressão pra um exercício pronto pra subir.
 
     Devolve (incremento_kg, novo_peso, como-fazer). No peso corporal não há carga
     pra somar: incremento/novo_peso = None e a dica é somar reps/peso extra.
+
+    `passo_aprendido` é o degrau que ESTA pessoa realmente usa neste exercício
+    (coaching/adaptive.passo_de_carga). O padrão de 5 kg em membro inferior e
+    2,5 kg no resto é uma média que ignora duas coisas reais: quem levanta 40 kg
+    e quem levanta 120 não sobem no mesmo degrau, e a anilha disponível não é a
+    mesma no leg press e na elevação lateral. Sem histórico, cai no padrão.
     """
     if equipment == "bodyweight":
         return None, None, (
             "Você já bate o topo das reps com folga. Suba o estímulo: some 1–2 reps por "
             "série, ou adicione carga (cinto de lastro, mochila, colete)."
         )
-    inc = 5.0 if muscle in _BIG_LOWER else 2.5
+    padrao = 5.0 if muscle in _BIG_LOWER else 2.5
+    inc = passo_aprendido if passo_aprendido and passo_aprendido > 0 else padrao
     novo = round(top_weight + inc, 1)
+    origem = (
+        " (é o degrau que você costuma usar neste exercício)"
+        if passo_aprendido and abs(passo_aprendido - padrao) > 0.01
+        else ""
+    )
     return inc, novo, (
         f"Você fechou o topo da faixa com folga em {top_weight:g} kg. Sobe pra {novo:g} kg na "
-        f"próxima (+{inc:g} kg) e volta a trabalhar na base da faixa de reps. É assim que a "
-        "sobrecarga progressiva vira resultado."
+        f"próxima (+{inc:g} kg){origem} e volta a trabalhar na base da faixa de reps. É assim "
+        "que a sobrecarga progressiva vira resultado."
     )
 
 

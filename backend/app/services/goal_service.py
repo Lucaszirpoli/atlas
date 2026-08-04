@@ -67,6 +67,19 @@ def compute_suggestion(db: Session, user_id: int, profile: UserProfile) -> dict:
     if weight_kg is None:
         raise ValueError("Usuário ainda não tem peso registrado")
 
+    # O gasto MEDIDO nesta pessoa entra no lugar do previsto pela fórmula,
+    # proporcionalmente à evidência que existe (ver coaching/adaptive). Sem
+    # histórico suficiente, `aplicar` devolve a própria fórmula — quem está no
+    # dia 1 recebe exatamente o que recebia antes.
+    from app.coaching import adaptive
+
+    aprendido = adaptive.energia_do_usuario(db, user_id, profile, weight_kg)
+    formula_tdee = calculate_tdee(
+        calculate_bmr(profile.biological_sex, weight_kg, profile.height_cm, profile.age),
+        profile.activity_level,
+    )
+    tdee_usado = aprendido.aplicar(formula_tdee)
+
     suggestion = compute_auto_goal(
         biological_sex=profile.biological_sex,
         weight_kg=weight_kg,
@@ -75,6 +88,7 @@ def compute_suggestion(db: Session, user_id: int, profile: UserProfile) -> dict:
         activity_level=profile.activity_level,
         goal=profile.goal,
         pace=profile.goal_pace or GoalPace.NORMAL,
+        tdee_override=tdee_usado,
     )
 
     current = get_current_goal(db, user_id)
@@ -87,6 +101,11 @@ def compute_suggestion(db: Session, user_id: int, profile: UserProfile) -> dict:
         "current_goal": current,
         "changed_significantly": changed_significantly,
         "objective": profile.goal.value,
+        # Por que a meta é esta e não a da fórmula. Sem isso o número muda e a
+        # pessoa não sabe o motivo — que é o oposto de ganhar confiança nele.
+        "tdee_formula": round(formula_tdee),
+        "tdee_usado": round(tdee_usado),
+        "aprendizado": aprendido.to_dict() if aprendido.usar else None,
     }
 
 

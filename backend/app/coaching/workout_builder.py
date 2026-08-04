@@ -19,6 +19,7 @@ from app.ai.exercise_taxonomy import Pattern
 from app.ai.methods import coach_custom_spec
 from app.ai.methods_engine import build_plan
 from app.coaching import (
+    adaptive,
     cycle_state,
     prescription,
     restrictions,
@@ -251,9 +252,15 @@ def build_and_save(db: Session, user: User) -> dict:
     # está dormindo mal recebe o mesmo desenho de treino com menos série — não um
     # treino diferente, que seria imprevisível pra quem acompanha a evolução.
     recuperacao = training_brain.recovery_factor(profile)
+    # ...e o que ela MOSTROU treinando: quanto do prescrito ela executa e
+    # quantas sessões termina (coaching/adaptive). `recovery` vem do que ela
+    # respondeu uma vez; este vem do histórico e vai se corrigindo sozinho.
+    # Sem treinos suficientes o fator é 1.0 e nada muda.
+    tolerancia = adaptive.tolerancia_a_volume(db, user.id)
     plano_semanal = volume_landmarks.weekly_plan(
         musculos, exp, weeks_acc, weak_points=wps, session_length=tempo_sessao,
         recovery=recuperacao,
+        tolerance=tolerancia.valor if tolerancia.usar else 1.0,
     )
 
     # --- VOLUME QUE NÃO CABE NAS VAGAS -> OUTRO EXERCÍCIO -------------------
@@ -666,6 +673,12 @@ def build_and_save(db: Session, user: User) -> dict:
     # duração deixou de ser um chute. E a primeira medição já mostrou que os
     # rótulos de tempo prometiam mais do que o treino entrega — quem escolhe
     # "Longo" e recebe 50 minutos não se sente bem servido, se sente enganado.
+    #
+    # E, quando existe histórico, a conta teórica deixa de ser a única fonte: o
+    # RITMO medido nas sessões que ela concluiu entra na mistura. Duas pessoas
+    # com o mesmo treino no papel levam tempos bem diferentes na academia.
+    ritmo = adaptive.ritmo_da_sessao(db, user.id)
+    seg_serie = ritmo.valor if ritmo.usar else None
     duracoes = [
         prescription.session_minutes([
             {
@@ -676,7 +689,7 @@ def build_and_save(db: Session, user: User) -> dict:
                 "com_aquecimento": aquece,
             }
             for re, aquece in zip(exercicios, aquecimentos)
-        ])
+        ], seg_por_serie_medido=seg_serie)
         for exercicios, aquecimentos in zip(exercicios_por_rotina, aquecimentos_por_rotina)
         if exercicios
     ]
@@ -684,10 +697,12 @@ def build_and_save(db: Session, user: User) -> dict:
     if duracoes:
         menor, maior = min(duracoes), max(duracoes)
         faixa = f"{menor} min" if menor == maior else f"{menor} a {maior} min"
-        duracao_note = (
-            f"Seus treinos devem levar de {faixa}, contando aquecimento, os descansos "
-            "entre séries e a troca de aparelho."
+        base = (
+            "no seu ritmo medido nos últimos treinos"
+            if seg_serie
+            else "contando aquecimento, os descansos entre séries e a troca de aparelho"
         )
+        duracao_note = f"Seus treinos devem levar de {faixa}, {base}."
 
     technique_note = None
     if technique_applied:
@@ -772,6 +787,10 @@ def build_and_save(db: Session, user: User) -> dict:
         # Filtrar em silêncio é pior que não filtrar: a pessoa procura o supino
         # livre, não acha, e conclui que o app é ruim.
         "restriction_notes": restrictions.avisos(profile) + ([split_note] if split_note else []),
+        # O que o coach aprendeu vendo ela treinar e usou AQUI. Ajustar o volume
+        # em silêncio faria o treino "mudar sozinho" sem explicação — que é a
+        # forma mais rápida de a pessoa perder a confiança no plano.
+        "learned_note": tolerancia.evidencia if tolerancia.usar else None,
         "split_label": methods.SPLIT_LABEL.get(divisao or "") if divisao else None,
         # Quanto o treino REALMENTE leva, calculado do que foi salvo.
         "estimated_minutes": duracoes or None,

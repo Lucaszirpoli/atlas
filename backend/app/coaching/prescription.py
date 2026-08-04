@@ -246,9 +246,27 @@ def exercise_seconds(
     return int(trabalho + descanso + preparo + TRANSICAO_ENTRE_EXERCICIOS_S)
 
 
-def session_minutes(exercicios: list[dict]) -> int:
+def session_minutes(exercicios: list[dict], seg_por_serie_medido: float | None = None) -> int:
     """Duração estimada da sessão, em minutos.
 
     Cada item: {sets, reps_min, reps_max, rest_seconds, com_aquecimento}.
+
+    `seg_por_serie_medido` é o ritmo REAL desta pessoa, cronometrado do início ao
+    fim das sessões que ela concluiu (coaching/adaptive.ritmo_da_sessao). As
+    constantes acima descrevem uma pessoa genérica que descansa o prescrito e não
+    conversa entre séries; quem existe de verdade varia muito em torno disso — e
+    o app já mede os dois extremos de cada sessão. Sem histórico, a estimativa é
+    a de sempre.
+
+    A mistura é 50/50 de propósito: o medido inclui a vida real (a fila do
+    aparelho, a mensagem respondida) e sozinho superestimaria um dia corrido; a
+    conta teórica sozinha subestima quem treina sem pressa.
     """
-    return round(sum(exercise_seconds(**e) for e in exercicios) / 60)
+    teorico = sum(exercise_seconds(**e) for e in exercicios)
+    if not seg_por_serie_medido or seg_por_serie_medido <= 0:
+        return round(teorico / 60)
+    series = sum(int(e.get("sets") or 0) for e in exercicios)
+    if series <= 0:
+        return round(teorico / 60)
+    medido = series * seg_por_serie_medido
+    return round((teorico * 0.5 + medido * 0.5) / 60)

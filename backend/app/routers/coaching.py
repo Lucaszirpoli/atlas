@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from datetime import datetime, timedelta, timezone
 
+from app.coaching import adaptive
 from app.coaching import chat as coach_chat
 from app.coaching import cycle_state
 from app.coaching import overlays as coach_overlays
@@ -146,6 +147,27 @@ def _training_prefs_block(db: Session, user: User) -> dict | None:
     }
 
 
+def _learned_block(db: Session, user: User) -> dict:
+    """Os parâmetros que o coach MEDIU nesta pessoa e já usa nas contas.
+
+    Vai pra tela com a evidência de cada um. Um motor que se ajusta em silêncio
+    é indistinguível de um motor com bug: a pessoa vê a meta mudar, não entende
+    por quê, e conclui que o app é aleatório. O que muda o plano dela tem que
+    ser dizível numa frase.
+    """
+    d = adaptive.modelo(
+        db, user.id,
+        profile=getattr(user, "profile", None),
+        peso_kg=goal_service.get_latest_weight_kg(db, user.id),
+    ).to_dict()
+    d["rotulos"] = {
+        "energia": "Seu gasto de energia",
+        "tolerancia_volume": "Quanto volume você aguenta",
+        "ritmo_sessao": "Seu ritmo de treino",
+    }
+    return d
+
+
 def _workout_block(db: Session, user: User) -> dict:
     """Resumo do treino ATIVO da pessoa (todas as rotinas) — o card 'Seu treino'
     mostra o que o coach montou. `built` = já tem treino ativo."""
@@ -215,7 +237,13 @@ def coaching_analysis(
     result["metrics"]["pace"] = _pace_block(db, current_user)
     result["metrics"]["training_prefs"] = _training_prefs_block(db, current_user)
     # O que o coach APRENDEU observando a pessoa — cresce com o tempo de uso.
+    # Duas camadas diferentes, de propósito:
+    #   user_model  = COMPORTAMENTO (é constante? registra? termina os treinos?),
+    #                 que o coach usa pra saber COMO falar com ela;
+    #   learned     = PARÂMETROS medidos (gasto energético, tolerância a volume,
+    #                 ritmo por série), que já estão dentro das CONTAS do plano.
     result["metrics"]["user_model"] = user_model.aprender(db, current_user.id).to_dict()
+    result["metrics"]["learned"] = _learned_block(db, current_user)
     result["metrics"]["workout"] = _workout_block(db, current_user)
     return result
 
@@ -833,7 +861,12 @@ def apply_action(
         # Coerência: se havia uma TROCA ativa neste exercício, ela some — subir a
         # carga e trocar o exercício ao mesmo tempo é o paradoxo que a gente evita.
         coach_overlays.revert_conflicting_action(db, current_user.id, ex_id, "progression")
-        _, novo, como = progression_step(p["muscle"], p["equipment"], p["top_weight"])
+        # O degrau que ESTA pessoa usa neste exercício, quando já dá pra saber.
+        passo = adaptive.passo_de_carga(db, current_user.id, ex_id)
+        _, novo, como = progression_step(
+            p["muscle"], p["equipment"], p["top_weight"],
+            passo_aprendido=passo.valor if passo.usar else None,
+        )
         title = f"Subir carga · {p['name']}"
         db.add(CoachingAction(user_id=current_user.id, kind="progression", finding_key=fk,
                               exercise_id=ex_id, exercise_name=p["name"], title=title, detail=como,

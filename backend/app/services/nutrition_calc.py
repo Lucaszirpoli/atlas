@@ -85,9 +85,15 @@ def compute_auto_goal(
     activity_level: ActivityLevel,
     goal: Goal,
     pace: GoalPace = GoalPace.NORMAL,
+    tdee_override: float | None = None,
 ) -> dict:
+    """`tdee_override` é o gasto MEDIDO na pessoa (coaching/adaptive), quando já
+    há histórico suficiente. Mifflin-St Jeor é uma média populacional: acerta a
+    população e erra o indivíduo em até algumas centenas de kcal. Quem come
+    2.400 e não muda de peso tem manutenção de 2.400, e é esse número que deve
+    virar meta — não o que a fórmula previu pra alguém do mesmo peso e idade."""
     bmr = calculate_bmr(biological_sex, weight_kg, height_cm, age)
-    tdee = calculate_tdee(bmr, activity_level)
+    tdee = tdee_override if tdee_override and tdee_override > 0 else calculate_tdee(bmr, activity_level)
     target_kcal = tdee * (1 + goal_adjustment_for(goal, pace))
 
     protein_g = GOAL_PROTEIN_G_PER_KG[goal] * weight_kg

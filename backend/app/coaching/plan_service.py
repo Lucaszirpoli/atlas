@@ -43,7 +43,7 @@ from app.models.user_profile import (
     UserProfile,
 )
 from app.models.weight_log import WeightLog
-from app.services.nutrition_calc import compute_auto_goal
+from app.services.nutrition_calc import calculate_bmr, calculate_tdee, compute_auto_goal
 
 # Que componentes cada resposta impacta. É o coração da atualização
 # conservadora: mudar o horário do treino não pode refazer a dieta.
@@ -484,9 +484,19 @@ def _rebuild_goals(db: Session, user: User, answers: dict[str, Any]) -> int:
     ).scalar_one_or_none()
     if peso is None:
         raise ValueError("Preciso do seu peso pra calcular as metas.")
+    # O gasto MEDIDO na pessoa entra no lugar do previsto pela fórmula, na
+    # proporção da evidência que existe. Quem acabou de chegar recebe a fórmula
+    # pura; quem já registrou semanas de comida e peso recebe o número dela.
+    from app.coaching import adaptive
+
+    aprendido = adaptive.energia_do_usuario(db, user.id, p, float(peso))
+    tdee = aprendido.aplicar(
+        calculate_tdee(calculate_bmr(p.biological_sex, float(peso), p.height_cm, p.age), p.activity_level)
+    )
     auto = compute_auto_goal(
         biological_sex=p.biological_sex, weight_kg=float(peso), height_cm=p.height_cm,
         age=p.age, activity_level=p.activity_level, goal=p.goal,
+        tdee_override=tdee,
     )
     goal = CalorieGoal(
         user_id=user.id, mode=GoalMode.AUTO, kcal=auto["kcal"],

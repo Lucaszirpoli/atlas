@@ -63,6 +63,29 @@ export type CoachingMetrics = {
     total_exercises: number;
     routines: { id: number; name: string; exercises: number }[];
   } | null;
+  /** O que o coach MEDIU nesta pessoa e já usa nas contas do plano (ver
+   * backend coaching/adaptive.py). Diferente das médias acima, que descrevem
+   * a semana: estes são parâmetros do motor que o histórico dela corrigiu. */
+  learned: LearnedModel | null;
+};
+
+export type LearnedParam = {
+  chave: string;
+  valor: number;
+  confianca: "nenhuma" | "baixa" | "media" | "alta";
+  /** A frase que justifica o número. Um parâmetro que muda o plano de alguém
+   * sem saber se explicar não deveria existir. */
+  evidencia: string;
+  n: number;
+};
+
+export type LearnedModel = {
+  energia: LearnedParam;
+  tolerancia_volume: LearnedParam;
+  ritmo_sessao: LearnedParam;
+  /** Só as chaves que já têm evidência suficiente pra agir. */
+  aprendidos: string[];
+  rotulos: Record<string, string>;
 };
 
 export type SessionLength = "curto" | "medio" | "longo";

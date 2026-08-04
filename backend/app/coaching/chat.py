@@ -124,7 +124,7 @@ def _perfil_lines(profile) -> list[str]:
     ]
 
 
-def _system_prompt(analysis: WeeklyAnalysis, profile=None, retrato=None) -> str:
+def _system_prompt(analysis: WeeklyAnalysis, profile=None, retrato=None, medido=None) -> str:
     m = analysis.metrics
     linhas = [
         "Você é o coach pessoal do usuário dentro do app ATLAS (fitness/nutrição). "
@@ -193,6 +193,12 @@ def _system_prompt(analysis: WeeklyAnalysis, profile=None, retrato=None) -> str:
     if retrato is not None:
         linhas.append("")
         linhas += retrato.prompt_lines()
+    # E o que foi MEDIDO nela — gasto energético real, tolerância a volume,
+    # ritmo por série. Diferente do retrato (comportamento), estes números já
+    # estão dentro das contas do plano, então o coach pode falar deles como
+    # fato, não como impressão.
+    if medido is not None:
+        linhas += medido.prompt_lines()
     return "\n".join(linhas)
 
 
@@ -234,13 +240,21 @@ def answer(
     actions: list[dict] = []
     diet_plan: dict | None = None
     client = get_client()
-    # Perfil + retrato comportamental: o coach fala com quem CONHECE a pessoa.
-    from app.coaching import user_model
+    # Perfil + retrato comportamental + parâmetros medidos: o coach fala com
+    # quem CONHECE a pessoa, e com números que ele mesmo mediu nela.
+    from app.coaching import adaptive, user_model
 
+    from app.services import goal_service
+
+    profile = getattr(user, "profile", None)
+    medido = adaptive.modelo(
+        db, user.id, profile=profile, peso_kg=goal_service.get_latest_weight_kg(db, user.id)
+    )
     system = _system_prompt(
         analysis,
-        profile=getattr(user, "profile", None),
+        profile=profile,
         retrato=user_model.aprender(db, user.id),
+        medido=medido,
     )
 
     try:

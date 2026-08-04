@@ -199,6 +199,7 @@ def weekly_target_sets(
     priority: str = "normal",
     session_length: str | None = None,
     recovery: float = 1.0,
+    tolerance: float = 1.0,
 ) -> int:
     """Séries semanais efetivas pro músculo. `priority`:
 
@@ -221,6 +222,13 @@ def weekly_target_sets(
     tempo de sessão. Num treino curto o que se espreme é o que NÃO é prioridade —
     espremer os dois lados igualmente devolveria o problema original (marcar um
     ponto fraco e não ver diferença), só que por outro caminho.
+
+    `tolerance` é o que o coach APRENDEU vendo a pessoa treinar
+    (coaching/adaptive.tolerancia_a_volume): quanto do prescrito ela de fato
+    executa e quantas sessões termina. Enquanto `recovery` vem do que ela DISSE
+    no questionário, este vem do que ela FEZ — e por isso pesa depois dele.
+    Prescrever 16 séries para quem registra 9 não é ambição, é ignorar o
+    histórico e transformar o plano em ficção.
 
     O teto de recuperação do músculo (MRV ajustado pelo nível) vence sempre:
     prescrever 16 séries de posterior porque virou prioridade não faz o
@@ -247,7 +255,7 @@ def weekly_target_sets(
         # volume pro corpo inteiro) e o INÍCIO dado pelo tempo de sessão.
         alvo = _dentro_da_faixa(BASE_MIN, _band_top(muscle), p, inicio)
 
-    alvo = round(alvo * fator * recovery)
+    alvo = round(alvo * fator * recovery * tolerance)
     teto = mrv if priority == "excepcional" else min(mrv, EXCEPTIONAL_MAX)
     return max(1, min(alvo, teto))
 
@@ -261,6 +269,7 @@ def weekly_plan(
     exceptional: list[MuscleGroup] | None = None,
     session_length: str | None = None,
     recovery: float = 1.0,
+    tolerance: float = 1.0,
 ) -> dict[MuscleGroup, int]:
     """O volume semanal de TODOS os músculos da semana, de uma vez.
 
@@ -303,7 +312,7 @@ def weekly_plan(
         m: weekly_target_sets(
             m, level, weeks_accumulating,
             priority=prioridade(m), session_length=session_length,
-            recovery=recovery,
+            recovery=recovery, tolerance=tolerance,
         )
         for m in muscles
     }
