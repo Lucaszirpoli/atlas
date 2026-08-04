@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from pydantic import BaseModel
 
+from app.ai import diet_engine
 from app.ai.diet_ai import enrich_plan
 from app.ai.diet_engine import MacroTarget, build_diet_plan
 from app.ai.orchestrator import run_chat_turn
@@ -76,7 +77,7 @@ def diet_context(
         target_carbs_g=round(target.carbs_g, 1) if target else None,
         target_fat_g=round(target.fat_g, 1) if target else None,
         has_goal_defined=goal_service.get_current_goal(db, current_user.id) is not None,
-        profile_restrictions=list(profile.dietary_restrictions) if profile else [],
+        profile_restrictions=diet_engine.profile_restrictions(profile),
     )
 
 
@@ -101,7 +102,11 @@ def diet_generate(
         )
 
     meals = max(3, min(payload.meals_per_day, 6))
-    plan = build_diet_plan(db, target, payload.restrictions, meals_per_day=meals, variant=payload.variant)
+    # O que a tela mandou MAIS o que a pessoa já marcou no questionário — o
+    # perfil vale sempre, mesmo quando a tela não reenvia as restrições.
+    profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).one_or_none()
+    restricoes = diet_engine.profile_restrictions(profile, extras=payload.restrictions)
+    plan = build_diet_plan(db, target, restricoes, meals_per_day=meals, variant=payload.variant)
 
     is_pro = current_user.plan == Plan.PRO
     can_use_ai = is_pro or current_user.ai_free_credits > 0

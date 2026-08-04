@@ -21,6 +21,7 @@ import { Card } from "../../components/Card";
 import { HelpDot } from "../../components/HelpDot";
 import { LineChart, type ChartPoint } from "../../components/LineChart";
 import { useTheme } from "../../theme/ThemeProvider";
+import { diaLocal, serieDiaria, tsDoDia } from "../../utils/serieDiaria";
 
 // Tudo num gráfico só: a pessoa liga/desliga métricas (pode escolher mais de
 // uma) e vê as curvas sobrepostas no mesmo gráfico — dá pra perceber relações
@@ -84,13 +85,18 @@ function toPercentChange(points: ChartPoint[]): ChartPoint[] {
 
 type Insight = { icon: keyof typeof Ionicons.glyphMap; text: string };
 
+// Chave de dia LOCAL. Era `toISOString().slice(0,10)`, que devolve o dia em
+// UTC: no Brasil (UTC-3), um treino das 22h virava o dia seguinte e não casava
+// com as chaves de dieta (que o servidor já manda no fuso da pessoa) — as
+// correlações comparavam dias trocados.
 function dayKeyOf(iso: string): string {
-  return new Date(iso).toISOString().slice(0, 10);
+  const d = diaLocal(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 function shiftDay(key: string, n: number): string {
-  const d = new Date(`${key}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
+  const d = diaLocal(key);
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 const avg = (ns: number[]) => ns.reduce((a, b) => a + b, 0) / ns.length;
 const fmtVol = (v: number) => (v >= 1000 ? `${(v / 1000).toFixed(1)}t` : `${Math.round(v)}kg`);
@@ -314,43 +320,30 @@ export function EvolutionScreen() {
   // Dados brutos por métrica (cada função de acesso já sabe converter sua
   // fonte pra {x: timestamp, y: valor}), recortados pelo período escolhido
   // (7/15/30 dias) — todas as métricas usam a mesma janela de tempo.
-  const cutoff = Date.now() - rangeDays * 24 * 60 * 60 * 1000;
+  const cutoff = tsDoDia(Date.now() - (rangeDays - 1) * 24 * 60 * 60 * 1000);
   const inRange = (p: ChartPoint) => p.x >= cutoff;
 
+  // Um ponto por DIA, com o último valor conhecido nos dias sem registro (ver
+  // utils/serieDiaria). O recorte do período vem DEPOIS de preencher: um
+  // registro anterior à janela precisa poder "segurar" o valor dos primeiros
+  // dias dela.
+  const serie = (pts: ChartPoint[]) => serieDiaria(pts).filter(inRange);
+
   const rawByMetric: Record<MetricKey, ChartPoint[]> = {
-    peso: weight.map((p) => ({ x: new Date(p.date).getTime(), y: p.weight_kg })).filter(inRange),
-    treino: volume.map((p) => ({ x: new Date(p.date).getTime(), y: p.volume_kg })).filter(inRange),
-    sono: sleepLogs
-      .map((l) => ({ x: new Date(l.wake_at).getTime(), y: l.duration_minutes / 60 }))
-      .filter(inRange),
-    dieta: nutritionDays
-      .filter((d) => d.kcal > 0)
-      .map((d) => ({ x: new Date(d.date).getTime(), y: d.kcal }))
-      .filter(inRange),
+    peso: serie(weight.map((p) => ({ x: tsDoDia(p.date), y: p.weight_kg }))),
+    treino: serie(volume.map((p) => ({ x: tsDoDia(p.date), y: p.volume_kg }))),
+    sono: serie(sleepLogs.map((l) => ({ x: tsDoDia(l.wake_at), y: l.duration_minutes / 60 }))),
+    dieta: serie(
+      nutritionDays.filter((d) => d.kcal > 0).map((d) => ({ x: tsDoDia(d.date), y: d.kcal }))
+    ),
   };
 
   const activeKeys = useMemo(() => METRICS.map((m) => m.key).filter((k) => active.has(k)), [active]);
   const isMulti = activeKeys.length > 1;
 
-  // "Carrega" o último valor conhecido até hoje: se a pessoa registrou carga
-  // na segunda mas não terça/quarta, o gráfico estende uma linha horizontal
-  // até hoje no mesmo valor — em vez de a linha parar no meio ou a métrica
-  // sumir. Cada métrica pode ter dias faltando sem bagunçar o gráfico; todas
-  // se encaixam na mesma linha do tempo, terminando em "hoje".
-  const nowX = Date.now();
-  function fillToNow(points: ChartPoint[]): ChartPoint[] {
-    if (points.length === 0) return points;
-    const sorted = [...points].sort((a, b) => a.x - b.x);
-    const last = sorted[sorted.length - 1];
-    if (nowX - last.x > 12 * 60 * 60 * 1000) {
-      return [...sorted, { x: nowX, y: last.y }];
-    }
-    return sorted;
-  }
-
   const chartSeries = activeKeys
     .map((key) => {
-      const filled = fillToNow(rawByMetric[key]);
+      const filled = rawByMetric[key];
       if (filled.length === 0) return null;
       const data = isMulti ? toPercentChange(filled) : filled;
       return { key, data, color: metricColor(colors, key), showDots: !isMulti && data.length <= 12 };
@@ -370,17 +363,21 @@ export function EvolutionScreen() {
   // Análise automática do período — recalculada quando os dados ou a janela
   // (7/15/30d) mudam. Tudo derivado dos registros reais; ver buildInsights.
   const analysis = useMemo(() => {
+    // A ANÁLISE usa só os dias REAIS — nada de valor repetido. Repetir a
+    // última refeição registrada em três dias sem registro faria o app
+    // "descobrir" uma correlação com comida que ninguém comeu. O preenchimento
+    // é do desenho da linha; a conclusão vem do que aconteceu de fato.
     const sleepDays = sleepLogs
-      .filter((l) => new Date(l.wake_at).getTime() >= cutoff)
+      .filter((l) => tsDoDia(l.wake_at) >= cutoff)
       .map((l) => ({ day: dayKeyOf(l.wake_at), hours: l.duration_minutes / 60 }));
     const kcalDays = nutritionDays
-      .filter((d) => d.kcal > 0 && new Date(d.date).getTime() >= cutoff)
+      .filter((d) => d.kcal > 0 && tsDoDia(d.date) >= cutoff)
       .map((d) => ({ day: d.date, kcal: d.kcal }));
     const volDays = volume
-      .filter((v) => new Date(v.date).getTime() >= cutoff)
+      .filter((v) => tsDoDia(v.date) >= cutoff)
       .map((v) => ({ day: dayKeyOf(v.date), volume: v.volume_kg }));
     const weightPts = weight
-      .map((p) => ({ x: new Date(p.date).getTime(), y: p.weight_kg }))
+      .map((p) => ({ x: tsDoDia(p.date), y: p.weight_kg }))
       .filter((p) => p.x >= cutoff);
     const hasAnyData = sleepDays.length + kcalDays.length + volDays.length + weightPts.length > 0;
     return {

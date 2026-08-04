@@ -167,12 +167,98 @@ TORSO_LIMBS_SPLIT: list[str] = ["torso a", "membros a", "torso b", "membros b"]
 TORSO_LIMBS_WEAK_POINTS: frozenset[str] = frozenset({"biceps", "triceps", "calves"})
 
 
-def coach_split_for(days: int, weak_points: list[str] | None = None) -> list[str]:
-    """O split do coach pra `days` dias, já considerando ponto fraco.
+# --- Divisão escolhida pela pessoa -----------------------------------------
+# "Não gosto de treino de superior e inferior" é um pedido legítimo, e até aqui
+# não tinha para onde ir: a divisão saía só do número de dias. Estes são os
+# ciclos que uma preferência explícita produz — repetidos até cobrir os dias.
+_PREFERRED_CYCLES: dict[str, list[str]] = {
+    "full_body": ["full body a", "full body b", "full body c"],
+    "upper_lower": ["superior a", "inferior a", "superior b", "inferior b"],
+    "push_pull_legs": ["push a", "pull a", "pernas a", "push b", "pull b", "pernas b"],
+}
 
-    Só um caso muda a divisão: 4 dias com ponto fraco em músculo menor vira
-    Torso/Limbs. Todo o resto é o mapa acima.
+# Em QUANTOS dias por semana cada divisão continua entregando um treino bom.
+# Não são chutes: cada faixa saiu de montar o plano e medir cobertura por grupo
+# e equilíbrio empurrar×puxar (a mesma revisão de plan_review que roda em
+# produção).
+#
+#   full_body      2–3  Em 4+ dias, bíceps e glúteo caem pra menos de 2 vagas
+#                       por semana e o equilíbrio empurrar×puxar quebra: a
+#                       divisão preferida sairia PIOR que a automática.
+#   upper_lower    4–6  Limpo em 4, 5 e 6 dias.
+#   push_pull_legs  6    Em 3 ou 4 dias cada padrão é treinado 1×/semana, o que
+#                       fura a frequência mínima (regra 6 do projeto).
+#
+# Fora da faixa a preferência NÃO é aplicada e o coach DIZ isso. Entregar em
+# silêncio uma divisão diferente da combinada foi exatamente o defeito que o
+# usuário viu: o chat afirmava ter mudado a rotina e nada mudava.
+SPLIT_DAY_RANGE: dict[str, tuple[int, int]] = {
+    "full_body": (2, 3),
+    "upper_lower": (4, 6),
+    "push_pull_legs": (6, 6),
+}
+
+SPLIT_LABEL: dict[str, str] = {
+    "full_body": "corpo inteiro",
+    "upper_lower": "superior/inferior",
+    "push_pull_legs": "empurrar, puxar e pernas",
+}
+
+
+def split_preference_fits(preference: str | None, days: int) -> bool:
+    """A divisão pedida cabe nessa frequência sem piorar o treino?"""
+    if not preference or preference == "auto" or preference not in _PREFERRED_CYCLES:
+        return False
+    minimo, maximo = SPLIT_DAY_RANGE[preference]
+    return minimo <= days <= maximo
+
+
+def splits_possible_for(days: int) -> list[str]:
+    """As divisões que essa frequência comporta — o que o coach pode oferecer
+    de verdade quando a pessoa não gosta da que recebeu."""
+    return [p for p in _PREFERRED_CYCLES if split_preference_fits(p, days)]
+
+
+def split_preference_note(preference: str | None, days: int) -> str | None:
+    """A frase honesta pra quem pediu uma divisão que não cabe na frequência.
+    None quando não há nada a explicar (sem preferência, ou atendida)."""
+    if not preference or preference == "auto" or preference not in _PREFERRED_CYCLES:
+        return None
+    if split_preference_fits(preference, days):
+        return None
+    minimo, maximo = SPLIT_DAY_RANGE[preference]
+    if days < minimo:
+        motivo = (
+            f"ela precisa de pelo menos {minimo} dias por semana pra treinar cada músculo 2× — "
+            f"com {days} dias, parte do corpo ficaria treinando 1× por semana"
+        )
+        saida = f"pra usá-la, suba pra {minimo} dias"
+    else:
+        motivo = (
+            f"acima de {maximo} dias ela deixa bíceps e glúteo com menos volume que o "
+            "necessário e desequilibra empurrar × puxar"
+        )
+        saida = f"pra usá-la, desça pra {maximo} dias"
+    return (
+        f"Você prefere a divisão {SPLIT_LABEL[preference]}, mas {motivo}. Montei a melhor "
+        f"divisão pros seus {days} dias — {saida}."
+    )
+
+
+def coach_split_for(
+    days: int, weak_points: list[str] | None = None, preference: str | None = None
+) -> list[str]:
+    """O split do coach pra `days` dias, considerando ponto fraco e a divisão
+    que a pessoa escolheu.
+
+    Ordem de decisão:
+    1. preferência explícita que CABE na frequência — manda;
+    2. 4 dias com ponto fraco em músculo menor vira Torso/Limbs;
+    3. o mapa por número de dias.
     """
+    if split_preference_fits(preference, days):
+        ciclo = _PREFERRED_CYCLES[preference]  # type: ignore[index]
+        return [ciclo[i % len(ciclo)] for i in range(days)]
     if days == 4 and any(w in TORSO_LIMBS_WEAK_POINTS for w in (weak_points or [])):
         return list(TORSO_LIMBS_SPLIT)
     base = _COACH_SPLITS.get(days)

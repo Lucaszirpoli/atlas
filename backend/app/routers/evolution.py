@@ -1,9 +1,18 @@
 """Endpoints de evolução/histórico agregado (espec. seção 3.8) — gráficos
 de peso, volume de treino e progressão de carga por exercício. Tudo lido do
-histórico append-only, sem nada destrutivo."""
+histórico append-only, sem nada destrutivo.
+
+FUSO: este arquivo fatiava os dias em UTC (`datetime.now(timezone.utc).date()`)
+enquanto o resto do app já fatiava no fuso da PESSOA (app/core/usertime.py).
+No Brasil (UTC-3) isso jogava tudo o que era registrado depois das 21h para o
+dia seguinte, e fazia o app discordar do calendário do celular sobre que dia é
+hoje — o que sujava a grade de constância, a sequência e os rótulos dos
+gráficos. Agora todo `.date()` daqui passa por `local_date`/`today_local`.
+"""
 
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
@@ -11,6 +20,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.db import get_db
 from app.core.security import get_current_user
+from app.core.usertime import local_date, profile_tz, today_local, window_start_utc
 from app.models.calorie_goal import CalorieGoal
 from app.models.exercise import Exercise
 from app.models.meal import MealLog, MealLogItem
@@ -34,6 +44,16 @@ from app.schemas.evolution import (
 from app.services import water_service
 
 router = APIRouter(prefix="/evolution", tags=["evolution"])
+
+
+def _tz(user: User) -> ZoneInfo:
+    return profile_tz(getattr(user, "profile", None))
+
+
+def _janela(days: int, tz: ZoneInfo) -> tuple[datetime, date]:
+    """(início em UTC, primeiro dia local) da janela dos últimos `days` dias de
+    CALENDÁRIO da pessoa — o mesmo recorte que ela vê no celular."""
+    return window_start_utc(days, tz), today_local(tz) - timedelta(days=days - 1)
 
 
 @router.get("/weight", response_model=list[WeightPoint])
@@ -145,8 +165,7 @@ def strength_by_group(
     entra com a variação % entre sua primeira e última sessão na janela;
     exercícios com uma sessão só ficam de fora (não têm variação)."""
     days = max(7, min(days, 90))
-    since = datetime.now(timezone.utc) - timedelta(days=days - 1)
-    since = since.replace(hour=0, minute=0, second=0, microsecond=0)
+    since, _ = _janela(days, _tz(current_user))
 
     rows = db.execute(
         select(
@@ -212,8 +231,8 @@ def nutrition_history(
     """Total de calorias por dia nos últimos N dias (janela móvel), mais a
     meta calórica atual para calcular adesão — base do módulo Dieta."""
     days = max(1, min(days, 60))
-    since = datetime.now(timezone.utc) - timedelta(days=days - 1)
-    since = since.replace(hour=0, minute=0, second=0, microsecond=0)
+    tz = _tz(current_user)
+    since, primeiro_dia = _janela(days, tz)
 
     meals = db.execute(
         select(MealLog)
@@ -226,7 +245,7 @@ def nutrition_history(
     carb_day: dict[str, float] = defaultdict(float)
     fat_day: dict[str, float] = defaultdict(float)
     for meal in meals:
-        key = meal.logged_at.date().isoformat()
+        key = local_date(meal.logged_at, tz).isoformat()
         per_day[key] += sum(i.kcal for i in meal.items)
         prot_day[key] += sum(i.protein_g for i in meal.items)
         carb_day[key] += sum(i.carbs_g for i in meal.items)
@@ -242,7 +261,7 @@ def nutrition_history(
 
     result = []
     for offset in range(days):
-        d = (since + timedelta(days=offset)).date()
+        d = primeiro_dia + timedelta(days=offset)
         key = d.isoformat()
         result.append({
             "date": d.isoformat(),
@@ -279,10 +298,17 @@ def consistency(
     meta, dieta registrada), quantos a pessoa cumpriu em cada dia — vira o
     'quão responsável eu tenho sido' com filtro por hábito no app. Tom sempre
     informativo, nunca de culpa (espec. 3.7): um dia sem registro é só isso,
-    não uma falha."""
+    não uma falha.
+
+    A SEQUÊNCIA (e o recorde) contam DIA ATIVO, não "2 dos 4 hábitos". Exigir
+    metade dos hábitos fazia a sequência ficar parada em zero pra quem usa o app
+    todo dia mas não fecha os quatro — a pessoa registrava o almoço, o app dizia
+    "0 dias seguidos", e o número que existe pra dar constância virava punição.
+    Qualquer registro do dia (treino, comida, água ou sono) mantém a sequência
+    viva; os hábitos continuam aparecendo um a um na grade."""
     days = max(7, min(days, 90))
-    since = datetime.now(timezone.utc) - timedelta(days=days - 1)
-    since = since.replace(hour=0, minute=0, second=0, microsecond=0)
+    tz = _tz(current_user)
+    since, primeiro_dia = _janela(days, tz)
 
     trained_days: set[str] = set()
     sessions = db.execute(
@@ -293,23 +319,26 @@ def consistency(
         )
     ).scalars()
     for completed_at in sessions:
-        trained_days.add(completed_at.date().isoformat())
+        trained_days.add(local_date(completed_at, tz).isoformat())
 
     slept_well_days: set[str] = set()
+    slept_days: set[str] = set()
     sleep_logs = db.execute(
         select(SleepLog).where(SleepLog.user_id == current_user.id, SleepLog.wake_at >= since)
     ).scalars()
     for log in sleep_logs:
+        key = local_date(log.wake_at, tz).isoformat()
+        slept_days.add(key)
         duration_min = (log.wake_at - log.sleep_at).total_seconds() / 60
         if duration_min >= 7 * 60:
-            slept_well_days.add(log.wake_at.date().isoformat())
+            slept_well_days.add(key)
 
     water_per_day: dict[str, int] = defaultdict(int)
     water_logs = db.execute(
         select(WaterLog).where(WaterLog.user_id == current_user.id, WaterLog.logged_at >= since)
     ).scalars()
     for log in water_logs:
-        water_per_day[log.logged_at.date().isoformat()] += log.amount_ml
+        water_per_day[local_date(log.logged_at, tz).isoformat()] += log.amount_ml
     goal_ml = water_service.compute_goal_ml(db, current_user.id)
 
     logged_food_days: set[str] = set()
@@ -317,11 +346,20 @@ def consistency(
         select(MealLog).where(MealLog.user_id == current_user.id, MealLog.logged_at >= since)
     ).scalars()
     for meal in meals:
-        logged_food_days.add(meal.logged_at.date().isoformat())
+        logged_food_days.add(local_date(meal.logged_at, tz).isoformat())
+
+    # Peso também conta como "usei o app hoje" — pesar-se é registro.
+    weighed_days: set[str] = set()
+    for recorded_at in db.execute(
+        select(WeightLog.recorded_at).where(
+            WeightLog.user_id == current_user.id, WeightLog.recorded_at >= since
+        )
+    ).scalars():
+        weighed_days.add(local_date(recorded_at, tz).isoformat())
 
     result = []
     for offset in range(days):
-        d = (since + timedelta(days=offset)).date()
+        d = primeiro_dia + timedelta(days=offset)
         key = d.isoformat()
         trained = key in trained_days
         slept_well = key in slept_well_days
@@ -335,35 +373,49 @@ def consistency(
                 "slept_well": slept_well,
                 "hydrated": hydrated,
                 "logged_food": logged_food,
+                "active": bool(
+                    trained
+                    or logged_food
+                    or key in slept_days
+                    or key in weighed_days
+                    or water_per_day.get(key, 0) > 0
+                ),
                 "score": round(habits_done / 4 * 100),
             }
         )
 
-    # Sequência atual: dias consecutivos (voltando de hoje) com score >= 50
-    # (pelo menos 2 dos 4 hábitos). Hoje ainda não "acabou" — se ainda não
-    # bateu 50, não quebra a sequência, só não conta ainda (dá tempo).
-    today_key = datetime.now(timezone.utc).date().isoformat()
-    current_streak = 0
-    skipped_today = False
-    for r in reversed(result):
-        if r["score"] >= 50:
-            current_streak += 1
-        elif r["date"] == today_key and not skipped_today:
-            skipped_today = True
-        else:
-            break
-
-    best_streak = 0
-    running = 0
-    for r in result:
-        if r["score"] >= 50:
-            running += 1
-            best_streak = max(best_streak, running)
-        else:
-            running = 0
-
+    current_streak, best_streak = compute_streaks(result, today_local(tz).isoformat())
     return {
         "days": result,
         "current_streak": current_streak,
         "best_streak": best_streak,
     }
+
+
+def compute_streaks(days: list[dict], hoje: str) -> tuple[int, int]:
+    """(sequência atual, recorde) a partir dos dias em ordem cronológica.
+
+    Duas regras que existem pra proteger a pessoa, não o número:
+    - HOJE ainda não acabou. Se ela ainda não registrou nada hoje, isso não
+      quebra a sequência — ela tem o dia inteiro pra abrir o app.
+    - o recorde nunca fica ABAIXO da sequência atual: a janela é de 90 dias, e
+      uma sequência que começou antes dela apareceria cortada pela metade.
+    """
+    atual = 0
+    for r in reversed(days):
+        if r["active"]:
+            atual += 1
+        elif r["date"] == hoje:
+            continue
+        else:
+            break
+
+    recorde = 0
+    corrida = 0
+    for r in days:
+        if r["active"]:
+            corrida += 1
+            recorde = max(recorde, corrida)
+        else:
+            corrida = 0
+    return atual, max(recorde, atual)

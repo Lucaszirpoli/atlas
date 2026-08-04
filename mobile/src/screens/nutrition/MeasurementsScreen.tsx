@@ -1,23 +1,19 @@
-import { Ionicons } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
+// FOTOS DE PROGRESSO saíram desta tela a pedido do usuário: aqui ficam só as
+// MEDIDAS. O acervo de quem já tinha fotos continua no servidor (histórico é
+// append-only) — o que sumiu é a porta de entrada para novas.
 import React, { useEffect, useState } from "react";
-import { Alert, Image, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, Text, TextInput, View } from "react-native";
 
-import { shareProgressPhoto } from "../../api/feed";
 import {
   createMeasurement,
-  createProgressPhoto,
   listMeasurements,
-  listProgressPhotos,
   type BodyMeasurement,
   type MeasurementType,
-  type ProgressPhoto,
 } from "../../api/measurements";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { OptionButton } from "../../components/OptionButton";
 import { useTheme } from "../../theme/ThemeProvider";
-import { persistProgressPhoto, resolveProgressPhotoUri } from "../../utils/photoStorage";
 
 const MEASUREMENT_LABELS: Record<MeasurementType, string> = {
   waist: "Cintura",
@@ -34,15 +30,12 @@ export function MeasurementsScreen() {
   const { colors, type, spacing, radius } = useTheme();
 
   const [measurements, setMeasurements] = useState<BodyMeasurement[]>([]);
-  const [photos, setPhotos] = useState<ProgressPhoto[]>([]);
   const [selectedType, setSelectedType] = useState<MeasurementType>("waist");
   const [valueCm, setValueCm] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function load() {
-    const [m, p] = await Promise.all([listMeasurements(), listProgressPhotos()]);
-    setMeasurements(m);
-    setPhotos(p);
+    setMeasurements(await listMeasurements());
   }
 
   useEffect(() => {
@@ -63,21 +56,6 @@ export function MeasurementsScreen() {
     } finally {
       setIsSubmitting(false);
     }
-  }
-
-  async function handleAddPhoto() {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert("Permissão necessária", "Precisamos acessar suas fotos para isso.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.8 });
-    if (result.canceled || !result.assets[0]) return;
-    // copia pra pasta permanente do app antes de salvar (a URI do picker é
-    // temporária — some quando o sistema limpa o cache).
-    const persistedKey = await persistProgressPhoto(result.assets[0].uri);
-    await createProgressPhoto(persistedKey);
-    await load();
   }
 
   return (
@@ -128,7 +106,15 @@ export function MeasurementsScreen() {
       </Card>
 
       {/* Histórico */}
-      {measurements.length > 0 ? (
+      {measurements.length === 0 ? (
+        <Card>
+          <View style={{ alignItems: "center", paddingVertical: spacing.md }}>
+            <Text style={[type.bodySmall, { color: colors.textSecondary, textAlign: "center" }]}>
+              A fita métrica enxerga o que a balança não vê:{"\n"}a cintura pode cair sem o peso mudar.
+            </Text>
+          </View>
+        </Card>
+      ) : (
         <>
           <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.sm, letterSpacing: 1, textTransform: "uppercase" }]}>
             Histórico
@@ -158,50 +144,6 @@ export function MeasurementsScreen() {
             ))}
           </Card>
         </>
-      ) : null}
-
-      {/* Fotos */}
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.sm }}>
-        <Text style={[type.caption, { color: colors.textSecondary, letterSpacing: 1, textTransform: "uppercase" }]}>
-          Fotos de progresso
-        </Text>
-        <TouchableOpacity onPress={handleAddPhoto} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-          <Ionicons name="add-circle" size={18} color={colors.primary} />
-          <Text style={[type.caption, { color: colors.primary, fontWeight: "700" }]}>Adicionar</Text>
-        </TouchableOpacity>
-      </View>
-      {photos.length === 0 ? (
-        <Card>
-          <View style={{ alignItems: "center", paddingVertical: spacing.md }}>
-            <Ionicons name="images-outline" size={34} color={colors.textSecondary} />
-            <Text style={[type.bodySmall, { color: colors.textSecondary, marginTop: spacing.sm, textAlign: "center" }]}>
-              Fotos motivam mais que a balança:{"\n"}a mudança visual aparece antes do peso mudar.
-            </Text>
-          </View>
-        </Card>
-      ) : (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {photos.map((photo) => (
-            <View key={photo.id} style={{ marginRight: spacing.sm, alignItems: "center" }}>
-              <Image
-                source={{ uri: resolveProgressPhotoUri(photo.photo_url) }}
-                style={{ width: 110, height: 145, borderRadius: radius.card }}
-              />
-              <Text style={[type.caption, { color: colors.textSecondary, marginTop: 4 }]}>
-                {new Date(photo.recorded_at).toLocaleDateString("pt-BR")}
-              </Text>
-              <Text
-                style={[type.caption, { color: colors.primary, fontWeight: "700" }]}
-                onPress={async () => {
-                  await shareProgressPhoto(photo.id);
-                  Alert.alert("Compartilhado", "A foto foi para o seu feed social.");
-                }}
-              >
-                Compartilhar
-              </Text>
-            </View>
-          ))}
-        </ScrollView>
       )}
     </ScrollView>
   );

@@ -205,7 +205,14 @@ def _build_personal_diet(current_user: User, db: Session):
             detail="Preciso da sua meta de calorias pra montar sua dieta.",
         )
     respostas = plano.answers or {}
-    restricoes = [str(x) for x in (respostas.get("dietary_restrictions") or [])]
+    # As DUAS listas do questionário: restrições alimentares e "alimentos que
+    # você não come". Só a primeira chegava aqui — era por isso que marcar
+    # "sem whey protein" não impedia o whey de aparecer no cardápio.
+    restricoes = [
+        str(x)
+        for chave in ("dietary_restrictions", "food_dislikes_list")
+        for x in (respostas.get(chave) or [])
+    ]
     try:
         refeicoes = int(respostas.get("meals_per_day") or 4)
     except (TypeError, ValueError):
@@ -227,7 +234,10 @@ def get_personal_diet(
         "tagline": "Montada pelo Coaching com base no seu questionário",
         "meals": d["meals"],
         "totals": d["totals"],
-        "restrictions": d["restrictions"],
+        # Etiquetas humanas: a tela mostrava o token cru ("sem_lactose",
+        # "whey"), que é linguagem de banco de dados, não do usuário.
+        "restrictions": questionnaire.food_token_labels(d["restrictions"]),
+        "not_applied": questionnaire.food_token_labels(d["not_applied"]),
     }
 
 

@@ -65,6 +65,10 @@ class ConsistencyDay(BaseModel):
     slept_well: bool
     hydrated: bool
     logged_food: bool
+    # Registrou QUALQUER coisa neste dia (inclusive peso e água fora da meta).
+    # É o que sustenta a sequência — sem declarar aqui, o response_model do
+    # FastAPI descartaria o campo silenciosamente.
+    active: bool = False
     score: int
 
 

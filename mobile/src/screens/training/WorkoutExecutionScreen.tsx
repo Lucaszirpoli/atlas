@@ -6,11 +6,17 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { listWorkoutOverlays, type WorkoutOverlay } from "../../api/coaching";
 import { CoachOverlayBlock, DeloadBanner } from "../../components/CoachOverlay";
-import { getRoutine, type Routine } from "../../api/routines";
+import {
+  getRoutine,
+  swapRoutineExercise,
+  type Routine,
+  type RoutineExercise,
+} from "../../api/routines";
 import {
   completeWorkoutSession,
   discardWorkoutSession,
   getAvgWorkoutDuration,
+  getWorkoutPreview,
   logSet,
   type BlockStatus,
   type ExercisePrefill,
@@ -22,6 +28,7 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DurationCheckModal } from "../../components/DurationCheckModal";
 import { ExerciseThumb } from "../../components/ExerciseThumb";
 import { HelpDot } from "../../components/HelpDot";
+import { InfoDialog } from "../../components/InfoDialog";
 import { OptionButton } from "../../components/OptionButton";
 import { RestTimerOverlay } from "../../components/RestTimerOverlay";
 import { useActiveWorkout } from "../../context/ActiveWorkoutContext";
@@ -76,6 +83,59 @@ function nextQuickType(current: SetType): SetType {
   return QUICK_TYPE_CYCLE[(idx + 1) % QUICK_TYPE_CYCLE.length] ?? "warmup";
 }
 
+/** As linhas de série de UM exercício: rampa de preparação (do histórico) +
+ * séries de trabalho pré-preenchidas + a estrutura da técnica avançada quando
+ * o coach prescreveu uma.
+ *
+ * Vive fora do componente porque agora tem DOIS chamadores: a montagem inicial
+ * da tela e a troca de exercício no meio do treino (que precisa reconstruir só
+ * a vaga trocada, com o histórico do exercício que entrou). */
+function linhasDoExercicio(
+  routineExercise: { target_sets: number; set_intents?: (string | null)[] | null },
+  pre: ExercisePrefill | undefined,
+  overlays: WorkoutOverlay[],
+  exerciseId: number
+): SetRow[] {
+  const prepRows: SetRow[] = (pre?.warmup_feeder ?? []).map((w) => ({
+    weight: w.weight_kg != null ? String(w.weight_kg) : "",
+    reps: String(w.reps_max),
+    completed: false,
+    setType: w.kind,
+    rpe: "",
+    rir: "",
+    showMore: false,
+    role: "prep" as const,
+  }));
+  const workRows: SetRow[] = Array.from({ length: routineExercise.target_sets }, (_, i) => {
+    const previous = pre?.sets[i];
+    // Intenção que o coach definiu ao montar a rotina (até a falha) já vem
+    // pré-marcada no badge, com o RIR sugerido pro momento do ciclo — a pessoa
+    // não precisa lembrar de marcar na hora. Rotina sem intenção (manual) cai
+    // no normal.
+    const isFailure = routineExercise.set_intents?.[i] === "to_failure";
+    return {
+      // Arredonda pro input não mostrar ruído de float (54.599999… → "54.6").
+      weight: previous ? String(Math.round(previous.weight_kg * 10) / 10) : "",
+      reps: previous ? String(previous.reps) : "",
+      completed: false,
+      setType: (isFailure ? "to_failure" : "straight") as SetType,
+      rpe: "",
+      rir: isFailure ? "0" : String(pre?.suggested_rir ?? 2),
+      showMore: false,
+      previous,
+      role: "work" as const,
+    };
+  });
+
+  // Técnica avançada prescrita pelo coach: a última série de trabalho vira a
+  // estrutura do método (ativação + blocos, ou quedas de carga).
+  const tech = prescriptionFor(overlays, exerciseId);
+  const finais = tech
+    ? expandTechnique(workRows, tech, workRows[workRows.length - 1]?.weight ?? "")
+    : workRows;
+  return [...prepRows, ...finais];
+}
+
 const RIR_OPTIONS = [4, 3, 2, 1, 0];
 
 // Cor de cada status de bloco — verde fechou, âmbar veio pela metade,
@@ -101,12 +161,15 @@ export function WorkoutExecutionScreen() {
       return () => setOnWorkoutScreen(false);
     }, [setOnWorkoutScreen])
   );
-  const { sessionId, routineId, prefill } = route.params as {
+  const { sessionId, routineId, prefill: prefillInicial } = route.params as {
     sessionId: number;
     routineId: number;
     prefill: ExercisePrefill[];
   };
 
+  // O prefill deixou de ser fixo: trocar um exercício no meio do treino traz
+  // o histórico do exercício que ENTROU (cargas, rampa de aquecimento, RIR).
+  const [prefill, setPrefill] = useState<ExercisePrefill[]>(prefillInicial);
   const [routine, setRoutine] = useState<Routine | null>(null);
   const [overlays, setOverlays] = useState<WorkoutOverlay[]>([]);
   // Todos os exercícios ficam na tela ao mesmo tempo (rolagem única) — sem
@@ -134,6 +197,12 @@ export function WorkoutExecutionScreen() {
     setOpenBlock((prev) => ({ ...prev, [groupKey]: prev[groupKey] === blockIdx ? null : blockIdx }));
   }
 
+  // Troca de exercício DURANTE o treino: qual vaga a pessoa pediu pra trocar
+  // (diálogo aberto), qual está trocando agora, e o que o coach respondeu.
+  const [trocando, setTrocando] = useState<{ re: RoutineExercise; idx: number } | null>(null);
+  const [emTroca, setEmTroca] = useState<number | null>(null);
+  const [resultadoTroca, setResultadoTroca] = useState<{ titulo: string; texto: string } | null>(null);
+
   // Monta a tela: rotina + overlays do coach juntos, porque a TÉCNICA prescrita
   // muda a estrutura das séries — montar primeiro e corrigir depois faria as
   // linhas piscarem. Se houver rascunho desta sessão, ele vence (a pessoa já
@@ -157,52 +226,16 @@ export function WorkoutExecutionScreen() {
         return;
       }
 
-      const initial = r.exercises.map((re) => {
-        const pre = prefill.find((p) => p.exercise_id === re.exercise_id);
-        // Rampa de aquecimento/feeder (calculada da carga real de trabalho)
-        // vem ANTES das séries de trabalho — já com peso/reps sugeridos,
-        // editáveis como qualquer série.
-        const prepRows: SetRow[] = (pre?.warmup_feeder ?? []).map((w) => ({
-          weight: w.weight_kg != null ? String(w.weight_kg) : "",
-          reps: String(w.reps_max),
-          completed: false,
-          setType: w.kind,
-          rpe: "",
-          rir: "",
-          showMore: false,
-          role: "prep" as const,
-        }));
-        const workRows: SetRow[] = Array.from({ length: re.target_sets }, (_, i) => {
-          const previous = pre?.sets[i];
-          // Intenção que o coach definiu ao montar a rotina (até a falha) já
-          // vem pré-marcada no badge, com o RIR sugerido pro momento do ciclo
-          // — a pessoa não precisa lembrar de marcar na hora. Rotina sem
-          // intenção (manual) cai no normal.
-          const intent = re.set_intents?.[i];
-          const isFailure = intent === "to_failure";
-          return {
-            // Arredonda pro input não mostrar ruído de float (54.599999… → "54.6").
-            weight: previous ? String(Math.round(previous.weight_kg * 10) / 10) : "",
-            reps: previous ? String(previous.reps) : "",
-            completed: false,
-            setType: (isFailure ? "to_failure" : "straight") as SetType,
-            rpe: "",
-            rir: isFailure ? "0" : String(pre?.suggested_rir ?? 2),
-            showMore: false,
-            previous,
-            role: "work" as const,
-          };
-        });
-
-        // Técnica avançada prescrita pelo coach: a última série de trabalho
-        // vira a estrutura do método (ativação + blocos, ou quedas de carga).
-        const tech = prescriptionFor(ovs, re.exercise_id);
-        const finais = tech
-          ? expandTechnique(workRows, tech, workRows[workRows.length - 1]?.weight ?? "")
-          : workRows;
-        return [...prepRows, ...finais];
-      });
-      setSetsByExercise(initial);
+      setSetsByExercise(
+        r.exercises.map((re) =>
+          linhasDoExercicio(
+            re,
+            prefill.find((p) => p.exercise_id === re.exercise_id),
+            ovs,
+            re.exercise_id
+          )
+        )
+      );
       setPronto(true);
     })();
     return () => {
@@ -233,6 +266,50 @@ export function WorkoutExecutionScreen() {
         i === exerciseIndex ? rows.map((row, j) => (j === setIdx ? { ...row, ...patch } : row)) : rows
       )
     );
+  }
+
+  /** Troca um exercício COM O TREINO EM ANDAMENTO. Quem escolhe o substituto é
+   * o servidor (mesmas regras da prévia); aqui só se diz qual vaga sai.
+   *
+   * A vaga já registrada não pode ser trocada: as séries confirmadas ficaram
+   * gravadas no exercício ANTIGO (histórico é append-only), então a partir daí
+   * a sessão teria duas metades de exercícios diferentes numa vaga só — e o
+   * pré-preenchido da próxima vez sairia do lugar errado. Nesse caso a pessoa
+   * é avisada, em vez de a troca falhar em silêncio. */
+  async function trocarExercicio(alvo: RoutineExercise, idx: number) {
+    setEmTroca(alvo.id);
+    try {
+      const r = await swapRoutineExercise(routineId, alvo.id);
+      const novaRotina = r.routine;
+      setRoutine(novaRotina);
+      // O histórico é POR EXERCÍCIO: sem recarregar o prefill, a vaga nova
+      // mostraria a carga do exercício que acabou de sair.
+      const novoPrefill = await getWorkoutPreview(routineId).catch(() => prefill);
+      setPrefill(novoPrefill);
+      const nova = novaRotina.exercises[idx];
+      if (nova) {
+        setSetsByExercise((prev) =>
+          prev.map((rows, i) =>
+            i === idx
+              ? linhasDoExercicio(
+                  nova,
+                  novoPrefill.find((p) => p.exercise_id === nova.exercise_id),
+                  overlays,
+                  nova.exercise_id
+                )
+              : rows
+          )
+        );
+      }
+      setResultadoTroca({ titulo: `Entrou ${r.exercicio_novo}`, texto: r.motivo });
+    } catch (err: any) {
+      setResultadoTroca({
+        titulo: "Não deu pra trocar",
+        texto: mensagemDeErro(err, "Tente de novo daqui a pouco."),
+      });
+    } finally {
+      setEmTroca(null);
+    }
   }
 
   // Rest-pause (técnica "singles"): a carga é UMA só pra todas as repetições
@@ -460,6 +537,37 @@ export function WorkoutExecutionScreen() {
                   equipment={routineExercise.exercise.equipment}
                 />
                 <Text style={[type.h2, { color: colors.textPrimary, flex: 1 }]}>{routineExercise.exercise.name}</Text>
+
+                {/* TROCAR EXERCÍCIO — a mesma setinha da prévia, agora também
+                    com o treino em andamento: a máquina pode estar ocupada, o
+                    ombro pode reclamar na primeira série, e nada disso é hora
+                    de sair do treino pra editar a rotina. Some depois que a
+                    primeira série da vaga é registrada (ver trocarExercicio). */}
+                {completedCount > 0 ? null : emTroca === routineExercise.id ? (
+                  <View style={{ width: 38, height: 38, alignItems: "center", justifyContent: "center" }}>
+                    <ActivityIndicator color={colors.primary} />
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => setTrocando({ re: routineExercise, idx: exerciseIndex })}
+                    disabled={emTroca !== null}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Trocar ${routineExercise.exercise.name} por outro exercício`}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: radius.pill,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: colors.surfaceAlt,
+                      opacity: emTroca !== null ? 0.4 : 1,
+                    }}
+                  >
+                    <Ionicons name="swap-horizontal-outline" size={19} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                )}
               </View>
               <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.sm, marginBottom: spacing.sm }}>
                 <Meta icon="repeat" text={`${routineExercise.target_sets}x ${routineExercise.target_reps_min}${routineExercise.target_reps_max ? `-${routineExercise.target_reps_max}` : ""} reps`} />
@@ -881,6 +989,30 @@ export function WorkoutExecutionScreen() {
         onConfirm={(minutes) => finishWith(minutes)}
         onKeepMeasured={() => finishWith(durationCheck ?? undefined)}
         saving={isCompleting}
+      />
+
+      <ConfirmDialog
+        visible={trocando !== null}
+        onClose={() => setTrocando(null)}
+        title="Trocar este exercício agora?"
+        message={
+          trocando
+            ? `Quem escolhe o substituto de ${trocando.re.exercise.name} é o coach — vem outro exercício ` +
+              "para o mesmo músculo, com o mesmo papel no treino e respeitando suas preferências. " +
+              "As séries e reps continuam iguais, e a troca vale também para as próximas vezes."
+            : undefined
+        }
+        confirmLabel="Trocar"
+        onConfirm={() => {
+          if (trocando) trocarExercicio(trocando.re, trocando.idx);
+        }}
+      />
+
+      <InfoDialog
+        visible={resultadoTroca !== null}
+        onClose={() => setResultadoTroca(null)}
+        title={resultadoTroca?.titulo ?? ""}
+        message={resultadoTroca?.texto}
       />
     </KeyboardAvoidingView>
   );

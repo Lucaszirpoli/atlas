@@ -42,7 +42,10 @@ _LABEL = dict(training_brain.WEAK_POINTS)
 
 
 def grupos_sem_vaga(
-    days: int, session_length: str | None, weak_points: list[str] | None = None
+    days: int,
+    session_length: str | None,
+    weak_points: list[str] | None = None,
+    split_preference: str | None = None,
 ) -> list[MuscleGroup]:
     """Grupos musculares que NÃO ganham exercício próprio nesta combinação.
 
@@ -54,7 +57,7 @@ def grupos_sem_vaga(
     alvo = training_brain.session_exercise_target(session_length)
     fracos = set(training_brain.valid_weak_points(weak_points))
     com_vaga: set[MuscleGroup] = set()
-    for focus in coach_split_for(days, list(fracos)):
+    for focus in coach_split_for(days, list(fracos), split_preference):
         for vaga in bp.fit_to_target(bp.blueprint_for(focus), alvo):
             com_vaga.add(vaga.muscle)
     return [
@@ -62,12 +65,14 @@ def grupos_sem_vaga(
     ]
 
 
-def tempo_recomendado(days: int, weak_points: list[str] | None = None) -> str | None:
+def tempo_recomendado(
+    days: int, weak_points: list[str] | None = None, split_preference: str | None = None
+) -> str | None:
     """O MENOR tempo por sessão que cobre o corpo inteiro nesta frequência, ou
     None se nem o mais longo cobre (2 dias por semana é assim: não existe tempo
     de sessão que faça 2 treinos cobrirem tudo com exercício próprio)."""
     for valor, _, _, _ in training_brain.SESSION_LENGTHS:
-        if not grupos_sem_vaga(days, valor, weak_points):
+        if not grupos_sem_vaga(days, valor, weak_points, split_preference):
             return valor
     return None
 

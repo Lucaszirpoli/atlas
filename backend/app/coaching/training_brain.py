@@ -238,12 +238,15 @@ HOME_EQUIPMENT_VALUES = {v for v, _ in HOME_EQUIPMENT}
 SPLIT_PREFERENCES: list[tuple[str, str, str]] = [
     ("auto", "Deixa o app escolher",
      "Escolho a melhor divisão pros dias que você tem. É o recomendado."),
+    # A faixa de dias de cada uma é acrescentada na tela por
+    # `questionnaire._faixa_de_dias`, direto de `methods.SPLIT_DAY_RANGE` —
+    # texto e motor não podem discordar sobre o que cabe.
     ("full_body", "Corpo inteiro todo treino",
-     "Cada treino passa pelo corpo todo. Bom pra 2 e 3 dias por semana."),
+     "Cada treino passa pelo corpo todo."),
     ("upper_lower", "Superior e inferior",
-     "Alterna treino de cima e de baixo. Bom pra 4 dias."),
+     "Alterna treino de cima e de baixo."),
     ("push_pull_legs", "Empurrar, puxar e pernas",
-     "Peito/ombro/tríceps, costas/bíceps e pernas. Bom pra 6 dias."),
+     "Peito/ombro/tríceps num dia, costas/bíceps noutro, pernas noutro."),
 ]
 SPLIT_PREFERENCE_VALUES = {v for v, _, _ in SPLIT_PREFERENCES}
 

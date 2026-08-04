@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai import exercise_taxonomy, methods_engine, plan_review
+from app.ai import exercise_taxonomy, methods, methods_engine, plan_review
 from app.ai.exercise_taxonomy import Pattern
 from app.ai.methods import coach_custom_spec
 from app.ai.methods_engine import build_plan
@@ -185,10 +185,18 @@ def build_and_save(db: Session, user: User) -> dict:
     # É o que faz "dor no ombro" tirar o desenvolvimento do plano em vez de ficar
     # guardado num campo que ninguém lê.
     restricoes = restrictions.perfil_de(profile)
+    # Divisão escolhida pela pessoa ("não gosto de superior/inferior"). Só vale
+    # quando cabe na frequência dela sem furar os 2×/semana por grupo; quando
+    # não cabe, o motor volta ao automático e a nota abaixo explica por quê.
+    divisao = training_brain.one_of(
+        getattr(profile, "split_preference", None), training_brain.SPLIT_PREFERENCE_VALUES
+    )
+    split_note = methods.split_preference_note(divisao, days)
     plan = build_plan(
         db, method, available_days=days, weak_points=wps,
         session_target=session_target, time_efficient=curto,
         restricoes=restricoes,
+        split_preference=divisao,
         # Preferências marcadas no questionário (máquinas x peso livre, evitar
         # agachamento livre/acima da cabeça/impacto, unilateral). Chegam até a
         # escolha de cada exercício — é o que faz a resposta virar treino.
@@ -763,7 +771,8 @@ def build_and_save(db: Session, user: User) -> dict:
         # O que foi TIRADO do treino por lesão, dor, limitação ou equipamento.
         # Filtrar em silêncio é pior que não filtrar: a pessoa procura o supino
         # livre, não acha, e conclui que o app é ruim.
-        "restriction_notes": restrictions.avisos(profile),
+        "restriction_notes": restrictions.avisos(profile) + ([split_note] if split_note else []),
+        "split_label": methods.SPLIT_LABEL.get(divisao or "") if divisao else None,
         # Quanto o treino REALMENTE leva, calculado do que foi salvo.
         "estimated_minutes": duracoes or None,
         "duration_note": duracao_note,

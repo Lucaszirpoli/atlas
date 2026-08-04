@@ -12,10 +12,12 @@ diário, e gerar dieta não grava nada até a pessoa salvar/aplicar.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai import diet_engine, methods
 from app.ai.diet_engine import build_diet_plan
 from app.coaching import workout_builder
 from app.core.text import normalize_search_text
@@ -76,6 +78,57 @@ TOOLS = [
                 },
             },
             "required": ["exercicio"],
+        },
+    },
+    {
+        "name": "ajustar_plano",
+        "description": (
+            "Muda uma PREFERÊNCIA do plano da pessoa e REFAZ o que depende dela (treino, metas, "
+            "dieta) — é a mesma coisa que ela editar o questionário na tela, feito por você. Use "
+            "sempre que ela pedir uma mudança de plano: divisão do treino ('não gosto de "
+            "superior e inferior'), dias por semana, tempo por treino, prioridade de músculo, "
+            "periodização, cardio, técnicas avançadas, número de refeições, restrição alimentar "
+            "ou alimento que ela não come. Passe SÓ os campos que ela pediu; o resto fica como "
+            "está. Se a mudança não puder ser aplicada (ex.: uma divisão que não cabe na "
+            "frequência dela), a ferramenta devolve o motivo — repasse esse motivo pra ela, com "
+            "as alternativas, em vez de dizer que mudou."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "divisao": {
+                    "type": "string",
+                    "enum": ["auto", "full_body", "upper_lower", "push_pull_legs"],
+                    "description": (
+                        "Divisão do treino. auto = o coach escolhe; full_body = corpo inteiro "
+                        "todo treino; upper_lower = superior e inferior alternados; "
+                        "push_pull_legs = empurrar, puxar e pernas."
+                    ),
+                },
+                "dias_por_semana": {"type": "integer", "description": "2 a 6."},
+                "tempo_por_sessao": {"type": "string", "enum": ["curto", "medio", "longo"]},
+                "prioridades": {
+                    "type": "array", "items": {"type": "string"},
+                    "description": (
+                        "Até 3 músculos a priorizar, EM ORDEM (o primeiro recebe mais volume). "
+                        "Valores: chest, back, shoulders, biceps, triceps, quads, hamstrings, "
+                        "glutes, calves. Lista vazia remove as prioridades."
+                    ),
+                },
+                "periodizacao": {"type": "string", "enum": ["auto", "linear", "ondulatoria"]},
+                "tecnicas_avancadas": {"type": "boolean"},
+                "quer_cardio": {"type": "boolean"},
+                "refeicoes_por_dia": {"type": "integer", "description": "3 a 6."},
+                "restricoes_alimentares": {
+                    "type": "array", "items": {"type": "string"},
+                    "description": "Lista COMPLETA das restrições (substitui a anterior).",
+                },
+                "alimentos_que_nao_come": {
+                    "type": "array", "items": {"type": "string"},
+                    "description": "Lista COMPLETA dos alimentos rejeitados (substitui a anterior).",
+                },
+            },
+            "required": [],
         },
     },
     {
@@ -215,6 +268,114 @@ def _resolve_food(db: Session, nome: str) -> Food | None:
     return foods[0] if foods else None
 
 
+# Campo da ferramenta -> chave do questionário + como converter o valor.
+# É esta tabela que faz "o chat pode fazer o que a tela faz": os dois caminhos
+# terminam no MESMO `plan_service.activate`, com as mesmas validações.
+_AJUSTES: dict[str, tuple[str, Any]] = {
+    "divisao": ("split_preference", lambda v: str(v)),
+    "dias_por_semana": ("training_days_per_week", lambda v: str(int(v))),
+    "tempo_por_sessao": ("session_length", lambda v: str(v)),
+    "periodizacao": ("periodization", lambda v: str(v)),
+    "tecnicas_avancadas": ("allow_advanced_techniques", bool),
+    "quer_cardio": ("wants_cardio", bool),
+    "refeicoes_por_dia": ("meals_per_day", lambda v: str(int(v))),
+    "restricoes_alimentares": ("dietary_restrictions", lambda v: [str(x) for x in v]),
+    "alimentos_que_nao_come": ("food_dislikes_list", lambda v: [str(x) for x in v]),
+}
+
+_ROTULO_AJUSTE = {
+    "divisao": "divisão do treino", "dias_por_semana": "dias por semana",
+    "tempo_por_sessao": "tempo por treino", "prioridades": "prioridades",
+    "periodizacao": "periodização", "tecnicas_avancadas": "técnicas avançadas",
+    "quer_cardio": "cardio", "refeicoes_por_dia": "refeições por dia",
+    "restricoes_alimentares": "restrições alimentares",
+    "alimentos_que_nao_come": "alimentos que não come",
+}
+
+
+def _ajustar_plano(db: Session, user: User, tool_input: dict) -> dict:
+    """Reescreve preferências do questionário e REATIVA o plano.
+
+    Passa pelo mesmo `plan_service.activate` da tela: as mesmas validações, o
+    mesmo versionamento, a mesma ativação atômica (se qualquer componente
+    falhar, nada muda). O chat não ganha um caminho paralelo — ganha a chave do
+    caminho que já existe.
+    """
+    from app.coaching import plan_service, questionnaire, training_brain
+
+    plano = plan_service.active_plan(db, user.id)
+    base = dict(plano.answers or {}) if plano else plan_service.answers_from_profile(db, user)
+    respostas = dict(base)
+
+    aplicados: list[str] = []
+    for campo, (chave, conv) in _AJUSTES.items():
+        if tool_input.get(campo) is None:
+            continue
+        try:
+            respostas[chave] = conv(tool_input[campo])
+        except (TypeError, ValueError):
+            return {"for_model": {"erro": f"Valor inválido pra {_ROTULO_AJUSTE[campo]}."}}
+        aplicados.append(campo)
+
+    # Prioridades são 3 campos separados no questionário (a ORDEM é o que dá
+    # mais volume ao primeiro), então não cabem na tabela acima.
+    if tool_input.get("prioridades") is not None:
+        pedidas = [str(x) for x in (tool_input["prioridades"] or [])]
+        validas = training_brain.valid_weak_points(pedidas)[: training_brain.WEAK_POINTS_MAX]
+        desconhecidas = [p for p in pedidas if p not in validas]
+        if desconhecidas:
+            return {"for_model": {
+                "erro": f"Não conheço esse(s) músculo(s): {', '.join(desconhecidas)}.",
+                "validos": [v for v, _ in training_brain.WEAK_POINTS],
+            }}
+        respostas.update(questionnaire.priorities_to_answers(validas))
+        aplicados.append("prioridades")
+
+    if not aplicados:
+        return {"for_model": {"erro": "Nenhuma mudança informada — diga o que ela quer mudar."}}
+
+    mudancas = plan_service.diff_answers(base, respostas)
+    if not mudancas:
+        return {"for_model": {"ok": True, "sem_efeito": True,
+                              "detalhe": "Isso já era o que estava valendo — nada mudou."}}
+
+    try:
+        novo = plan_service.activate(db, user, respostas, reason="chat")
+    except ValueError as exc:
+        db.rollback()
+        return {"for_model": {"erro": str(exc)}}
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        return {"for_model": {"erro": f"Não consegui refazer o plano agora ({exc}); "
+                                      "nada foi alterado e o plano atual continua valendo."}}
+
+    # O que o motor NÃO conseguiu honrar (ex.: divisão que não cabe na
+    # frequência) vem aqui, com o motivo. É a diferença entre "mudei" e
+    # "mudei o que dava, e olha por que o resto não deu".
+    dias = training_brain.valid_training_days(
+        getattr(getattr(user, "profile", None), "training_days_per_week", None)
+    ) or 3
+    divisao = getattr(getattr(user, "profile", None), "split_preference", None)
+    aviso = methods.split_preference_note(divisao, dias)
+    alternativas = methods.splits_possible_for(dias)
+
+    treino = (novo.components or {}).get("workout") or {}
+    rotulos = ", ".join(_ROTULO_AJUSTE[c] for c in aplicados)
+    resumo = f"Atualizei seu plano (v{novo.version}): {rotulos}."
+    if "treino" in ((novo.components or {}).get("gerados") or []):
+        resumo += f" Treino refeito: {treino.get('days', '?')} dias, {treino.get('total_exercises', '?')} exercícios."
+    return {
+        "for_model": {
+            "ok": True, "versao": novo.version, "ajustado": aplicados,
+            "treino_refeito": "treino" in ((novo.components or {}).get("gerados") or []),
+            "dias": treino.get("days"), "exercicios": treino.get("total_exercises"),
+            "nao_pude_aplicar": aviso,
+            "divisoes_possiveis_nessa_frequencia": alternativas,
+        },
+        "action": {"type": "plan_updated", "summary": resumo + (f" {aviso}" if aviso else "")},
+    }
+
+
 def run_tool(db: Session, user: User, name: str, tool_input: dict) -> dict:
     """Executa uma ferramenta. Devolve {for_model, action?, diet_plan?}:
     for_model = resultado conciso pro modelo continuar; action = confirmação pro
@@ -230,6 +391,9 @@ def run_tool(db: Session, user: User, name: str, tool_input: dict) -> dict:
             "action": {"type": "workout_built",
                        "summary": f"Montei seu treino: {r['method_name']} · {r['days']} dias · {r['total_exercises']} exercícios."},
         }
+
+    if name == "ajustar_plano":
+        return _ajustar_plano(db, user, tool_input)
 
     if name == "trocar_exercicio":
         nome = (tool_input.get("exercicio") or "").strip()
@@ -385,14 +549,22 @@ def run_tool(db: Session, user: User, name: str, tool_input: dict) -> dict:
         except (TypeError, ValueError):
             refeicoes = 4
         refeicoes = max(3, min(refeicoes, 6))
-        restricoes = tool_input.get("restricoes") or []
-        if not isinstance(restricoes, list):
-            restricoes = []
-        plan = build_diet_plan(db, target, [str(x) for x in restricoes], meals_per_day=refeicoes)
+        extras = tool_input.get("restricoes") or []
+        if not isinstance(extras, list):
+            extras = []
+        # As restrições do QUESTIONÁRIO valem sempre, mesmo que o modelo não as
+        # repita na chamada. Depender do que a IA lembra de passar era o que
+        # fazia o chat servir whey pra quem marcou "não como whey".
+        restricoes = diet_engine.profile_restrictions(
+            getattr(user, "profile", None), extras=[str(x) for x in extras]
+        )
+        plan = build_diet_plan(db, target, restricoes, meals_per_day=refeicoes)
         d = plan.to_dict()
         return {
             "for_model": {"ok": True, "kcal": d["totals"]["kcal"], "proteina_g": d["totals"]["protein_g"],
-                          "refeicoes": len(d["meals"])},
+                          "refeicoes": len(d["meals"]),
+                          "restricoes_aplicadas": d["restrictions"],
+                          "nao_consegui_aplicar": d["not_applied"]},
             "action": {"type": "diet_generated",
                        "summary": f"Montei uma dieta de {d['totals']['kcal']} kcal em {len(d['meals'])} refeições."},
             "diet_plan": d,

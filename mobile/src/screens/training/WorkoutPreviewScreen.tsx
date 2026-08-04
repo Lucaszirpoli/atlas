@@ -178,10 +178,10 @@ export function WorkoutPreviewScreen() {
                   </Text>
                 </View>
 
-                {/* TROCAR EXERCÍCIO. Só existe na prévia, de propósito: aqui o
-                    treino ainda não começou, então trocar é editar o plano. Na
-                    tela de execução ele não aparece — trocar no meio da série
-                    embaralharia os números que a sessão está registrando. */}
+                {/* TROCAR EXERCÍCIO. A mesma setinha existe na tela de execução
+                    (a máquina só está ocupada quando você chega nela) — lá ela
+                    some assim que a primeira série da vaga é registrada, porque
+                    a série já ficou gravada no exercício antigo. */}
                 {emTroca === ex.id ? (
                   <View style={{ width: 38, height: 38, alignItems: "center", justifyContent: "center" }}>
                     <ActivityIndicator color={colors.primary} />

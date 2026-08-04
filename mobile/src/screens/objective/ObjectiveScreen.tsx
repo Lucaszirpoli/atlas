@@ -841,6 +841,20 @@ export function ObjectiveScreen({
                     </View>
                   ) : null}
 
+                  {/* O que o motor NÃO soube aplicar. Sem isto, quem marcou
+                      halal ou low carb receberia um cardápio que parece
+                      respeitar a escolha — e não respeita. */}
+                  {dieta.not_applied && dieta.not_applied.length > 0 ? (
+                    <View style={{ flexDirection: "row", gap: 6, marginBottom: spacing.md, alignItems: "flex-start" }}>
+                      <Ionicons name="alert-circle-outline" size={14} color={colors.warning} style={{ marginTop: 1 }} />
+                      <Text style={[type.caption, { color: colors.textSecondary, flex: 1 }]}>
+                        Não consigo montar o cardápio sozinho respeitando{" "}
+                        <Text style={{ fontWeight: "700" }}>{dieta.not_applied.join(", ")}</Text> — confira
+                        os itens antes de aplicar.
+                      </Text>
+                    </View>
+                  ) : null}
+
                   {dieta.meals.map((meal) => (
                     <View key={meal.category} style={{ marginBottom: spacing.md }}>
                       <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "700", marginBottom: spacing.xs }]}>

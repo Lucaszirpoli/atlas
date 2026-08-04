@@ -8,6 +8,7 @@ import { listWeightLogs, logWeight, type WeightLog } from "../../api/weight";
 import { Card } from "../../components/Card";
 import { LineChart, type ChartPoint } from "../../components/LineChart";
 import { useTheme } from "../../theme/ThemeProvider";
+import { serieDiaria, tsDoDia } from "../../utils/serieDiaria";
 import { WeightCoachHeader } from "../coaching/CoachModuleHeader";
 
 const PERIOD_DAYS = 90;
@@ -70,10 +71,13 @@ export function WeightScreen() {
     }
   }
 
-  const cutoff = Date.now() - PERIOD_DAYS * 86400000;
-  const points: ChartPoint[] = sorted
-    .map((l) => ({ x: new Date(l.recorded_at).getTime(), y: l.weight_kg }))
-    .filter((p) => p.x >= cutoff);
+  // Um ponto por DIA: nos dias em que a pessoa não subiu na balança, o gráfico
+  // repete o último peso conhecido (ela continuava pesando aquilo, só não
+  // mediu) e a linha segue até hoje. Ver utils/serieDiaria.
+  const cutoff = tsDoDia(Date.now() - (PERIOD_DAYS - 1) * 86400000);
+  const points: ChartPoint[] = serieDiaria(
+    sorted.map((l) => ({ x: tsDoDia(l.recorded_at), y: l.weight_kg }))
+  ).filter((p) => p.x >= cutoff);
 
   return (
     <ScrollView

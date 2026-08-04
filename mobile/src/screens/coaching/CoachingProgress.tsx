@@ -9,6 +9,7 @@ import { logWeight } from "../../api/weight";
 import { Card } from "../../components/Card";
 import { LineChart, type ChartPoint } from "../../components/LineChart";
 import { useTheme } from "../../theme/ThemeProvider";
+import { serieDiaria, tsDoDia } from "../../utils/serieDiaria";
 
 const METRICS: { key: CoachingChart; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: "peso", label: "Peso", icon: "trending-down" },
@@ -52,37 +53,42 @@ export function CoachingProgress({
   const load = useCallback(() => {
     // cutoff calculado AQUI dentro (Date.now() no corpo entraria nas deps e
     // causaria loop de render).
-    const cutoff = Date.now() - periodDays * 86400000;
-    const inWin = (p: ChartPoint) => p.x >= cutoff;
+    const cutoff = tsDoDia(Date.now() - (periodDays - 1) * 86400000);
+    // A ORDEM importa: primeiro `serieDiaria` (que preenche os dias sem
+    // registro com o último valor conhecido), só depois o recorte do período.
+    // Ao contrário, um registro anterior à janela seria descartado e a linha
+    // começaria só no primeiro registro DENTRO dela — exatamente o buraco que
+    // se quer tapar.
+    const naJanela = (pts: ChartPoint[]) => serieDiaria(pts).filter((p) => p.x >= cutoff);
     setLoading(true);
     return Promise.all([
       getWeightEvolution()
-        .then((pts) => setWeight(pts.map((p) => ({ x: new Date(p.date).getTime(), y: p.weight_kg })).filter(inWin)))
+        .then((pts) => setWeight(naJanela(pts.map((p) => ({ x: tsDoDia(p.date), y: p.weight_kg })))))
         .catch(() => setWeight([])),
       getNutritionHistory(periodDays)
         .then((h) => {
-          const dia = (d: any, y: number) => ({ x: new Date(d.date).getTime(), y });
-          setCalories(h.days.filter((d) => d.kcal > 0).map((d) => dia(d, d.kcal)));
-          setMacros({
-            prot: h.days.filter((d) => d.kcal > 0).map((d) => dia(d, d.protein_g)),
-            carb: h.days.filter((d) => d.kcal > 0).map((d) => dia(d, d.carbs_g)),
-            fat: h.days.filter((d) => d.kcal > 0).map((d) => dia(d, d.fat_g)),
-          });
+          const registrados = h.days.filter((d) => d.kcal > 0);
+          const serie = (y: (d: (typeof registrados)[number]) => number) =>
+            naJanela(registrados.map((d) => ({ x: tsDoDia(d.date), y: y(d) })));
+          setCalories(serie((d) => d.kcal));
+          setMacros({ prot: serie((d) => d.protein_g), carb: serie((d) => d.carbs_g), fat: serie((d) => d.fat_g) });
           setGoalKcal(h.goal_kcal ?? null);
         })
         .catch(() => setCalories([])),
       getVolumeEvolution()
-        .then((pts) => setCarga(pts.map((p) => ({ x: new Date(p.date).getTime(), y: p.volume_kg })).filter(inWin)))
+        .then((pts) => setCarga(naJanela(pts.map((p) => ({ x: tsDoDia(p.date), y: p.volume_kg })))))
         .catch(() => setCarga([])),
       listSleepLogs()
         .then((logs) =>
           setSono(
-            logs
-              .map((l) => ({
-                x: new Date(l.sleep_at).getTime(),
-                y: (new Date(l.wake_at).getTime() - new Date(l.sleep_at).getTime()) / 3600000,
-              }))
-              .filter((p) => p.y > 0 && p.y < 24 && inWin(p))
+            naJanela(
+              logs
+                .map((l) => ({
+                  x: tsDoDia(l.sleep_at),
+                  y: (new Date(l.wake_at).getTime() - new Date(l.sleep_at).getTime()) / 3600000,
+                }))
+                .filter((p) => p.y > 0 && p.y < 24)
+            )
           )
         )
         .catch(() => setSono([])),

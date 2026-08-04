@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useHeaderHeight } from "@react-navigation/elements";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -14,11 +14,14 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { applyDiet, type DietPlan } from "../../api/ai";
-import { coachChat, type CoachChatAction, type CoachChatMessage } from "../../api/coaching";
+import { coachChat } from "../../api/coaching";
 import { Button } from "../../components/Button";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { MarkdownText } from "../../components/MarkdownText";
+import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../theme/ThemeProvider";
 import { exportDietPdf } from "../../utils/dietPdf";
+import { clearChat, loadChat, saveChat, type ChatBubble } from "./coachChatStore";
 
 // Card do cardápio gerado pelo coach — totais + refeições, com botões de salvar
 // em PDF e aplicar no diário de hoje.
@@ -135,34 +138,56 @@ const SUGGESTIONS = [
   "O que priorizar essa semana?",
 ];
 
-// Bolha do chat: além de role/content, o assistente pode trazer ações feitas e
-// um cardápio (quando gerou dieta).
-type ChatBubble = CoachChatMessage & { actions?: CoachChatAction[]; dietPlan?: DietPlan | null };
-
-/** "Pergunte ao coach" — a IA que EXPLICA a análise determinística. Não muda
- * plano (isso é o botão "Aplicar ajuste"); só conversa, ancorada nos números. */
+/** "Pergunte ao coach" — a IA ancorada na análise determinística, com poder de
+ * agir (montar treino, ajustar o plano, trocar exercício, gerar dieta).
+ *
+ * A conversa fica GUARDADA no aparelho (ver coachChatStore): sair da tela e
+ * voltar apagava tudo, e junto ia o contexto que o coach usa pra entender a
+ * próxima pergunta. */
 export function CoachChatScreen() {
   const { colors, type, spacing, radius } = useTheme();
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const scrollRef = useRef<ScrollView>(null);
 
-  const [messages, setMessages] = useState<ChatBubble[]>([
-    { role: "assistant", content: GREETING },
-  ]);
+  const [messages, setMessages] = useState<ChatBubble[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [confirmarLimpar, setConfirmarLimpar] = useState(false);
+  // Enquanto a conversa antiga não chegou do storage, não se grava nada —
+  // senão o estado vazio inicial sobrescreveria o que estava salvo.
+  const [carregado, setCarregado] = useState(false);
+
+  const chaveUsuario = user?.id ?? "anon";
+
+  useEffect(() => {
+    let cancelado = false;
+    setCarregado(false);
+    loadChat(chaveUsuario).then((antigas) => {
+      if (cancelado) return;
+      setMessages(antigas);
+      setCarregado(true);
+      // Volta no fim da conversa, como qualquer app de mensagem.
+      requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: false }));
+    });
+    return () => {
+      cancelado = true;
+    };
+  }, [chaveUsuario]);
+
+  useEffect(() => {
+    if (!carregado) return;
+    saveChat(chaveUsuario, messages);
+  }, [carregado, chaveUsuario, messages]);
 
   async function send(text: string) {
     const q = text.trim();
     if (!q || loading) return;
     setInput("");
-    // história enviada = só role/content, sem a saudação inicial (enfeite).
-    const history = messages
-      .filter((m, i) => !(i === 0 && m.role === "assistant"))
-      .map((m) => ({ role: m.role, content: m.content }));
-    const next: ChatBubble[] = [...messages, { role: "user", content: q }];
-    setMessages(next);
+    // história enviada = só role/content (o servidor corta nas últimas 8).
+    const history = messages.map((m) => ({ role: m.role, content: m.content }));
+    setMessages((m) => [...m, { role: "user", content: q }]);
     setLoading(true);
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
     try {
@@ -182,19 +207,54 @@ export function CoachChatScreen() {
     }
   }
 
+  async function limparConversa() {
+    await clearChat(chaveUsuario);
+    setMessages([]);
+    setConfirmarLimpar(false);
+  }
+
+  // A saudação é ENFEITE, não mensagem: aparece só na conversa vazia e nunca é
+  // gravada nem mandada ao servidor como histórico.
+  const bolhas: ChatBubble[] =
+    messages.length === 0 ? [{ role: "assistant", content: GREETING }] : messages;
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: colors.bg }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={headerHeight}
     >
+      {/* A conversa fica guardada neste aparelho. Quem guarda precisa oferecer
+          como apagar — é dado de saúde (LGPD), e a pessoa manda nele. */}
+      {messages.length > 0 ? (
+        <TouchableOpacity
+          onPress={() => setConfirmarLimpar(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Apagar esta conversa"
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
+            paddingVertical: spacing.sm,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+          }}
+        >
+          <Ionicons name="time-outline" size={13} color={colors.textSecondary} />
+          <Text style={[type.caption, { color: colors.textSecondary }]}>
+            Conversa salva neste aparelho · apagar
+          </Text>
+        </TouchableOpacity>
+      ) : null}
+
       <ScrollView
         ref={scrollRef}
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.md }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       >
-        {messages.map((m, i) => (
+        {bolhas.map((m, i) => (
           <React.Fragment key={i}>
             <View
               style={{
@@ -238,7 +298,7 @@ export function CoachChatScreen() {
           <ActivityIndicator color={colors.textSecondary} style={{ alignSelf: "flex-start", marginTop: 4 }} />
         ) : null}
 
-        {messages.length <= 1 ? (
+        {messages.length === 0 ? (
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginTop: spacing.sm }}>
             {SUGGESTIONS.map((s) => (
               <TouchableOpacity
@@ -310,6 +370,19 @@ export function CoachChatScreen() {
           <Ionicons name="arrow-up" size={22} color={input.trim() ? colors.textOnPrimary : colors.textSecondary} />
         </TouchableOpacity>
       </View>
+
+      <ConfirmDialog
+        visible={confirmarLimpar}
+        onClose={() => setConfirmarLimpar(false)}
+        title="Apagar esta conversa?"
+        message={
+          "As mensagens somem deste aparelho e o coach perde o contexto do que vocês " +
+          "conversaram. O que ele já fez (treino montado, refeição registrada) continua valendo."
+        }
+        confirmLabel="Apagar"
+        destructive
+        onConfirm={limparConversa}
+      />
     </KeyboardAvoidingView>
   );
 }

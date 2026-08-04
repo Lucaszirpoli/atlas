@@ -16,6 +16,7 @@ from app.coaching.engine import analyze, progression_step, weekly_checkin
 from app.coaching.metrics import compute_metrics
 from app.core.db import get_db
 from app.core.security import get_current_user
+from app.core.usertime import profile_tz, resolve_tz
 from app.models.calorie_goal import CalorieGoal, GoalMode
 from app.models.coaching_action import CoachingAction
 from app.models.coaching_adjustment import CoachingAdjustment
@@ -699,12 +700,20 @@ def _active_deload(db: Session, user_id: int) -> CoachingAction | None:
     return None
 
 
-def _semana_atual_inicio(now: datetime) -> datetime:
-    """Início da SEMANA-calendário (domingo 00:00), como o app já mostra
-    (D S T Q Q S S). Não é janela móvel de 7 dias — é a semana de verdade."""
-    dias_desde_domingo = (now.weekday() + 1) % 7  # Mon=0..Sun=6 -> domingo=0
-    inicio = now - timedelta(days=dias_desde_domingo)
-    return inicio.replace(hour=0, minute=0, second=0, microsecond=0)
+def _semana_atual_inicio(now: datetime, tz=None) -> datetime:
+    """Início da SEMANA-calendário (domingo 00:00) NO FUSO DA PESSOA, como o app
+    já mostra (D S T Q Q S S). Não é janela móvel de 7 dias — é a semana de
+    verdade. Devolve em UTC, pronto pra comparar com as colunas do banco.
+
+    Sem o fuso, no domingo à noite (UTC já é segunda) o check-in começava a
+    contar uma semana que, pra pessoa, ainda nem tinha virado."""
+    tz = tz or resolve_tz(None)
+    local = now.astimezone(tz)
+    dias_desde_domingo = (local.weekday() + 1) % 7  # Mon=0..Sun=6 -> domingo=0
+    inicio = (local - timedelta(days=dias_desde_domingo)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    return inicio.astimezone(timezone.utc)
 
 
 def _swap_alternative(db: Session, ex_id: int) -> Exercise | None:
@@ -1048,7 +1057,8 @@ def coaching_checkin(
     uma janela móvel de 7 dias. Determinístico. Exclusivo do Pro."""
     _require_pro(current_user)
     now = datetime.now(timezone.utc)
-    m = compute_metrics(db, current_user.id, now=now, since_override=_semana_atual_inicio(now))
+    inicio = _semana_atual_inicio(now, profile_tz(getattr(current_user, "profile", None)))
+    m = compute_metrics(db, current_user.id, now=now, since_override=inicio)
     return weekly_checkin(m)
 
 

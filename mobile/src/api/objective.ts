@@ -125,7 +125,12 @@ export type PersonalDiet = {
   tagline: string;
   meals: { category: string; items: PersonalDietItem[] }[];
   totals: { kcal: number; protein_g: number; carbs_g: number; fat_g: number };
+  /** O que o cardápio REALMENTE respeitou (rótulos, não tokens). */
   restrictions: string[];
+  /** O que a pessoa pediu e o motor não sabe aplicar sozinho (halal, kosher,
+   * low carb). Aparece na tela: um cardápio que finge respeitar tudo é pior
+   * que um que diz o que não conseguiu. */
+  not_applied?: string[];
 };
 
 /** A dieta que o Coaching montou PRA ESSA PESSOA — meta de macros + restrições

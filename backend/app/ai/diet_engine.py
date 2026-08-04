@@ -35,8 +35,11 @@ MACRO_TOL_G = 12.0            # ±12g em cada macro
 MACRO_TOL_FRAC = 0.12        # ou ±12% (usa o maior — metas pequenas)
 
 # Gramas fixas dos alimentos de porção fixa (base conhecida de macros).
-VEG_G = 90.0                 # por vegetal (usa 2 → 180g de vegetal/dia)
-FRUIT_G = 120.0              # por fruta
+# Um vegetal só, com porção de verdade. Eram DOIS a 90g, o que virava 45g de
+# brócolis + 45g de cenoura no prato: duas linhas na tela pra meia porção. A
+# mesma fibra em um item só deixa a refeição legível.
+VEG_G = 150.0
+FRUIT_G = 120.0
 DAIRY_G = 170.0
 
 # Limites de grama pros solucionadores (evita porção absurda). 600g é o teto de
@@ -79,6 +82,9 @@ class DietPlan:
     meals: list[dict]                     # [{category, items:[...]}]
     totals: dict                          # {kcal, protein_g, carbs_g, fat_g}
     restrictions: list[str] = field(default_factory=list)
+    # O que a pessoa pediu e o motor NÃO sabe aplicar sozinho (halal, kosher,
+    # low carb). Vai pra tela — silenciar isso seria mentir sobre o cardápio.
+    not_applied: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -91,6 +97,7 @@ class DietPlan:
             "meals": self.meals,
             "totals": self.totals,
             "restrictions": self.restrictions,
+            "not_applied": self.not_applied,
         }
 
 
@@ -193,16 +200,44 @@ def _distribute(foods: list[_Food], meal_names: list[str]) -> list[dict]:
     """Distribui os alimentos pelas refeições do dia por TIPO: pratos principais
     (proteína/carbo/gordura/vegetal) vão pro almoço e jantar; lanches (fruta,
     laticínio, whey, aveia) vão pro café e demais lanches/ceia. Assim a escolha
-    de 3–6 refeições muda a estrutura do dia, não só o número."""
+    de 3–6 refeições muda a estrutura do dia, não só o número.
+
+    Duas regras deixam o cardápio com cara de cardápio, e não de planilha:
+
+    1. Nem todo alimento é RATEADO entre as refeições. Proteína, vegetal e
+       gordura sim (você quer os três no almoço E no jantar). Carboidratos,
+       fruta, laticínio e o reforço proteico vão INTEIROS pra UMA refeição, em
+       rodízio. Era isso que enchia o prato: com 2 carbos rateados, almoço e
+       jantar recebiam arroz *e* batata-doce, meia porção de cada.
+    2. Por consequência, café da manhã e lanche deixam de ser cópias idênticas
+       um do outro — cada um fica com os seus itens.
+
+    Os totais do dia não mudam: rateio e rodízio movem as mesmas gramas.
+    """
     main_meals = [m for m in meal_names if m in (fr.ALMOCO, fr.JANTAR)] or [meal_names[0]]
     snack_meals = [m for m in meal_names if m not in (fr.ALMOCO, fr.JANTAR)] or [meal_names[0]]
     buckets: dict[str, list[dict]] = {m: [] for m in meal_names}
 
-    for fd in foods:
+    servidos = [fd for fd in foods if _round_g(fd.grams) > 0]
+
+    # Quem entra inteiro numa refeição só (em rodízio) vs. quem é rateado.
+    # Um carbo sozinho volta a ser rateado: jantar sem carboidrato nenhum
+    # não é "refeição enxuta", é refeição faltando.
+    carbos_principais = [fd for fd in servidos if fd.slot == "main" and fd.macro == "carb"]
+    rodizio_main = set(id(fd) for fd in carbos_principais) if len(carbos_principais) >= 2 else set()
+    rodizio_snack = set(id(fd) for fd in servidos if fd.slot == "snack")
+
+    proximo = {"main": 0, "snack": 0}
+
+    for fd in servidos:
         g = _round_g(fd.grams)
-        if g <= 0:
-            continue
-        targets = main_meals if fd.slot == "main" else snack_meals
+        meals_do_slot = main_meals if fd.slot == "main" else snack_meals
+        if id(fd) in (rodizio_main | rodizio_snack):
+            i = proximo[fd.slot]
+            proximo[fd.slot] = i + 1
+            targets = [meals_do_slot[i % len(meals_do_slot)]]
+        else:
+            targets = meals_do_slot
         share = g / len(targets)
         for m in targets:
             gm = _round_g(share)
@@ -229,21 +264,24 @@ def build_diet_plan(
     variant: int = 0,
 ) -> DietPlan:
     """Monta o dia inteiro batendo os macros. `variant` roda os alimentos
-    escolhidos (mesma meta, cardápio diferente) para o botão 'gerar outra'."""
-    rset = frozenset(restrictions or [])
+    escolhidos (mesma meta, cardápio diferente) para o botão 'gerar outra'.
+
+    As restrições passam por `normalize_tokens` AQUI, não em cada chamador: é o
+    único jeito de garantir que "não como whey" filtre igual vindo do
+    questionário, do chat ou da aba Objetivo."""
+    aplicadas = fr.normalize_tokens(restrictions)
+    rset = frozenset(aplicadas)
     meal_names = _meals_for_count(meals_per_day)
 
     foods: list[_Food] = []
 
     # Alimentos de porção FIXA (base conhecida). Vegetal = prato; fruta e
     # laticínio = lanche.
-    veg1 = fr.pick_allowed(fr.VEGGIES, rset, variant)
-    veg2 = fr.pick_allowed(fr.VEGGIES, rset, variant + 1)
-    for v in (veg1, veg2):
-        if v is not None:
-            fd = _mk_food(db, v, VEG_G, fixed=True, slot="main")
-            if fd:
-                foods.append(fd)
+    veg = fr.pick_allowed(fr.VEGGIES, rset, variant)
+    if veg is not None:
+        fd = _mk_food(db, veg, VEG_G, fixed=True, slot="main")
+        if fd:
+            foods.append(fd)
 
     fruit = fr.pick_allowed(fr.FRUITS, rset, variant)
     if fruit is not None:
@@ -313,7 +351,29 @@ def build_diet_plan(
             tot["fat_g"] += it["fat_g"]
     tot = {k: round(v, 1) if k != "kcal" else round(v) for k, v in tot.items()}
 
-    return DietPlan(target=target, meals=meals, totals=tot, restrictions=list(rset))
+    return DietPlan(
+        target=target, meals=meals, totals=tot,
+        restrictions=aplicadas,
+        not_applied=fr.unsupported(restrictions),
+    )
+
+
+def profile_restrictions(profile, extras=None) -> list[str]:
+    """TUDO que a pessoa marcou sobre comida: as restrições alimentares E os
+    alimentos que ela disse que não come.
+
+    Existe porque as duas listas moram em campos separados do perfil e só a
+    primeira chegava ao motor — quem marcou "não como whey protein" recebia
+    whey no café da manhã. Onde quer que se monte uma dieta, é esta função que
+    diz o que respeitar; `extras` acrescenta o que foi pedido na hora (chat).
+    """
+    itens: list[str] = []
+    for campo in ("dietary_restrictions", "food_dislikes_list"):
+        itens.extend(str(x) for x in (getattr(profile, campo, None) or []))
+    itens.extend(str(x) for x in (extras or []))
+    # Sem normalizar aqui: build_diet_plan normaliza, e `unsupported` precisa
+    # do texto original pra avisar a pessoa com as palavras dela.
+    return itens
 
 
 def validate_diet_plan(target: MacroTarget, plan: DietPlan) -> list[str]:

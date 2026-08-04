@@ -69,14 +69,8 @@ export function PrivacyScreen() {
           value={settings.share_meals}
           onChange={(v) => toggle({ share_meals: v })}
         />
-        <ToggleRow
-          icon="camera"
-          iconColor={colors.moduleSocial}
-          label="Fotos de progresso"
-          hint="Sempre opt-in, por foto"
-          value={settings.share_progress_photos}
-          onChange={(v) => toggle({ share_progress_photos: v })}
-        />
+        {/* "Fotos de progresso" saiu daqui junto com a tela que as criava —
+            um interruptor pra uma função que não existe mais só confunde. */}
       </Card>
 
       <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.sm, letterSpacing: 1, textTransform: "uppercase" }]}>

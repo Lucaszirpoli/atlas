@@ -73,6 +73,10 @@ _IMPACTO: dict[str, tuple[str, ...]] = {
     "home_equipment": ("treino",),
     "training_days_per_week": ("treino",),
     "session_length": ("treino",),
+    # Divisão preferida: desde que `methods.coach_split_for` passou a lê-la, ela
+    # decide qual blueprint cai em cada dia. Sem esta linha o diff não marcaria
+    # "treino" como impactado e a mudança viraria plano novo com treino velho.
+    "split_preference": ("treino",),
     # Saúde: tira exercício do plano, então refaz o treino.
     "has_injury": ("treino",),
     "injury_regions": ("treino",),

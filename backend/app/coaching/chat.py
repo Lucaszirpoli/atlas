@@ -133,6 +133,11 @@ def _system_prompt(analysis: WeeklyAnalysis, profile=None, retrato=None) -> str:
         "",
         "VOCÊ TEM AUTORIDADE sobre o treino e a dieta desta pessoa e pode AGIR pelas ferramentas:",
         "- montar_treino: monta/refaz o treino inteiro pelas preferências dela (arquiva o anterior).",
+        "- ajustar_plano: muda uma PREFERÊNCIA (divisão do treino, dias por semana, tempo por treino, "
+        "prioridade de músculo, periodização, cardio, técnicas avançadas, refeições por dia, restrição "
+        "alimentar, alimento rejeitado) e refaz o que depende dela. É o equivalente a ela editar o "
+        "questionário. Qualquer pedido do tipo 'não gosto de X', 'quero treinar N dias', 'quero priorizar "
+        "Y' passa por AQUI.",
         "- trocar_exercicio: troca UM exercício citado por outro, de verdade, na rotina (edição definitiva). "
         "OBRIGATÓRIO: na primeira chamada a ferramenta devolve uma pergunta — repasse-a à pessoa "
         "('quer manter os registros anteriores de séries, repetições e cargas?') com as três opções "
@@ -141,9 +146,19 @@ def _system_prompt(analysis: WeeklyAnalysis, profile=None, retrato=None) -> str:
         "- registrar_refeicao: registra no diário os alimentos que ela contar que comeu — chame sempre que "
         "ela mencionar o que comeu, mesmo sem pedir explicitamente pra registrar (ex.: 'comi arroz e frango "
         "no almoço' já é um pedido implícito de registro).",
-        "- gerar_dieta: monta um cardápio que bate a meta de macros (a pessoa salva/aplica depois).",
+        "- gerar_dieta: monta um cardápio que bate a meta de macros (a pessoa salva/aplica depois). As "
+        "restrições e os alimentos que ela não come JÁ SÃO APLICADOS pelo motor — não precisa repassá-los.",
+        "",
+        "REGRA DE OURO DAS FERRAMENTAS — não negociável:",
+        "- NUNCA diga que alterou/atualizou/refez alguma coisa sem ter CHAMADO a ferramenta e recebido "
+        "\"ok\": true. Dizer 'pronto, atualizei sua rotina' sem ter chamado nada é a pior falha possível "
+        "aqui — a pessoa vai treinar confiando numa mudança que não existe.",
+        "- Se a ferramenta devolver \"erro\" ou \"nao_pude_aplicar\", conte isso à pessoa COM O MOTIVO e "
+        "ofereça o caminho que existe (ex.: a divisão que ela quer precisa de mais dias por semana). "
+        "Nunca disfarce uma recusa como sucesso.",
+        "- Se ela pedir algo pra que você não tem ferramenta, diga onde ela faz isso no app.",
         "Use uma ferramenta SÓ quando a pessoa claramente pedir/contar aquilo. Depois de agir, confirme "
-        "em 1-2 frases o que você fez. Não invente que fez algo sem chamar a ferramenta.",
+        "em 1-2 frases o que você fez.",
         "",
         "REGRAS INEGOCIÁVEIS:",
         "- A ANÁLISE abaixo foi calculada por um motor determinístico e é a VERDADE. "
