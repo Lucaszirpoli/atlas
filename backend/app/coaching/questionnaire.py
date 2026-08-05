@@ -312,7 +312,14 @@ def steps() -> list[dict]:
                 # Pergunta direta — "upper/lower" é jargão, e quem não conhece o
                 # termo não tem como recusar um dia que mistura os dois sem antes
                 # descobrir o nome técnico da divisão que evita isso.
-                {"key": "avoid_mixing_upper_lower",
+                # A chave é "allow" (pode misturar?), não "avoid" — o campo do
+                # perfil chama-se `avoid_mixing_upper_lower` (evitar mistura),
+                # polaridade OPOSTA à da pergunta. Guardar a resposta direto
+                # sem inverter foi o bug real: quem respondia "Não" (não quero
+                # misturar) gravava avoid_mixing=False (= pode misturar), e o
+                # motor misturava mesmo assim. A inversão fica em
+                # `plan_service.apply_answers_to_profile`/`answers_from_profile`.
+                {"key": "allow_mixing_upper_lower",
                  "label": "Pode colocar exercícios de superior e inferior no mesmo treino?",
                  "type": BOOL, "required": False,
                  "help": "Não = cada treino fica só com a parte de cima OU só com a de baixo do "

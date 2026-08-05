@@ -84,7 +84,7 @@ _IMPACTO: dict[str, tuple[str, ...]] = {
     "split_preference": ("treino",),
     # Bloqueia full_body e o split Torso/Limbs quando marcado — muda qual
     # divisão o motor pode escolher, então refaz o treino.
-    "avoid_mixing_upper_lower": ("treino",),
+    "allow_mixing_upper_lower": ("treino",),
     # Saúde: tira exercício do plano, então refaz o treino.
     "has_injury": ("treino",),
     "injury_regions": ("treino",),
@@ -232,7 +232,11 @@ def answers_from_profile(db: Session, user: User) -> dict[str, Any]:
         "home_equipment": list(p.home_equipment or []),
         "gym_crowding": p.gym_crowding,
         "split_preference": p.split_preference,
-        "avoid_mixing_upper_lower": p.avoid_mixing_upper_lower,
+        # Polaridade invertida de propósito: a pergunta é "pode misturar?"
+        # (allow), a coluna é "evitar mistura" (avoid) — ver questionnaire.py.
+        "allow_mixing_upper_lower": (
+            None if p.avoid_mixing_upper_lower is None else not p.avoid_mixing_upper_lower
+        ),
         "has_injury": p.has_injury,
         "injury_regions": list(p.injury_regions or []),
         "medical_clearance": p.medical_clearance,
@@ -442,8 +446,12 @@ def apply_answers_to_profile(db: Session, user: User, answers: dict) -> None:
         if not novo_valor:
             workout_builder.revert_technique_cues(db, p.user_id)
         p.allow_advanced_techniques = novo_valor
-    if answers.get("avoid_mixing_upper_lower") is not None:
-        p.avoid_mixing_upper_lower = bool(answers["avoid_mixing_upper_lower"])
+    # Inverte de propósito: a resposta é "pode misturar?" (allow), a coluna
+    # guarda "evitar mistura" (avoid) — sem a inversão, "Não" (não quero
+    # misturar) gravava avoid_mixing=False (= pode misturar) e o motor
+    # misturava mesmo assim. Era o bug real por trás do relato do usuário.
+    if answers.get("allow_mixing_upper_lower") is not None:
+        p.avoid_mixing_upper_lower = not bool(answers["allow_mixing_upper_lower"])
     if answers.get("dietary_restrictions") is not None:
         p.dietary_restrictions = list(answers["dietary_restrictions"] or [])
     if answers.get("exercise_prefs") is not None:

@@ -294,7 +294,10 @@ _AJUSTES: dict[str, tuple[str, Any]] = {
     "dias_por_semana": ("training_days_per_week", lambda v: str(int(v))),
     "tempo_por_sessao": ("session_length", lambda v: str(v)),
     "tempo_inclui_cardio": ("session_includes_cardio", bool),
-    "nunca_misturar_superior_inferior": ("avoid_mixing_upper_lower", bool),
+    # Inverte de propósito: o parâmetro da ferramenta é "nunca misturar"
+    # (avoid), a chave das respostas guarda "pode misturar" (allow) — mesma
+    # convenção do formulário (ver questionnaire.py / plan_service.py).
+    "nunca_misturar_superior_inferior": ("allow_mixing_upper_lower", lambda v: not bool(v)),
     "periodizacao": ("periodization", lambda v: str(v)),
     "tecnicas_avancadas": ("allow_advanced_techniques", bool),
     "refeicoes_por_dia": ("meals_per_day", lambda v: str(int(v))),

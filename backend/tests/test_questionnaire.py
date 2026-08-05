@@ -369,6 +369,43 @@ def test_nivel_e_gravado_a_partir_do_tempo_de_treino(db, perfil):
     assert p.experience_level == ExperienceLevel.AVANCADO
 
 
+def test_resposta_de_misturar_upper_lower_nao_e_gravada_invertida(db, perfil):
+    """Bug real: a pergunta é "pode misturar?" (allow), a coluna guarda
+    "evitar mistura" (avoid) — polaridade oposta. Sem inverter na gravação,
+    responder "Não" (não quero misturar) virava avoid_mixing=False (= pode
+    misturar) e o motor misturava mesmo assim."""
+    p = _aplicar(db, perfil, {"allow_mixing_upper_lower": False})
+    assert p.avoid_mixing_upper_lower is True, (
+        "respondeu que NÃO pode misturar, mas o perfil ficou permitindo"
+    )
+
+    p = _aplicar(db, perfil, {"allow_mixing_upper_lower": True})
+    assert p.avoid_mixing_upper_lower is False, (
+        "respondeu que PODE misturar, mas o perfil ficou bloqueando"
+    )
+
+    # E o caminho de volta (reabrir o questionário) tem que mostrar a mesma
+    # resposta que a pessoa deu por último (True), não a invertida.
+    from app.coaching import plan_service
+
+    respostas = plan_service.answers_from_profile(db, perfil)
+    assert respostas["allow_mixing_upper_lower"] is True
+
+
+def test_ajuste_pelo_chat_de_misturar_upper_lower_bate_com_o_formulario(db, perfil):
+    """O chat ("nunca_misturar_superior_inferior") e o formulário
+    ("allow_mixing_upper_lower") têm polaridades opostas por design — os dois
+    precisam terminar no MESMO valor da coluna quando pedem a mesma coisa."""
+    from app.coaching import chat_tools
+
+    _aplicar(db, perfil, {"allow_mixing_upper_lower": True})  # começa permitindo
+
+    chave, conv = chat_tools._AJUSTES["nunca_misturar_superior_inferior"]
+    assert chave == "allow_mixing_upper_lower"
+    assert conv(True) is False, "chat pedindo NUNCA misturar tem que desligar o allow"
+    assert conv(False) is True, "chat liberando a mistura tem que ligar o allow"
+
+
 def test_respostas_estruturadas_sao_gravadas(db, perfil):
     """Cada uma destas substituiu um campo de texto que ninguém lia."""
     p = _aplicar(db, perfil, {
