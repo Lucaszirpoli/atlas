@@ -35,7 +35,6 @@ import { mensagemDeErro } from "../../utils/errorMessage";
 import { useHomeLayout, type HomeBlockId } from "../../utils/homeLayout";
 import { useProfilePhoto } from "../../utils/profilePhoto";
 import { ObjectiveScreen } from "../objective/ObjectiveScreen";
-import { OnboardingScreen } from "../onboarding/OnboardingScreen";
 import { WorkoutCard } from "./coachBlocks";
 import { CoachingProgress } from "./CoachingProgress";
 
@@ -343,9 +342,23 @@ export function CoachingScreen() {
     return <FreeHome navigation={navigation} user={user} />;
   }
 
-  // Pro sem questionário respondido: aqui ele é o cadastro do Coaching.
+  // Pro sem questionário respondido: aqui ele é o cadastro do Coaching. Já
+  // existia um segundo formulário (OnboardingScreen, 9 passos, campos
+  // diferentes) que caía aqui como gate — DUPLICADO da aba Objetivo abaixo,
+  // que já cobre "sem plano -> apresentação -> questionário" sozinha. Ficou
+  // sendo removido: a aba Objetivo é a única fonte do questionário agora.
   if (user && !user.onboarding_completed) {
-    return <OnboardingScreen onDone={load} />;
+    return (
+      <ScrollView
+        ref={scrollRef}
+        style={{ flex: 1, backgroundColor: colors.bg }}
+        contentContainerStyle={{ padding: spacing.lg, paddingTop: spacing.lg + insets.top, paddingBottom: spacing.xxl }}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
+        <ObjectiveScreen onScrollTop={() => scrollRef.current?.scrollTo({ y: 0, animated: true })} onPlanActivated={load} />
+      </ScrollView>
+    );
   }
 
   return (
