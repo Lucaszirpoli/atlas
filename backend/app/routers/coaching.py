@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from app.coaching import adaptive
 from app.coaching import chat as coach_chat
 from app.coaching import cycle_state
+from app.coaching import descobertas
 from app.coaching import overlays as coach_overlays
 from app.coaching import session_fit
 from app.coaching import training_brain
@@ -168,6 +169,13 @@ def _learned_block(db: Session, user: User) -> dict:
         "tolerancia_volume": "O tamanho de treino que cabe pra você",
         "ritmo_sessao": "Quanto tempo você leva por série",
     }
+    # As DESCOBERTAS — relações entre módulos diferentes (sono×treino,
+    # água×rendimento, comida×carga do dia seguinte). São o outro tipo de
+    # aprendizado: o de cima são parâmetros DELA que entram nas contas; estes
+    # são padrões que só aparecem cruzando meses de registro de quatro módulos
+    # ao mesmo tempo. Crescem em número conforme ela usa o app.
+    tz = profile_tz(getattr(user, "profile", None))
+    d["descobertas"] = [x.to_dict() for x in descobertas.descobrir(db, user.id, tz)]
     return d
 
 

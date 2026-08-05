@@ -642,6 +642,8 @@ function semanaLabel(baseline: string | null): string | null {
  * sumir: saber que o coach está aprendendo é parte do valor. */
 function AprendizadoBlock({ learned }: { learned: LearnedModel | null }) {
   const { colors, type, spacing, radius } = useTheme();
+  const [verTudo, setVerTudo] = React.useState(false);
+  const descobertas = learned?.descobertas ?? [];
   if (!learned) return null;
 
   const ordem: (keyof Pick<LearnedModel, "energia" | "tolerancia_volume" | "ritmo_sessao">)[] = [
@@ -761,6 +763,71 @@ function AprendizadoBlock({ learned }: { learned: LearnedModel | null }) {
           </View>
         </Card>
       )}
+
+      {/* AS DESCOBERTAS — o outro tipo de aprendizado. Acima estão parâmetros
+          DELA que entram nas contas; aqui, padrões que só aparecem cruzando
+          módulos diferentes (sono × treino, água × rendimento, comida × carga
+          do dia seguinte). A lista CRESCE conforme ela registra: no começo não
+          aparece nada, e é assim mesmo — inventar padrão com 3 dias de dado
+          seria o oposto de aprender. */}
+      {descobertas.length > 0 ? (
+        <View style={{ marginTop: spacing.md }}>
+          <Text
+            style={[
+              type.caption,
+              { color: colors.textSecondary, letterSpacing: 1, textTransform: "uppercase", marginBottom: spacing.sm },
+            ]}
+          >
+            O que eu cruzei dos seus dados
+          </Text>
+          <Card padded={false}>
+            {(verTudo ? descobertas : descobertas.slice(0, 3)).map((d, i) => {
+              const forca = FORCA[d.confianca] ?? FORCA.baixa;
+              return (
+                <View
+                  key={d.chave}
+                  style={{ padding: spacing.md, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.border }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                    <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "700", flex: 1 }]}>
+                      {d.titulo}
+                    </Text>
+                    <View
+                      style={{
+                        backgroundColor: forca.cor + "22",
+                        borderRadius: radius.pill,
+                        paddingVertical: 2,
+                        paddingHorizontal: 8,
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Text numberOfLines={1} style={[type.caption, { color: forca.cor, fontWeight: "700", fontSize: 10 }]}>
+                        {forca.rotulo}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={[type.caption, { color: colors.textSecondary, lineHeight: 17 }]}>{d.frase}</Text>
+                </View>
+              );
+            })}
+            {descobertas.length > 3 ? (
+              <TouchableOpacity
+                onPress={() => setVerTudo((v) => !v)}
+                style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border }}
+              >
+                <Ionicons name={verTudo ? "chevron-up" : "chevron-down"} size={14} color={colors.primary} />
+                <Text style={[type.caption, { color: colors.primary, fontWeight: "700" }]}>
+                  {verTudo ? "Ver menos" : `Ver mais (${descobertas.length - 3})`}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </Card>
+          <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm, lineHeight: 16 }]}>
+            São padrões que eu observei no seu histórico — não são regra pra todo mundo, e quanto
+            mais você registra, mais coisa eu consigo cruzar.
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }

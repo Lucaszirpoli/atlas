@@ -79,6 +79,19 @@ export type LearnedParam = {
   n: number;
 };
 
+/** Uma RELAÇÃO que o coach achou cruzando módulos diferentes (sono×treino,
+ * água×rendimento, comida×carga do dia seguinte). Diferente de LearnedParam:
+ * aquele é um parâmetro dela que entra nas contas; este é um padrão observado
+ * no histórico dela. Sempre descritivo, nunca causal. */
+export type Descoberta = {
+  chave: string;
+  titulo: string;
+  frase: string;
+  efeito_pct: number;
+  n: number;
+  confianca: "baixa" | "media" | "alta";
+};
+
 export type LearnedModel = {
   energia: LearnedParam;
   tolerancia_volume: LearnedParam;
@@ -86,6 +99,8 @@ export type LearnedModel = {
   /** Só as chaves que já têm evidência suficiente pra agir. */
   aprendidos: string[];
   rotulos: Record<string, string>;
+  /** Cresce conforme a pessoa registra — no começo vem vazio. */
+  descobertas?: Descoberta[];
 };
 
 export type SessionLength = "curto" | "medio" | "longo";
