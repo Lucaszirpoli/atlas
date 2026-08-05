@@ -21,11 +21,13 @@ from app.ai.methods_engine import build_plan
 from app.coaching import (
     adaptive,
     cycle_state,
+    descobertas,
     prescription,
     restrictions,
     training_brain,
     volume_landmarks,
 )
+from app.core import usertime
 from app.models.coaching_technique_cue import CoachingTechniqueCue
 from app.models.exercise import MuscleGroup
 from app.models.routine import Routine, RoutineExercise
@@ -254,6 +256,19 @@ def build_and_save(db: Session, user: User) -> dict:
     # está dormindo mal recebe o mesmo desenho de treino com menos série — não um
     # treino diferente, que seria imprevisível pra quem acompanha a evolução.
     recuperacao = training_brain.recovery_factor(profile)
+    # ...corrigido pelo que o histórico MEDIU sobre a recuperação dela. Se o
+    # rendimento dela cai bastante nos dias de sono ruim, isso é evidência
+    # direta sobre a mesma coisa que as perguntas do questionário estimam — e
+    # evidência medida vale mais que resposta dada uma vez. O ajuste é pequeno,
+    # limitado e só pra baixo (ver descobertas.ajuste_de_recuperacao): o coach
+    # não infla volume por causa de correlação.
+    _delta_desc, _motivo_desc = descobertas.ajuste_de_recuperacao(
+        descobertas.descobrir(db, user.id, usertime.profile_tz(profile))
+    )
+    if _delta_desc:
+        recuperacao = max(
+            training_brain.RECOVERY_FACTOR_MIN, round(recuperacao + _delta_desc, 3)
+        )
     # ...e o que ela MOSTROU treinando: quanto do prescrito ela executa e
     # quantas sessões termina (coaching/adaptive). `recovery` vem do que ela
     # respondeu uma vez; este vem do histórico e vai se corrigindo sozinho.

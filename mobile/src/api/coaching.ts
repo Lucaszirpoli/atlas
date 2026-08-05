@@ -90,6 +90,9 @@ export type Descoberta = {
   efeito_pct: number;
   n: number;
   confianca: "baixa" | "media" | "alta";
+  /** O que fazer a respeito. Só vem quando o achado é forte E confiável — com
+   * pouca evidência o coach mostra o que viu, mas não manda fazer nada. */
+  acao?: string | null;
 };
 
 export type LearnedModel = {

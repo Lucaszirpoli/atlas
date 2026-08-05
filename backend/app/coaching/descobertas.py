@@ -75,6 +75,7 @@ class Descoberta:
     efeito_pct: float
     n: int
     confianca: str  # baixa | media | alta
+    acao: str | None = None  # o que fazer a respeito, quando há algo seguro a fazer
 
     def to_dict(self) -> dict:
         return {
@@ -84,6 +85,7 @@ class Descoberta:
             "efeito_pct": round(self.efeito_pct, 1),
             "n": self.n,
             "confianca": self.confianca,
+            "acao": self.acao,
         }
 
 
@@ -332,6 +334,99 @@ def _estavel(pares: list[tuple[date, float, float]], direcao: float) -> bool:
     return True
 
 
+# ---------------------------------------------------------------------------
+# 3. DE ACHADO PRA AÇÃO
+# ---------------------------------------------------------------------------
+#
+# Nem toda descoberta vira ação, e isso é de propósito. Correlação não é causa:
+# saber que você come mais depois de dormir mal não autoriza o app a mexer na
+# sua meta. Só entram aqui as relações em que existe uma coisa CONCRETA e
+# SEGURA a fazer — e mesmo essas exigem barra mais alta que a de exibição.
+
+ACAO_EFEITO_MIN = 12.0          # efeito mínimo pra sugerir algo (exibir basta 8%)
+ACAO_CONFIANCA = {"media", "alta"}  # com confiança baixa o coach mostra, mas não age
+
+# chave da hipótese -> o que fazer. Texto na voz do coach, sem culpa.
+_ACOES: dict[str, str] = {
+    "sono_horas->kcal@1": (
+        "Nos dias seguintes a uma noite curta, deixe a proteína e a fruta à mão: "
+        "a fome sobe sozinha e a escolha fica mais difícil."
+    ),
+    "sono_horas->treino_volume@0": (
+        "Quando dormir mal, troque a meta do dia: mantenha a carga e tire uma série, "
+        "em vez de tentar fechar tudo e falhar no meio."
+    ),
+    "sono_horas->treino_carga@0": (
+        "Depois de noite curta, use o aquecimento pra decidir a carga do dia — "
+        "seu corpo já mostrou que ela cai nesses dias."
+    ),
+    "sono_qualidade->treino_volume@0": (
+        "Sono ruim tem pesado no seu rendimento. Vale tratar a noite anterior "
+        "como parte do treino."
+    ),
+    "agua->treino_volume@0": (
+        "Beber água antes e durante o treino tem rendido volume pra você. "
+        "Leve a garrafa cheia."
+    ),
+    "agua->treino_series@0": (
+        "Sua hidratação aparece no número de séries que você aguenta. "
+        "Vale começar o dia bebendo."
+    ),
+    "carbo->treino_volume@1": (
+        "Carboidrato na véspera tem virado rendimento no seu caso. "
+        "Reforce no dia anterior aos treinos pesados."
+    ),
+    "carbo->treino_carga@1": (
+        "Sua carga responde ao carboidrato do dia anterior. "
+        "Vale planejar isso antes dos dias de treino puxado."
+    ),
+    "kcal->treino_volume@1": (
+        "Comer abaixo do normal tem custado rendimento no treino seguinte. "
+        "Os dias de véspera de treino são os piores pra cortar comida."
+    ),
+    "proteina->treino_volume@1": (
+        "Sua proteína do dia anterior tem aparecido no treino seguinte."
+    ),
+}
+
+# Quanto uma descoberta forte de sono→rendimento pode mexer no fator de
+# recuperação que dimensiona o volume da semana. Teto baixo DE PROPÓSITO: é
+# correlação, então ela ajusta na margem — nunca manda no plano. E só pra
+# BAIXO: o coach não infla volume por causa de correlação, só fica mais
+# conservador quando a evidência da própria pessoa pede.
+AJUSTE_RECUPERACAO_MAX = 0.08
+
+
+def ajuste_de_recuperacao(achados: list[Descoberta]) -> tuple[float, str | None]:
+    """O único lugar onde uma descoberta vira NÚMERO no plano.
+
+    Se o histórico mostra que o rendimento desta pessoa cai bastante quando ela
+    dorme mal, isso é evidência medida sobre a recuperação dela — exatamente o
+    que `training_brain.recovery_factor` estima a partir do questionário. Aqui
+    a evidência corrige a resposta, seguindo as mesmas regras do `adaptive`:
+    piso de evidência, efeito limitado e nunca substituição total.
+
+    Devolve (delta a somar no fator, motivo legível) — delta ≤ 0.
+    """
+    relevantes = [
+        d for d in achados
+        if d.chave in ("sono_horas->treino_volume@0", "sono_qualidade->treino_volume@0")
+        and d.confianca in ACAO_CONFIANCA
+        and d.efeito_pct > 0  # rendimento MAIOR com mais sono = cai com pouco sono
+        and abs(d.efeito_pct) >= ACAO_EFEITO_MIN
+    ]
+    if not relevantes:
+        return 0.0, None
+    forte = max(relevantes, key=lambda d: abs(d.efeito_pct))
+    # 20% de queda -> teto do ajuste. Proporcional, e limitado.
+    delta = -min(AJUSTE_RECUPERACAO_MAX, AJUSTE_RECUPERACAO_MAX * abs(forte.efeito_pct) / 20.0)
+    motivo = (
+        f"Seu rendimento cai {round(abs(forte.efeito_pct))}% quando você dorme mal, "
+        "então dimensionei a semana um pouco mais conservadora."
+    )
+    return round(delta, 3), motivo
+
+
 def descobrir(db: Session, user_id: int, tz: ZoneInfo, limite: int = 8) -> list[Descoberta]:
     """Roda o catálogo inteiro e devolve os achados que sobreviveram às três
     defesas, do efeito mais forte pro mais fraco."""
@@ -356,9 +451,18 @@ def descobrir(db: Session, user_id: int, tz: ZoneInfo, limite: int = 8) -> list[
         sinal = menos if diff > 0 else mais
         n = len(pares)
         confianca = "alta" if n >= 40 else "media" if n >= 20 else "baixa"
+        chave = f"{causa}->{efeito_dim}@{lag}"
+        # A sugestão só acompanha o achado quando ele é forte E confiável o
+        # bastante. Abaixo disso o coach mostra o que viu, mas não manda fazer
+        # nada — dizer "faça X" com base em ruído é pior que não dizer nada.
+        acao = (
+            _ACOES.get(chave)
+            if confianca in ACAO_CONFIANCA and abs(diff) >= ACAO_EFEITO_MIN
+            else None
+        )
         achados.append(
             Descoberta(
-                chave=f"{causa}->{efeito_dim}@{lag}",
+                chave=chave,
                 titulo=titulo,
                 frase=molde.format(
                     pct=round(abs(diff)),
@@ -369,6 +473,7 @@ def descobrir(db: Session, user_id: int, tz: ZoneInfo, limite: int = 8) -> list[
                 efeito_pct=diff,
                 n=n,
                 confianca=confianca,
+                acao=acao,
             )
         )
 

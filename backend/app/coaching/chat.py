@@ -127,7 +127,29 @@ def _perfil_lines(profile) -> list[str]:
     ]
 
 
-def _system_prompt(analysis: WeeklyAnalysis, profile=None, retrato=None, medido=None) -> str:
+def _descobertas_lines(achados) -> list[str]:
+    """As relações que o coach achou cruzando os módulos da pessoa.
+
+    Entram como FATO OBSERVADO, não como teoria: cada uma já passou por
+    tamanho de efeito, amostra nos dois grupos e estabilidade nas duas metades
+    da janela (ver coaching/descobertas). O modelo pode citá-las, mas a regra
+    de não inventar número continua valendo — o que está aqui é tudo que ele
+    sabe sobre isso.
+    """
+    if not achados:
+        return []
+    linhas = [
+        "",
+        "O QUE EU JÁ CRUZEI DOS DADOS DELA (padrões do histórico DELA, não regra geral —",
+        "fale deles como observação, nunca como causa provada):",
+    ]
+    for d in achados:
+        extra = f" Sugestão ligada a isso: {d.acao}" if d.acao else ""
+        linhas.append(f"- [{d.confianca}, n={d.n}] {d.frase}{extra}")
+    return linhas
+
+
+def _system_prompt(analysis: WeeklyAnalysis, profile=None, retrato=None, medido=None, achados=None) -> str:
     m = analysis.metrics
     linhas = [
         "Você é o coach pessoal do usuário dentro do app ATLAS (fitness/nutrição). "
@@ -208,6 +230,11 @@ def _system_prompt(analysis: WeeklyAnalysis, profile=None, retrato=None, medido=
     # fato, não como impressão.
     if medido is not None:
         linhas += medido.prompt_lines()
+    # E o que ele CRUZOU: relações entre módulos diferentes que só aparecem com
+    # meses de registro (sono×treino, água×rendimento, comida×carga do dia
+    # seguinte). É o que permite o coach responder "por que meu treino rendeu
+    # mal hoje?" com o padrão real dela, em vez de com teoria genérica.
+    linhas += _descobertas_lines(achados)
     return "\n".join(linhas)
 
 
@@ -259,11 +286,15 @@ def answer(
     medido = adaptive.modelo(
         db, user.id, profile=profile, peso_kg=goal_service.get_latest_weight_kg(db, user.id)
     )
+    from app.coaching import descobertas as _descobertas
+    from app.core.usertime import profile_tz
+
     system = _system_prompt(
         analysis,
         profile=profile,
         retrato=user_model.aprender(db, user.id),
         medido=medido,
+        achados=_descobertas.descobrir(db, user.id, profile_tz(profile)),
     )
 
     try:

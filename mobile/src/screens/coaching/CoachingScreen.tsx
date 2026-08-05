@@ -807,6 +807,17 @@ function AprendizadoBlock({ learned }: { learned: LearnedModel | null }) {
                     </View>
                   </View>
                   <Text style={[type.caption, { color: colors.textSecondary, lineHeight: 17 }]}>{d.frase}</Text>
+                  {/* A sugestão só existe quando o achado é forte E confiável.
+                      Sem ela, o card fica sendo só observação — que é o certo
+                      quando a evidência ainda não banca uma recomendação. */}
+                  {d.acao ? (
+                    <View style={{ flexDirection: "row", gap: 6, marginTop: 6, alignItems: "flex-start" }}>
+                      <Ionicons name="bulb-outline" size={13} color={colors.primary} style={{ marginTop: 1 }} />
+                      <Text style={[type.caption, { color: colors.primary, flex: 1, lineHeight: 17 }]}>
+                        {d.acao}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
               );
             })}
