@@ -97,25 +97,15 @@ def test_preferencia_vence_o_torso_limbs():
     assert escolhido != auto
 
 
-# --- Integração com o questionário e o plano --------------------------------
+# --- Integração com o plano --------------------------------------------
 
-def test_a_pergunta_existe_na_tela():
-    """Se a preferência só pudesse ser mudada pelo chat, ela seria um ajuste
-    secreto — a tela é a fonte da verdade do questionário."""
+def test_a_pergunta_saiu_da_tela_mas_continua_ajustavel_pelo_chat():
+    """`split_preference` deixou de ser pergunta do questionário (sobrepunha
+    "pode misturar superior e inferior?" sem acrescentar nada que ela não
+    resolvesse) — mas continua um ajuste válido via chat (`ajustar_plano`),
+    testado abaixo pelo diff de plano."""
     campos = {f["key"] for s in questionnaire.steps() for f in s["fields"]}
-    assert "split_preference" in campos
-
-
-def test_toda_opcao_da_tela_diz_de_quantos_dias_precisa():
-    campo = next(
-        f for s in questionnaire.steps() for f in s["fields"] if f["key"] == "split_preference"
-    )
-    valores = {o["value"] for o in campo["options"]}
-    assert valores == training_brain.SPLIT_PREFERENCE_VALUES
-    for opcao in campo["options"]:
-        if opcao["value"] == "auto":
-            continue
-        assert "dias por semana" in opcao.get("desc", ""), opcao
+    assert "split_preference" not in campos
 
 
 def test_mudar_a_divisao_marca_o_treino_pra_ser_refeito():

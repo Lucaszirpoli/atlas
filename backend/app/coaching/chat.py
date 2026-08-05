@@ -98,8 +98,6 @@ def _perfil_lines(profile) -> list[str]:
          _um(training_brain.RIR_ACCURACY, getattr(profile, "rir_accuracy", None))),
         ("Técnica avançada",
          "pode usar" if training_brain.advanced_allowed(profile) else "SÓ SÉRIES NORMAIS — não sugira técnica"),
-        ("Técnicas que já usou",
-         _rot(training_brain.KNOWN_TECHNIQUES, getattr(profile, "known_techniques", None))),
         ("Sono", _um(training_brain.SLEEP_QUALITY, getattr(profile, "sleep_quality", None))),
         ("Estresse", _um(training_brain.STRESS_LEVEL, getattr(profile, "stress_level", None))),
         ("Chega no treino seguinte",

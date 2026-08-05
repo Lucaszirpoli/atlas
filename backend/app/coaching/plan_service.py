@@ -93,7 +93,6 @@ _IMPACTO: dict[str, tuple[str, ...]] = {
     "priority_3": ("treino",),
     "strong_points": ("treino",),
     "allow_advanced_techniques": ("treino",),
-    "known_techniques": ("treino",),
     "periodization": ("treino", "periodizacao"),
     # Recuperação. As quatro viram o fator que desloca o VOLUME semanal
     # (training_brain.recovery_factor), então mexem no treino — não só na
@@ -235,7 +234,6 @@ def answers_from_profile(db: Session, user: User) -> dict[str, Any]:
         "pain_regions": list(p.pain_regions or []),
         "pain_intensity": p.pain_intensity,
         "limitations": list(p.limitations or []),
-        "known_techniques": list(p.known_techniques or []),
         "sleep_quality": p.sleep_quality,
         "stress_level": p.stress_level,
         "recovery_between": p.recovery_between,
@@ -304,9 +302,16 @@ def _de_esquema_antigo(respostas: dict) -> bool:
 
 def diff_answers(antigas: dict, novas: dict) -> list[dict]:
     """O que mudou, campo a campo, com rótulo humano — vira o "resumo das
-    mudanças" que a pessoa lê depois de atualizar (§3.6)."""
+    mudanças" que a pessoa lê depois de atualizar (§3.6).
+
+    Percorre `_IMPACTO`, não `questionnaire.FIELD_LABELS`: são os campos que
+    de fato mexem no plano, e alguns (ex.: `split_preference`) só são
+    respondidos pelo chat (`ajustar_plano`), não pela tela. Se o diff olhasse
+    só os campos da tela, uma mudança de divisão pelo chat nunca apareceria
+    como impacto em "treino" — a mesma falha silenciosa que este diff existe
+    pra evitar (ver docstring de `activate`)."""
     mudancas: list[dict] = []
-    for key in questionnaire.FIELD_LABELS:
+    for key in _IMPACTO:
         de, para = antigas.get(key), novas.get(key)
         if _igual(de, para):
             continue
@@ -466,7 +471,6 @@ def apply_answers_to_profile(db: Session, user: User, answers: dict) -> None:
         ("pain_regions", training_brain.BODY_REGION_VALUES),
         ("limitations", training_brain.LIMITATION_VALUES),
         ("home_equipment", training_brain.HOME_EQUIPMENT_VALUES),
-        ("known_techniques", training_brain.KNOWN_TECHNIQUE_VALUES),
     ):
         if answers.get(campo) is not None:
             setattr(p, campo, training_brain.many_of(answers.get(campo), permitidos))

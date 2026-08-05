@@ -69,20 +69,6 @@ FOOD_DISLIKES = [
 ]
 
 
-def _faixa_de_dias(split: str) -> str:
-    """"(precisa de 4 a 6 dias por semana)" — o requisito na própria opção, pra
-    a pessoa escolher sabendo, em vez de descobrir depois numa recusa."""
-    from app.ai import methods
-
-    faixa = methods.SPLIT_DAY_RANGE.get(split)
-    if faixa is None:
-        return ""
-    minimo, maximo = faixa
-    if minimo == maximo:
-        return f"(precisa de {minimo} dias por semana)"
-    return f"(precisa de {minimo} a {maximo} dias por semana)"
-
-
 # Token gravado -> o rótulo que a pessoa viu na tela. A dieta mostrava as
 # etiquetas cruas ("sem_lactose", "whey"), que é linguagem de banco de dados.
 FOOD_TOKEN_LABEL: dict[str, str] = {v: label for v, label in RESTRICOES + FOOD_DISLIKES}
@@ -292,28 +278,14 @@ def steps() -> list[dict]:
                  "help": "É a ordem de grandeza. O tempo real cai conforme você treina mais "
                          "dias na semana, porque o mesmo volume se divide em mais treinos — "
                          "eu te digo a duração exata assim que montar o plano."},
-                # "Qual divisão você prefere?" VOLTOU. Ela tinha saído porque se
-                # acreditava que, pra cada frequência, só UMA divisão cumpria a
-                # regra 6 (mínimo 2×/semana por grupo). Medindo — montando o
-                # plano de verdade e rodando `plan_review` em cada combinação —
-                # isso não se confirmou: superior/inferior sai limpo em 4, 5 e 6
-                # dias, e em 5 e 6 ele é uma alternativa REAL à automática.
+                # "Qual divisão você prefere?" (`split_preference`) SAIU de novo:
+                # sobrepunha esta pergunta abaixo sem acrescentar nada que ela já
+                # não resolvesse — quem tem uma opinião sobre misturar superior e
+                # inferior fala isso aqui, e o resto (qual blueprint cai em cada
+                # dia) o motor decide sozinho pelos dias disponíveis. Continua
+                # dando pra escolher a divisão manualmente pelo chat do coach
+                # (`ajustar_plano`), só não é mais pergunta do formulário.
                 #
-                # O que a medição confirmou foi o contrário: corpo inteiro em 4+
-                # dias derruba bíceps e glúteo abaixo de 2 vagas por semana e
-                # desequilibra empurrar × puxar. Por isso cada opção declara a
-                # faixa de dias em que funciona, e `methods.SPLIT_DAY_RANGE`
-                # recusa (com explicação) o que não cabe — em vez de a tela
-                # oferecer algo que o motor vai ignorar em silêncio.
-                {"key": "split_preference", "label": "Divisão do treino",
-                 "type": SINGLE, "required": False,
-                 "options": _opts3([
-                     (v, label, f"{desc} {_faixa_de_dias(v)}".strip())
-                     for v, label, desc in training_brain.SPLIT_PREFERENCES
-                 ]),
-                 "help": "Cada divisão precisa de uma quantidade mínima de dias pra treinar "
-                         "cada músculo 2× na semana. Se a que você escolher não couber nos seus "
-                         "dias, eu monto a melhor possível e te explico por quê."},
                 # Pergunta direta — "upper/lower" é jargão, e quem não conhece o
                 # termo não tem como recusar um dia que mistura os dois sem antes
                 # descobrir o nome técnico da divisão que evita isso.
@@ -381,11 +353,6 @@ def steps() -> list[dict]:
                  "type": BOOL, "required": False,
                  "help": "Myo-reps, rest-pause, muscle round, back-off e superset. Rendem mais "
                          "estímulo no mesmo tempo, mas trabalham perto da falha."},
-                {"key": "known_techniques", "label": "Quais você já usou", "type": MULTI,
-                 "required": False, "options": _opts(training_brain.KNOWN_TECHNIQUES),
-                 "shows_if": {"field": "allow_advanced_techniques", "equals": "true"},
-                 "help": "Eu começo pelas que você já conhece. As outras entram depois, "
-                         "uma de cada vez."},
                 {"key": "periodization", "label": "Como o treino evolui ao longo dos meses",
                  "type": SINGLE, "required": False,
                  "options": _opts3(training_brain.PERIODIZATIONS)},

@@ -276,18 +276,6 @@ FAILURE_COMFORT: list[tuple[str, str, str]] = [
 ]
 FAILURE_COMFORT_VALUES = {v for v, _, _ in FAILURE_COMFORT}
 
-# --- Técnicas que a pessoa já usou ------------------------------------------
-# Cap. XVII Parte D: "experiência geral não substitui domínio específico". Um
-# avançado que nunca fez myo-reps não recebe myo-reps de cara.
-KNOWN_TECHNIQUES: list[tuple[str, str]] = [
-    ("rest_pause", "Rest-pause"),
-    ("myo_reps", "Myo-reps"),
-    ("muscle_round", "Muscle round"),
-    ("back_off", "Back-off (série pesada + série mais leve)"),
-    ("superset", "Superset (dois exercícios seguidos)"),
-]
-KNOWN_TECHNIQUE_VALUES = {v for v, _ in KNOWN_TECHNIQUES}
-
 # --- Recuperação ------------------------------------------------------------
 # Estes quatro campos entram JUNTOS num único fator de recuperação, que desloca o
 # volume semanal dentro da faixa MEV–MRV. Separados eles não decidiriam nada;

@@ -219,9 +219,6 @@ class UserProfile(Base):
     avoid_mixing_upper_lower: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     load_preference: Mapped[str | None] = mapped_column(String(12), nullable=True)
     failure_comfort: Mapped[str | None] = mapped_column(String(12), nullable=True)
-    known_techniques: Mapped[list[str]] = mapped_column(
-        ARRAY(String(20)).with_variant(JSON(), "sqlite"), default=list
-    )
 
     # Recuperação. As quatro entram JUNTAS num único fator que desloca o volume
     # semanal (training_brain.recovery_factor) — separadas não decidiriam nada.

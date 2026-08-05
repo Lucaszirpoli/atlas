@@ -81,7 +81,6 @@ def _ensure_profile_columns() -> None:
         ("avoid_mixing_upper_lower", "BOOLEAN", "BOOLEAN"),
         ("load_preference", "VARCHAR(12)", "VARCHAR(12)"),
         ("failure_comfort", "VARCHAR(12)", "VARCHAR(12)"),
-        ("known_techniques", "VARCHAR(20)[]", "TEXT"),
         ("sleep_quality", "VARCHAR(8)", "VARCHAR(8)"),
         ("stress_level", "VARCHAR(8)", "VARCHAR(8)"),
         ("recovery_between", "VARCHAR(12)", "VARCHAR(12)"),

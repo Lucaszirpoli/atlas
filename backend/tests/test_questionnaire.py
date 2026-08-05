@@ -357,7 +357,6 @@ def test_respostas_estruturadas_sao_gravadas(db, perfil):
         "rir_accuracy": "nao", "failure_comfort": "evito", "load_preference": "leve",
         "gym_crowding": "cheia", "split_preference": "upper_lower",
         "limitations": ["mobilidade", "equilibrio"],
-        "known_techniques": ["myo_reps"],
         "food_dislikes_list": ["figado", "jilo"],
     })
     assert p.rir_accuracy == "nao"
@@ -366,7 +365,6 @@ def test_respostas_estruturadas_sao_gravadas(db, perfil):
     assert p.gym_crowding == "cheia"
     assert p.split_preference == "upper_lower"
     assert p.limitations == ["mobilidade", "equilibrio"]
-    assert p.known_techniques == ["myo_reps"]
     assert p.food_dislikes_list == ["figado", "jilo"]
 
 
