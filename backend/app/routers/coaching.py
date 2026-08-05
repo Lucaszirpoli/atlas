@@ -160,10 +160,13 @@ def _learned_block(db: Session, user: User) -> dict:
         profile=getattr(user, "profile", None),
         peso_kg=goal_service.get_latest_weight_kg(db, user.id),
     ).to_dict()
+    # Títulos em linguagem de gente. "Quanto volume você aguenta" soava como
+    # julgamento ("você não aguenta") em cima de um número que na verdade fala
+    # do TAMANHO DO TREINO que o coach monta — não da capacidade da pessoa.
     d["rotulos"] = {
-        "energia": "Seu gasto de energia",
-        "tolerancia_volume": "Quanto volume você aguenta",
-        "ritmo_sessao": "Seu ritmo de treino",
+        "energia": "Quantas calorias você gasta por dia",
+        "tolerancia_volume": "O tamanho de treino que cabe pra você",
+        "ritmo_sessao": "Quanto tempo você leva por série",
     }
     return d
 

@@ -652,10 +652,15 @@ function AprendizadoBlock({ learned }: { learned: LearnedModel | null }) {
   const params = ordem.map((k) => learned[k]).filter(Boolean);
   const sabidos = params.filter((p) => p.confianca !== "nenhuma");
 
+  // O selo responde UMA pergunta: o quanto dá pra confiar neste número. Os
+  // rótulos anteriores ("primeiros sinais", "já dá pra confiar", "bem medido")
+  // eram frases soltas — a pessoa não sabia se aquilo era elogio, aviso ou
+  // status. "Confiança baixa/média/alta" é escala, e escala se entende sem
+  // legenda.
   const FORCA: Record<string, { rotulo: string; cor: string }> = {
-    baixa: { rotulo: "primeiros sinais", cor: colors.textSecondary },
-    media: { rotulo: "já dá pra confiar", cor: colors.primary },
-    alta: { rotulo: "bem medido", cor: colors.success },
+    baixa: { rotulo: "confiança baixa", cor: colors.textSecondary },
+    media: { rotulo: "confiança média", cor: colors.primary },
+    alta: { rotulo: "confiança alta", cor: colors.success },
   };
 
   return (
@@ -751,7 +756,7 @@ function AprendizadoBlock({ learned }: { learned: LearnedModel | null }) {
           >
             <Ionicons name="checkmark-circle" size={13} color={colors.success} />
             <Text style={[type.caption, { color: colors.textSecondary, flex: 1 }]}>
-              Isto já está valendo no seu plano — não é só informação.
+              Esses números já são usados pra montar seu treino e sua dieta.
             </Text>
           </View>
         </Card>

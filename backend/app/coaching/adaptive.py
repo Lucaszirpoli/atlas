@@ -183,15 +183,22 @@ def energia_observada(
     ordem = [BAIXA, MEDIA, ALTA]
     confianca = ordem[min(ordem.index(conf_comida), ordem.index(conf_peso))]
 
-    sentido = "ganhando" if trend_kg_semana > 0 else "perdendo" if trend_kg_semana < 0 else "mantendo"
     nota = ""
     if abs(limitado - bruto) > 1:
-        nota = " (limitei o valor: o registro sugere um gasto fora do plausível)"
+        nota = " (limitei esse número: o que está registrado sugere um gasto fora do plausível)"
+    # Vírgula decimal: "0.20 kg" é formato americano e trava a leitura em pt-BR.
+    kg_semana = f"{abs(trend_kg_semana):.2f}".replace(".", ",")
+    if trend_kg_semana > 0:
+        movimento = f"ganhando {kg_semana} kg por semana"
+    elif trend_kg_semana < 0:
+        movimento = f"perdendo {kg_semana} kg por semana"
+    else:
+        movimento = "com o peso estável"
     return Aprendido(
         "energia", final, confianca,
-        f"Você come ~{round(kcal_medio)} kcal/dia e está {sentido} "
-        f"{abs(trend_kg_semana):.2f} kg/semana — isso põe seu gasto real perto de "
-        f"{round(final)} kcal/dia, contra {round(tdee_formula)} da fórmula{nota}.",
+        f"Você come cerca de {round(kcal_medio)} kcal por dia e está {movimento}. "
+        f"Por essa conta, seu gasto real é de uns {round(final)} kcal por dia — a fórmula "
+        f"padrão estimava {round(tdee_formula)}{nota}.",
         dias_comida,
     )
 
@@ -287,16 +294,25 @@ def tolerancia_a_volume(
     fator = _limitar(0.55 + 0.5 * taxa_execucao + 0.2 * taxa_conclusao, TOLERANCIA_MIN, TOLERANCIA_MAX)
 
     confianca = ALTA if len(sessoes) >= 18 else MEDIA if len(sessoes) >= 10 else BAIXA
+    # Frase escrita pra ser entendida de primeira, em voz de coach falando com a
+    # pessoa. A versão anterior ("você registrou 12% das séries planejadas e
+    # terminou 25% das sessões: boa parte das séries planejadas não acontece —
+    # melhor prescrever o que cabe de verdade") tinha três problemas: jargão
+    # ("prescrever"), voz passiva sem sujeito ("não acontece") e um número solto
+    # que parecia cobrança. O que importa aqui é o que EU vou fazer com isso.
     if fator >= 1.05:
-        leitura = "você fecha o que é prescrito — dá pra subir o volume"
+        leitura = "Você dá conta de tudo que eu passo, então dá pra aumentar o treino."
     elif fator <= 0.95:
-        leitura = "boa parte das séries planejadas não acontece — melhor prescrever o que cabe de verdade"
+        leitura = (
+            "O treino que eu montei é maior do que cabe no seu dia, então vou passar a "
+            "montar do tamanho que você realmente consegue fazer."
+        )
     else:
-        leitura = "o volume atual está no tamanho certo pra você"
+        leitura = "O tamanho do seu treino está certo."
     return Aprendido(
         "tolerancia_volume", fator, confianca,
-        f"Em {len(sessoes)} treinos você registrou {round(taxa_execucao * 100)}% das séries "
-        f"planejadas e terminou {round(taxa_conclusao * 100)}% das sessões: {leitura}.",
+        f"Nos seus últimos {len(sessoes)} treinos você fez {round(taxa_execucao * 100)}% das "
+        f"séries que o plano pedia e terminou {round(taxa_conclusao * 100)}% deles. {leitura}",
         len(sessoes),
     )
 
@@ -420,10 +436,18 @@ def ritmo_da_sessao(db: Session, user_id: int, now: datetime | None = None) -> A
 
     seg = _limitar(median(ritmos), SEG_POR_SERIE_MIN, SEG_POR_SERIE_MAX)
     confianca = ALTA if len(ritmos) >= 15 else MEDIA if len(ritmos) >= 9 else BAIXA
+    # "204 s" ninguém lê como tempo — acima de 90 s vira minuto, que é como a
+    # pessoa pensa em descanso entre séries.
+    if seg >= 90:
+        minutos, segundos = divmod(round(seg), 60)
+        tempo = f"{minutos}min{segundos:02d}" if segundos else f"{minutos} minutos"
+    else:
+        tempo = f"{round(seg)} segundos"
     return Aprendido(
         "ritmo_sessao", seg, confianca,
-        f"Nos seus {len(ritmos)} últimos treinos você levou cerca de {round(seg)} s por série "
-        "(contando descanso e transição).",
+        f"Nos seus últimos {len(ritmos)} treinos você levou cerca de {tempo} por série, "
+        "contando o descanso e a troca de aparelho. É com esse tempo que eu calculo "
+        "quanto dura o seu treino.",
         len(ritmos),
     )
 
