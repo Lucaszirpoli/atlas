@@ -18,12 +18,20 @@ inclusive na ordem. Os demais seguem a mesma lógica, variando padrão e região
 pra fechar a cobertura semanal do Princípio 6.
 
 Ordem das vagas = ordem no treino. `priority` só decide quem CAI quando a
-sessão é curta: 1 nunca cai, 2 cai antes de 3. É por isso que numa sessão curta
-o que sai é panturrilha/abdutor/core, e nunca o composto prioritário.
+sessão é curta: 1 nunca cai, 2 cai antes de 3 — nunca o composto prioritário.
+
+`priority` sozinho NÃO decide o corte, e essa distinção custou caro: por ela, a
+vaga do fim do treino cai sempre, e a vaga do fim é panturrilha nos dois dias de
+inferior e abdômen/tríceps nos dois de superior. Cada corte parecia certo olhando
+o dia, e a semana saía sem uma única panturrilha e sem um único abdominal. Quem
+decide o corte é `fit_week_to_target`, que olha a SEMANA e não deixa nenhum
+músculo chegar a zero — a prioridade é só a ordem da fila dentro do que é
+seguro cortar.
 """
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 
 from app.ai.exercise_taxonomy import (
@@ -38,6 +46,7 @@ from app.ai.exercise_taxonomy import (
     POST_EXT_QUADRIL,
     POST_FLEX_JOELHO,
     Pattern,
+    REQUIRED_REGIONS,
     UPPER_BACK,
 )
 from app.models.exercise import MuscleGroup
@@ -162,6 +171,13 @@ INFERIOR_B: list[SlotSpec] = [
     _iso(M.QUADS),
     _minor(P.ADDUCTION, M.QUADS, ADUTORES),
     _minor(P.CALF, M.CALVES),
+    # Abdômen no dia de INFERIOR, e não uma segunda vaga no de superior. O
+    # volume semanal de abdômen pede 2 exercícios, e com abdômen só no
+    # `superior a` os dois caíam no MESMO dia (abdominal máquina + abdominal com
+    # roda um atrás do outro) — `add_accessory_slot` só acrescenta em dia que já
+    # treina o músculo. O dia de superior ia a 8 exercícios enquanto o de
+    # inferior ficava com 5. Aqui o par nasce em dias diferentes.
+    _minor(P.CORE, M.ABS, priority=3),
 ]
 
 # ---------------------------------------------------------------------------
@@ -410,14 +426,200 @@ def fit_to_target(
     if target is None or target >= len(blueprint):
         return list(blueprint)
     alvo = max(1, target)
-    # -priority: prioridade alta (3) primeiro. -i: dentro do mesmo nível, a vaga
-    # mais ao fim do treino sai antes.
-    fila_de_corte = sorted(range(len(blueprint)), key=lambda i: (-blueprint[i].priority, -i))
     cortadas: set[int] = set()
-    for i in fila_de_corte:
+    for i in _fila_de_corte(blueprint):
         if len(blueprint) - len(cortadas) <= alvo:
             break
         if i == 0 or i in protegidas:
             continue  # o composto prioritário e todo ponto fraco nunca saem
         cortadas.add(i)
     return [s for i, s in enumerate(blueprint) if i not in cortadas]
+
+
+def _fila_de_corte(blueprint: list[SlotSpec]) -> list[int]:
+    """Índices na ordem em que as vagas caem quando falta tempo.
+
+    -priority: prioridade alta (3) primeiro. -i: dentro do mesmo nível, a vaga
+    mais ao fim do treino sai antes — é a que a pessoa já ia cortar por cansaço.
+    """
+    return sorted(range(len(blueprint)), key=lambda i: (-blueprint[i].priority, -i))
+
+
+# Piso de frequência semanal por músculo (regra 6 do produto: nada de bro-split,
+# mínimo 2×/semana por grupo). O corte por tempo respeita este piso enquanto
+# houver outra vaga que possa sair no lugar — ver `fit_week_to_target`.
+FREQUENCIA_MINIMA_SEMANAL = 2
+
+# ABDÔMEN é a exceção, e por mecânica, não por descaso: o core trabalha
+# isometricamente em TODO composto em pé ou com carga axial (agachamento, terra,
+# desenvolvimento, remada), então a frequência DIRETA dele pode ser menor sem que
+# o estímulo da semana caia junto. Piso 1 = ele nunca some da semana, que era o
+# bug; mas a SEGUNDA vaga de abdômen cede a vez quando o tempo aperta, em vez de
+# empurrar pra fora uma elevação lateral — que não tem de onde vir indiretamente.
+_PISO_PROPRIO: dict[MuscleGroup, int] = {MuscleGroup.ABS: 1}
+
+# Quanto empurrar e puxar podem se afastar na semana antes de virar treino torto.
+# É o mesmo número de `plan_review.TOLERANCIA_EQUILIBRIO` — repetido aqui em vez
+# de importado porque `plan_review` já importa este módulo, e o corte precisa
+# saber o efeito de tirar uma vaga ANTES de tirar, não depois de o validador
+# reprovar.
+_TOLERANCIA_EQUILIBRIO = 2
+
+
+def _direcao_da_vaga(vaga: SlotSpec) -> str | None:
+    """'empurrar', 'puxar' ou None — a mesma regra de `plan_review._direcao`,
+    aplicada à VAGA (que ainda não tem exercício) em vez de ao slot montado.
+
+    Braços e deltoide lateral ficam fora da conta de propósito: recebem tanto
+    volume indireto que contá-los faria a soma responder por eles, e não pelo
+    tronco — que é o que a pergunta quer saber.
+    """
+    if vaga.muscle is MuscleGroup.CHEST:
+        return "empurrar"
+    if vaga.muscle is MuscleGroup.BACK:
+        return "puxar"
+    if vaga.muscle is MuscleGroup.SHOULDERS:
+        if vaga.pattern is Pattern.PUSH_V:
+            return "empurrar"
+        if vaga.region == DELT_POSTERIOR:
+            return "puxar"
+    return None
+
+
+def fit_week_to_target(
+    blueprints: list[list[SlotSpec]],
+    target: int | None,
+    *,
+    protegidas_por_dia: list[frozenset[int]] | None = None,
+) -> list[list[SlotSpec]]:
+    """Recorta a SEMANA INTEIRA pro nº-alvo de exercícios por sessão.
+
+    Por que a semana e não cada sessão: o corte é por SESSÃO, mas o estrago é na
+    SEMANA. `fit_to_target` decide sozinha, olhando só o dia, e o que ela corta é
+    sempre a vaga do fim — que no upper/lower é panturrilha nos DOIS dias de
+    inferior, e tríceps nos DOIS de superior. Cada corte era defensável olhando o
+    dia; o resultado era um treino de 4 dias sem uma única panturrilha, sem um
+    único abdominal e sem um único tríceps direto na semana, no tempo "Médio",
+    que é o padrão. E nada reclamava: `plan_review` só cobra região de músculo
+    que o treino treina, e músculo com zero vaga não é treinado.
+
+    A regra nova é uma só: **o corte por tempo não zera um músculo da semana**.
+    O piso é o da regra 6 (2×/semana), limitado ao que o desenho já dava — um
+    músculo que aparece 1× na divisão escolhida tem piso 1, não 2, porque o corte
+    não pode ser cobrado por uma vaga que nunca existiu.
+
+    Quando o alvo não cabe respeitando o piso, ele CEDE em degraus, e nunca o
+    alvo: tempo é restrição física, e entregar 8 exercícios pra quem tem tempo de
+    5 só faz a pessoa não terminar o treino. Os degraus, do mais pro menos
+    exigente:
+
+      0. 2×/semana por músculo E toda região exigida da semana preservada
+      1. 2×/semana por músculo (região exigida pode cair)
+      2. 1×/semana por músculo — o músculo não some, mas perde frequência
+      3. sem piso — o alvo tem que ser atingido
+
+    A região cede antes da frequência de propósito: 2×/semana é regra de produto,
+    e uma região que se perde aqui ainda é recuperada depois pelo reparo de
+    cobertura (`workout_builder._reparar_cobertura`), que sabe pedir exatamente a
+    região faltante. Frequência perdida ninguém repõe.
+
+    O corte é em rodízio (um por dia por vez), não um dia inteiro de cada vez:
+    servindo um dia até o fim, ele consome sozinho todo o excedente de um músculo
+    e o último dia fica sem corte legal nenhum, o que forçaria os degraus a ceder
+    sem precisar.
+    """
+    if target is None:
+        return [list(b) for b in blueprints]
+
+    protegidas = list(protegidas_por_dia or [])
+    protegidas += [frozenset()] * (len(blueprints) - len(protegidas))
+    alvo = max(1, target)
+
+    contagem: Counter[MuscleGroup] = Counter(v.muscle for b in blueprints for v in b)
+    # O piso de um músculo é o da regra 6, LIMITADO ao que o desenho já dava: um
+    # músculo que aparece 1× na divisão escolhida tem piso 1, não 2 — o corte não
+    # pode ser cobrado por uma vaga que nunca existiu.
+    piso = {
+        m: min(_PISO_PROPRIO.get(m, FREQUENCIA_MINIMA_SEMANAL), n)
+        for m, n in contagem.items()
+    }
+
+    # As regiões que a semana é OBRIGADA a cobrir (Princípio 6): peito clavicular
+    # e esternal, costas dorsais e upper back, deltoide lateral e posterior,
+    # posterior de coxa nas duas funções. Sem isto, o corte tirava a única
+    # elevação lateral da semana só porque ombro ainda ficava com 2 vagas —
+    # desenvolvimento e crucifixo inverso, nenhum dos dois lateral.
+    exigidas = {(m, r) for m, regioes in REQUIRED_REGIONS.items() for r in regioes}
+    regioes: Counter[tuple[MuscleGroup, str]] = Counter(
+        (v.muscle, v.region) for b in blueprints for v in b if (v.muscle, v.region) in exigidas
+    )
+
+    # Os dois EQUILÍBRIOS que o validador cobra da semana, mantidos durante o
+    # corte. Sem eles, o corte escolhia pelo piso de músculo — que é cego pra
+    # direção do movimento — e tirava dois peitos e nenhuma costa (peito tem 3
+    # vagas, costas 4), ou uma dominante de joelho e nenhuma de quadril. A semana
+    # ficava coerente pela frequência e reprovada pelo `plan_review` logo depois.
+    def _empurrar_puxar(vaga: SlotSpec) -> int:
+        direcao = _direcao_da_vaga(vaga)
+        return 1 if direcao == "empurrar" else -1 if direcao == "puxar" else 0
+
+    def _joelho_quadril(vaga: SlotSpec) -> int:
+        return 1 if vaga.pattern is P.KNEE else -1 if vaga.pattern is P.HIP else 0
+
+    # A flexão de joelho fica FORA da conta joelho×quadril, como em
+    # `plan_review.desequilibrio_joelho_quadril`: mesa flexora é trabalho de
+    # posterior, mas não é dominância de quadril.
+    _EQUILIBRIOS = (_empurrar_puxar, _joelho_quadril)
+    saldos = [sum(f(v) for b in blueprints for v in b) for f in _EQUILIBRIOS]
+
+    filas = [_fila_de_corte(b) for b in blueprints]
+    cortadas: list[set[int]] = [set() for _ in blueprints]
+    faltam = [max(0, len(b) - alvo) for b in blueprints]
+
+    def pode_cortar(vaga: SlotSpec, degrau: int) -> bool:
+        if degrau <= 1 and contagem[vaga.muscle] - 1 < piso[vaga.muscle]:
+            return False
+        if degrau == 2 and contagem[vaga.muscle] - 1 < 1:
+            return False
+        if degrau == 0 and regioes.get((vaga.muscle, vaga.region), 0) == 1:
+            return False
+        # Região e equilíbrio cedem juntos (degrau 2 em diante): os dois são
+        # estrutura, e frequência mínima por músculo vem antes dos dois.
+        if degrau <= 1 and any(
+            abs(saldo - f(vaga)) >= _TOLERANCIA_EQUILIBRIO
+            for saldo, f in zip(saldos, _EQUILIBRIOS)
+        ):
+            return False
+        return True
+
+    for degrau in range(4):
+        while any(faltam):
+            cortou_nesta_rodada = False
+            for d, blueprint in enumerate(blueprints):
+                if not faltam[d]:
+                    continue
+                for i in filas[d]:
+                    # A vaga que ABRE o dia e todo ponto fraco marcado seguem
+                    # intocáveis, como em `fit_to_target`.
+                    if i == 0 or i in protegidas[d] or i in cortadas[d]:
+                        continue
+                    vaga = blueprint[i]
+                    if not pode_cortar(vaga, degrau):
+                        continue
+                    cortadas[d].add(i)
+                    contagem[vaga.muscle] -= 1
+                    if (vaga.muscle, vaga.region) in regioes:
+                        regioes[(vaga.muscle, vaga.region)] -= 1
+                    saldos = [s - f(vaga) for s, f in zip(saldos, _EQUILIBRIOS)]
+                    faltam[d] -= 1
+                    cortou_nesta_rodada = True
+                    break
+            if not cortou_nesta_rodada:
+                break  # nada mais sai neste degrau; o laço de fora afrouxa
+        if not any(faltam):
+            break
+
+    return [
+        [s for i, s in enumerate(b) if i not in cortadas[d]]
+        for d, b in enumerate(blueprints)
+    ]

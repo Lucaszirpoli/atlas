@@ -237,12 +237,41 @@ def sessoes_vazias(plan) -> list[str]:
     return [f"Sessão '{s.focus}' ficou sem exercício nenhum." for s in plan.sessions if not s.slots]
 
 
+# --- 6b) Nenhum músculo da divisão SUMIU da semana -------------------------
+def musculos_perdidos(plan) -> list[MuscleGroup]:
+    """Músculos que a divisão escolhida ia treinar e a semana entregue não treina.
+
+    Este é o buraco por onde o bug passou. `regioes_descobertas` só cobra região
+    "de músculo que o treino REALMENTE treina" — o que é certo pra não reprovar
+    quem não faz peito por não ter peito clavicular, e é exatamente o que torna um
+    músculo ZERADO invisível: sem vaga nenhuma, ele não é treinado, então nada é
+    cobrado dele. Um treino de 4 dias sem uma única panturrilha na semana passava
+    como coerente.
+
+    Aqui a referência não é o treino entregue, é o BLUEPRINT do dia — o desenho
+    que a divisão prometia. Sumir daí é sempre uma perda: ou o corte por tempo
+    exagerou, ou a base não tinha exercício que servisse, ou uma restrição
+    esvaziou o músculo inteiro. Nos três casos é coisa pra sair declarada em vez
+    de silenciosa (no último, `restriction_notes` explica o porquê ao lado).
+    """
+    from app.ai import session_blueprints as bp
+
+    previstos = {vaga.muscle for s in plan.sessions for vaga in bp.blueprint_for(s.focus)}
+    return sorted(previstos - _musculos_do_plano(plan), key=lambda m: m.value)
+
+
 def review(plan, *, method=None) -> list[str]:
     """As 8 perguntas, de uma vez. Lista vazia = treino aprovado."""
     problemas: list[str] = []
 
     problemas += sessoes_vazias(plan)
     problemas += vagas_sem_funcao(plan)
+
+    for musculo in musculos_perdidos(plan):
+        problemas.append(
+            f"{musculo.value}: a divisão treina esse músculo, mas a semana entregue "
+            "ficou sem nenhum exercício dele."
+        )
 
     for musculo, regiao in regioes_descobertas(plan):
         problemas.append(

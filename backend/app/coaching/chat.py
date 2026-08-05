@@ -12,6 +12,7 @@ Sem chave da Anthropic, cai num resumo determinístico (sem ações).
 from __future__ import annotations
 
 import json
+import logging
 
 from sqlalchemy.orm import Session
 
@@ -21,9 +22,29 @@ from app.coaching.engine import WeeklyAnalysis
 from app.core.config import settings
 from app.models.user import User
 
+logger = logging.getLogger(__name__)
+
 _MODEL = settings.anthropic_model
 _MAX_HISTORY = 8
 _MAX_TOOL_ROUNDS = 5
+
+# Teto de tokens de SAÍDA por rodada.
+#
+# Era 900, e 900 era a causa de uma falha grave e invisível: o modelo raciocina
+# antes de responder, e esse raciocínio sai do MESMO orçamento. Medido com a
+# mensagem real que quebrou ("tudo que comi hoje" + 7 alimentos em 4 blocos sem
+# dizer qual refeição é qual): 5 tentativas de 5 gastaram as 900 inteiras só
+# pensando — de 593 a 900 tokens de raciocínio — e a resposta terminava com
+# `stop_reason="max_tokens"`, ZERO ferramenta executada e ZERO texto.
+#
+# O tamanho não é chute: uma mensagem ambígua como aquela pede ~900 de
+# raciocínio, e registrar 4 refeições custa mais ~500 de chamadas de ferramenta.
+# 4096 cobre isso com folga, e como o cobrado é o que se usa (não o teto), um
+# teto largo não custa nada nas respostas curtas — que são a maioria.
+_MAX_TOKENS = 4096
+# Segunda tentativa quando ainda assim estourou. Um raciocínio que passa de 4096
+# é raro o bastante pra valer uma tentativa a mais em vez de uma desculpa.
+_MAX_TOKENS_RETRY = 8192
 
 
 # Os alimentos rejeitados moram no questionário (é lista de apresentação, não
@@ -238,7 +259,13 @@ def _system_prompt(analysis: WeeklyAnalysis, profile=None, retrato=None, medido=
 
 
 def _fallback(analysis: WeeklyAnalysis, question: str) -> str:
-    """Sem IA: devolve o essencial da análise, com honestidade."""
+    """SEM IA CONFIGURADA: devolve o essencial da análise, com honestidade.
+
+    Este texto só cabe num caso — o app rodando sem chave da Anthropic. Ele
+    ANUNCIA que a IA não está ativa, então usá-lo em qualquer outra situação
+    mente pra uma pessoa que É Pro (o endpoint do chat exige Pro pra chegar
+    aqui). Falha técnica tem resposta própria, ver `_erro_tecnico`.
+    """
     partes = [analysis.headline]
     top = next((f for f in analysis.findings if f.severity in {"action", "attention"}), None)
     if top:
@@ -249,6 +276,59 @@ def _fallback(analysis: WeeklyAnalysis, question: str) -> str:
         "Pra conversar mais a fundo sobre isso, a IA do Coaching precisa estar ativa no seu plano."
     )
     return " ".join(partes)
+
+
+def _erro_tecnico(actions: list[dict]) -> str:
+    """A resposta quando o coach FALHOU — que é diferente de o coach não existir.
+
+    Os dois casos devolviam a mesma coisa: o resumo da análise da semana mais
+    "a IA do Coaching precisa estar ativa no seu plano". Numa falha técnica isso
+    são duas mentiras ao mesmo tempo — a IA está ativa, e a pessoa recebe a
+    resposta de uma pergunta que ela não fez. Foi exatamente o que aconteceu com
+    quem mandou o que tinha comido no dia e levou de volta uma análise de
+    frequência de treino.
+
+    Admitir a falha é pior de ler e melhor de confiar. E o que as ferramentas já
+    executaram ANTES da falha vem junto: aquilo aconteceu de verdade no banco, e
+    esconder isso faria a pessoa registrar tudo de novo, em duplicata.
+    """
+    if actions:
+        return (
+            " ".join(a["summary"] for a in actions)
+            + " Depois disso deu um problema técnico aqui e eu perdi o fio da conversa — o que "
+            "está acima já foi feito, não precisa repetir. Me chama de novo pro resto."
+        )
+    return (
+        "Deu um problema técnico aqui e eu não consegui responder — nada foi alterado no seu "
+        "plano nem no seu diário. Tenta de novo, por favor."
+    )
+
+
+def _rodada(client, system: str, msgs: list) -> object:
+    """Uma rodada com o modelo, com o orçamento de saída ESCALANDO quando a
+    resposta é cortada no meio.
+
+    `stop_reason == "max_tokens"` significa resposta truncada, e o que vem junto
+    é inútil das duas formas possíveis: ou é só raciocínio (nenhum texto, nenhuma
+    ferramenta), ou é uma chamada de ferramenta pela metade — que NÃO pode ser
+    executada, senão registra meia refeição.
+
+    Antes esse caso não era tratado: o corte não casava com o `if` de ferramenta,
+    o texto vinha vazio e a função caía no resumo determinístico como se o modelo
+    tivesse escolhido não responder. Medido na mensagem real que quebrou, isso
+    acontecia em 5 de 5 tentativas — o raciocínio sozinho consumia as 900 do teto
+    antigo. Aqui o corte vira o que ele é: falta de espaço, então tenta de novo
+    com mais espaço.
+    """
+    resp = None
+    for teto in (_MAX_TOKENS, _MAX_TOKENS_RETRY):
+        resp = client.messages.create(
+            model=_MODEL, max_tokens=teto, system=system, tools=chat_tools.TOOLS, messages=msgs,
+        )
+        if resp.stop_reason != "max_tokens":
+            return resp
+        logger.warning("coach chat: resposta cortada com max_tokens=%s; tentando de novo", teto)
+    return resp
 
 
 def _result(answer: str, used_ai: bool, actions: list[dict], diet_plan: dict | None) -> dict:
@@ -298,15 +378,33 @@ def answer(
 
     try:
         for _ in range(_MAX_TOOL_ROUNDS):
-            resp = client.messages.create(
-                model=_MODEL, max_tokens=900, system=system, tools=chat_tools.TOOLS, messages=msgs,
-            )
+            resp = _rodada(client, system, msgs)
             tool_uses = [b for b in resp.content if getattr(b, "type", None) == "tool_use"]
             if resp.stop_reason == "tool_use" and tool_uses:
                 msgs.append({"role": "assistant", "content": resp.content})
                 results = []
                 for tu in tool_uses:
-                    out = chat_tools.run_tool(db, user, tu.name, dict(tu.input or {}))
+                    # UMA ferramenta que explode não pode derrubar o turno
+                    # inteiro. Sem este isolamento, um erro em "registrar
+                    # refeição" fazia a conversa toda cair no `except` de baixo —
+                    # inclusive as ferramentas que já tinham dado certo antes
+                    # dela na mesma rodada, que ficavam sem ser contadas.
+                    # Devolvendo o erro ao modelo, ele conta à pessoa o que não
+                    # deu, que é a regra de ouro das ferramentas no prompt.
+                    try:
+                        out = chat_tools.run_tool(db, user, tu.name, dict(tu.input or {}))
+                    except Exception:
+                        logger.exception(
+                            "coach chat: ferramenta %s falhou (user_id=%s)", tu.name, user.id
+                        )
+                        # A sessão pode ter ficado suja (ex.: falha no meio de um
+                        # flush). Sem o rollback, a próxima ferramenta da mesma
+                        # rodada falharia por arrasto.
+                        db.rollback()
+                        out = {"for_model": {"erro": (
+                            "Falha técnica ao executar isso. NADA foi alterado. "
+                            "Conte isso à pessoa em vez de dizer que deu certo."
+                        )}}
                     if out.get("action"):
                         actions.append(out["action"])
                     if out.get("diet_plan") is not None:
@@ -317,13 +415,28 @@ def answer(
                     })
                 msgs.append({"role": "user", "content": results})
                 continue
+
             text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text").strip()
-            if not text and actions:
-                text = " ".join(a["summary"] for a in actions)
-            return _result(text or _fallback(analysis, question), True, actions, diet_plan)
-        # Esgotou as rodadas — devolve o que já foi feito.
-        resumo = " ".join(a["summary"] for a in actions) or "Feito."
-        return _result(resumo, True, actions, diet_plan)
+            if text:
+                return _result(text, True, actions, diet_plan)
+            # Sem texto: ou as ferramentas já disseram tudo, ou a resposta veio
+            # truncada mesmo com o teto maior (`_rodada` já tentou duas vezes).
+            # Nos dois casos o resumo determinístico da semana seria uma resposta
+            # a uma pergunta que ninguém fez.
+            if not actions:
+                logger.warning(
+                    "coach chat: rodada sem texto e sem ação (stop_reason=%s, user_id=%s)",
+                    getattr(resp, "stop_reason", None), user.id,
+                )
+            return _result(_erro_tecnico(actions), bool(actions), actions, diet_plan)
+        # Esgotou as rodadas de ferramenta sem o modelo fechar a conversa.
+        logger.warning("coach chat: %s rodadas sem resposta final (user_id=%s)",
+                       _MAX_TOOL_ROUNDS, user.id)
+        return _result(_erro_tecnico(actions), bool(actions), actions, diet_plan)
     except Exception:
-        # Qualquer erro de rede/modelo: a tela nunca quebra. Mantém o que já agiu.
-        return _result(_fallback(analysis, question), False, actions, diet_plan)
+        # Erro de rede/modelo: a tela nunca quebra. Mas o erro PRECISA aparecer
+        # no log — este bloco era um `except` mudo, e foi por isso que uma falha
+        # em produção só virou diagnóstico quando um usuário mandou print da
+        # conversa. Mantém o que já foi executado.
+        logger.exception("coach chat: turno falhou (user_id=%s)", user.id)
+        return _result(_erro_tecnico(actions), False, actions, diet_plan)

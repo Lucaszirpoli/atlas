@@ -19,7 +19,7 @@ from sqlalchemy import select
 from app.ai import plan_review, session_blueprints as bp
 from app.ai.exercise_taxonomy import ORDER_MINOR, Pattern, Tier, order_class_for_pattern
 from app.ai.methods import TORSO_LIMBS_SPLIT, coach_custom_spec, coach_split_for
-from app.ai.methods_engine import build_plan
+from app.ai.methods_engine import add_accessory_slot, build_plan
 from app.core.db import SessionLocal
 from app.models.exercise import Exercise
 from app.models.exercise import MuscleGroup as M
@@ -171,11 +171,49 @@ def test_cobertura_regional_da_semana(db, dias):
 # --- Tempo por sessão -----------------------------------------------------
 @pytest.mark.parametrize("alvo", (5, 6, 8))
 def test_recorte_por_tempo_preserva_o_essencial(db, alvo):
-    """A sessão curta perde panturrilha/core, nunca o composto prioritário."""
+    """O recorte por tempo tira acessório, nunca a abertura do treino."""
     spec, plan = _plan(db, dias=4, session_target=alvo)
     for s in plan.sessions:
         assert len(s.slots) <= max(alvo, 7)
         assert s.slots[0].is_compound
+
+
+@pytest.mark.parametrize("alvo", (5, 6, 8))
+@pytest.mark.parametrize("dias", FREQUENCIAS)
+def test_recorte_por_tempo_nao_zera_musculo_da_semana(db, dias, alvo):
+    """NENHUM músculo que a divisão treina pode sair da semana por falta de tempo.
+
+    Este é o teste do bug que um usuário relatou na v53: 4 dias, upper/lower,
+    tempo Médio, e o treino saía sem UMA panturrilha, sem UM abdominal e sem UM
+    tríceps direto na semana inteira. O corte era por sessão e olhava só a
+    `priority`, então a vaga do fim caía sempre — e a vaga do fim é panturrilha
+    nos dois dias de inferior e abdômen/tríceps nos dois de superior.
+
+    Nada reclamava, e é por isso que este teste existe do lado do
+    `plan_review.musculos_perdidos`: a coerência global só cobrava REGIÃO de
+    músculo que o treino treina, então um músculo com zero vaga era invisível
+    pras oito perguntas.
+    """
+    _, plan = _plan(db, dias=dias, session_target=alvo)
+    assert plan_review.musculos_perdidos(plan) == []
+
+
+@pytest.mark.parametrize("alvo", (5, 6, 8))
+@pytest.mark.parametrize("dias", FREQUENCIAS)
+def test_plano_entregue_e_coerente(db, dias, alvo):
+    """A coerência é cobrada do treino ENTREGUE, não do rascunho.
+
+    `build_plan` sozinho pode terminar devendo uma região quando a geometria não
+    fecha — em 4 dias × 5 exercícios, as duas sessões de superior têm 10 vagas
+    pra 11 exigências (2 por peito/costas/ombro/bíceps/tríceps + abdômen), e
+    alguma coisa TEM que ceder. O que cede é a região, porque ela é a única
+    lacuna que tem conserto mecânico: `workout_builder._reparar_cobertura` roda
+    logo depois e pede exatamente a região que faltou. É esse plano, o que a
+    pessoa recebe, que precisa passar nas oito perguntas.
+    """
+    spec, plan = _plan(db, dias=dias, session_target=alvo)
+    for musculo, regiao in plan_review.regioes_descobertas(plan):
+        add_accessory_slot(db, plan, musculo, region=regiao, max_per_session=9)
     assert plan_review.review(plan, method=spec) == []
 
 

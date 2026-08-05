@@ -507,36 +507,43 @@ def build_plan(
         phase_context=None,
     )
 
-    used_na_semana: set[int] = set()
-    for i, focus in enumerate(split):
-        # PRIORIZA antes de CORTAR — nessa ordem, e não na outra. `fit_to_target`
-        # só protege a vaga que já está na posição 0; se o corte por tempo
-        # rodasse primeiro, a vaga do ponto fraco podia já ter sido cortada antes
-        # de a promoção existir, e promover um exercício que não está mais na
-        # lista não devolve exercício nenhum. Era exatamente isso: ponto fraco em
-        # braço (sem vaga de composto pra promover) ficava sem nenhum exercício
-        # dedicado em boa parte das combinações de tempo/frequência, porque o
-        # isolador de braço já tinha sido cortado antes da promoção acontecer.
-        blueprint = _priorizar_ponto_fraco(bp.blueprint_for(focus), wp_list)
-        # UMA vaga de cada ponto fraco sobrevive ao corte por tempo, sempre.
-        #
-        # Só a primeira de cada músculo: proteger todas encheria um dia curto de
-        # rosca e deixaria o resto do corpo de fora — o volume EXTRA do ponto
-        # fraco é trabalho do preenchimento semanal (workout_builder), que sabe
-        # quantas séries faltam. O que se garante aqui é o piso: quem marcou um
-        # músculo como prioridade nunca termina a semana sem UM exercício dele.
-        # Nomes próprios (`pos`/`vaga`) e não `i`/`spec`: `i` é o índice do DIA,
-        # do laço de fora, e reusá-lo aqui fazia todo dia nascer com o day_index
-        # da última vaga do blueprint — as rotinas saíam nomeadas "Dia 7" e
-        # "Dia 8" num treino de 4 dias.
+    # PRIORIZA antes de CORTAR — nessa ordem, e não na outra. O corte só protege
+    # a vaga que já está na posição 0; se ele rodasse primeiro, a vaga do ponto
+    # fraco podia já ter sido cortada antes de a promoção existir, e promover um
+    # exercício que não está mais na lista não devolve exercício nenhum. Era
+    # exatamente isso: ponto fraco em braço (sem vaga de composto pra promover)
+    # ficava sem nenhum exercício dedicado em boa parte das combinações de
+    # tempo/frequência, porque o isolador de braço já tinha sido cortado antes da
+    # promoção acontecer.
+    blueprints = [_priorizar_ponto_fraco(bp.blueprint_for(f), wp_list) for f in split]
+
+    # UMA vaga de cada ponto fraco sobrevive ao corte por tempo, sempre.
+    #
+    # Só a primeira de cada músculo: proteger todas encheria um dia curto de
+    # rosca e deixaria o resto do corpo de fora — o volume EXTRA do ponto fraco é
+    # trabalho do preenchimento semanal (workout_builder), que sabe quantas
+    # séries faltam. O que se garante aqui é o piso: quem marcou um músculo como
+    # prioridade nunca termina a semana sem UM exercício dele.
+    protegidas_por_dia: list[frozenset[int]] = []
+    for blueprint in blueprints:
         protegidas: set[int] = set()
         vistos: set[MuscleGroup] = set()
         for pos, vaga in enumerate(blueprint):
             if vaga.muscle in wp_list and vaga.muscle not in vistos:
                 protegidas.add(pos)
                 vistos.add(vaga.muscle)
-        blueprint = bp.fit_to_target(blueprint, session_target, protegidas=frozenset(protegidas))
+        protegidas_por_dia.append(frozenset(protegidas))
 
+    # O corte por tempo é da SEMANA, não de cada dia isolado: cortando dia a dia,
+    # o que caía era sempre a vaga do fim, e a semana inteira perdia panturrilha,
+    # abdômen e tríceps sem que nenhuma checagem reclamasse (ver
+    # `bp.fit_week_to_target`).
+    blueprints = bp.fit_week_to_target(
+        blueprints, session_target, protegidas_por_dia=protegidas_por_dia
+    )
+
+    used_na_semana: set[int] = set()
+    for i, (focus, blueprint) in enumerate(zip(split, blueprints)):
         session = PlannedSession(day_index=i, day_label=f"Dia {i + 1}", focus=focus, phase_name=None)
         ids_na_sessao: set[int] = set()
         funcoes_na_sessao: set[tuple[Pattern, str]] = set()

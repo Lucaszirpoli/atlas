@@ -22,10 +22,11 @@ from app.ai.methods import coach_split_for
 from app.coaching import training_brain
 from app.models.exercise import MuscleGroup
 
-# Grupos que a gente cobra na conta. Abdômen fica FORA de propósito: ele quase
-# nunca ganha vaga própria em blueprint nenhum (é `priority=3`, o primeiro a
-# cair) e recebe trabalho em todo composto — avisar sobre ele em toda combinação
-# transformaria o aviso em ruído que ninguém lê.
+# Grupos que a gente cobra na conta. Abdômen entra desde que o corte por tempo
+# passou a ser da semana (`fit_week_to_target`): antes ele era `priority=3` e o
+# primeiro a cair em toda combinação, então cobrá-lo teria feito o aviso aparecer
+# sempre e virar ruído que ninguém lê. Agora ele só some se realmente não couber,
+# e aí a pessoa merece saber.
 _GRUPOS_COBRADOS: tuple[MuscleGroup, ...] = (
     MuscleGroup.CHEST,
     MuscleGroup.BACK,
@@ -36,6 +37,7 @@ _GRUPOS_COBRADOS: tuple[MuscleGroup, ...] = (
     MuscleGroup.HAMSTRINGS,
     MuscleGroup.GLUTES,
     MuscleGroup.CALVES,
+    MuscleGroup.ABS,
 )
 
 _LABEL = dict(training_brain.WEAK_POINTS)
@@ -56,10 +58,13 @@ def grupos_sem_vaga(
     """
     alvo = training_brain.session_exercise_target(session_length)
     fracos = set(training_brain.valid_weak_points(weak_points))
-    com_vaga: set[MuscleGroup] = set()
-    for focus in coach_split_for(days, list(fracos), split_preference):
-        for vaga in bp.fit_to_target(bp.blueprint_for(focus), alvo):
-            com_vaga.add(vaga.muscle)
+    # O MESMO corte que o motor aplica — de semana, não de sessão. Recortando dia
+    # a dia (como era), esta conta enxergava panturrilha e abdômen caindo em toda
+    # combinação e o aviso ficava permanente; o motor agora protege os dois, e um
+    # aviso que não concorda com o treino que sai é pior que aviso nenhum.
+    split = coach_split_for(days, list(fracos), split_preference)
+    semana = bp.fit_week_to_target([bp.blueprint_for(f) for f in split], alvo)
+    com_vaga: set[MuscleGroup] = {vaga.muscle for dia in semana for vaga in dia}
     return [
         m for m in _GRUPOS_COBRADOS if m not in com_vaga and m.value not in fracos
     ]

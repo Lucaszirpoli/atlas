@@ -70,28 +70,42 @@ def test_combinacao_folgada_nao_avisa_nada():
 
 
 def test_combinacao_apertada_avisa_e_recomenda():
-    """3 dias × 5 exercícios são 15 vagas pra 10 grupos: não cabe. A pessoa pode
-    escolher assim mesmo — mas precisa saber antes, não depois de seis semanas."""
-    texto = session_fit.aviso(3, "curto")
+    """2 dias não cobrem o corpo todo em tempo nenhum — o full body de 2 dias não
+    tem vaga de glúteo em blueprint nenhum. A pessoa pode escolher assim mesmo,
+    mas precisa saber antes, não depois de seis semanas."""
+    texto = session_fit.aviso(2, "curto")
     assert texto is not None
-    assert "Panturrilha" in texto
-    assert "Longo" in texto, "o aviso tem que recomendar um tempo que resolva"
+    assert "Glúteos" in texto
+
+
+def test_tempo_curto_deixou_de_derrubar_musculo(db_nao_usado=None):
+    """A partir de 3 dias, TODO grupo tem exercício próprio em qualquer tempo.
+
+    Era o oposto: em 3 dias × curto o aviso listava panturrilha, porque o corte
+    por tempo olhava só a sessão e a vaga do fim caía sempre. Agora o corte é da
+    semana (`fit_week_to_target`) e nenhum músculo é zerado — então não há o que
+    avisar. Um aviso que sobrevivesse ao conserto seria pior que aviso nenhum:
+    diria à pessoa que falta um músculo que o treino tem.
+    """
+    for dias in (3, 4, 5, 6):
+        for tempo in TEMPOS:
+            assert session_fit.grupos_sem_vaga(dias, tempo) == [], (dias, tempo)
 
 
 def test_aviso_nao_cobra_musculo_que_o_coach_vai_cobrir():
     """Ponto fraco tem exercício garantido em qualquer configuração
     (test_ponto_fraco_sempre_tem_exercicio_dedicado). Avisar sobre ele seria
     mentira."""
-    sem_prioridade = session_fit.aviso(3, "curto")
-    com_prioridade = session_fit.aviso(3, "curto", weak_points=["calves"])
-    assert "Panturrilha" in (sem_prioridade or "")
-    assert "Panturrilha" not in (com_prioridade or "")
+    sem_prioridade = session_fit.aviso(2, "curto")
+    com_prioridade = session_fit.aviso(2, "curto", weak_points=["glutes"])
+    assert "Glúteos" in (sem_prioridade or "")
+    assert "Glúteos" not in (com_prioridade or "")
 
 
 def test_recomendacao_e_o_menor_tempo_que_resolve():
-    """Recomendar Longo quando Médio já cobria empurraria a pessoa pra um treino
+    """Recomendar Longo quando Curto já cobria empurraria a pessoa pra um treino
     mais comprido do que ela precisa."""
-    assert session_fit.tempo_recomendado(5) == "medio"
+    assert session_fit.tempo_recomendado(5) == "curto"
     # 2 dias não fecha em tempo nenhum — e aí a recomendação é honesta sobre isso.
     assert session_fit.tempo_recomendado(2) is None
     assert "não cabe tudo em nenhum tempo" in (session_fit.aviso(2, "longo") or "")
