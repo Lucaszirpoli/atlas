@@ -220,7 +220,6 @@ class BuildWorkoutResult(BaseModel):
     # quanto o prioritário recebe e quem foi segurado pra pagar por isso.
     priority_note: str | None = None
     session_range: str | None = None
-    cardio_note: str | None = None
     technique_note: str | None = None
     extra_exercises_note: str | None = None
     periodization_label: str
@@ -253,7 +252,6 @@ class SetTrainingPrefsRequest(BaseModel):
     weak_point: str | None = None       # LEGADO: 1 grupo | null (compat)
     session_length: str | None = None   # curto | medio | longo | null
     training_days_per_week: int | None = None  # 2..7 | null (automático)
-    wants_cardio: bool | None = None     # true | false | null (não escolheu)
     # Deixa o coach usar técnica avançada? false = só série normal.
     allow_advanced_techniques: bool | None = None
     periodization: str | None = None     # auto | linear | ondulatoria

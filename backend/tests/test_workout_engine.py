@@ -246,7 +246,8 @@ def test_ponto_fraco_abre_a_sessao(db):
 def test_superior_a_reproduz_o_template_de_referencia(db):
     """O UPPER A que o usuário passou como template: 2 empurradas horizontais,
     1 puxada horizontal, 1 puxada vertical, 1 isolamento de ombro, 1 de tríceps
-    e 1 de bíceps — nesta ordem de papéis."""
+    e 1 de bíceps — nesta ordem de papéis. Fecha com abdômen (minor, priority=3
+    — cai fora primeiro se o tempo de sessão apertar)."""
     _, plan = _plan(db, dias=4)
     s = next(x for x in plan.sessions if x.focus == "superior a")
     assert [sl.pattern for sl in s.slots] == [
@@ -257,8 +258,9 @@ def test_superior_a_reproduz_o_template_de_referencia(db):
         Pattern.ISO.value,
         Pattern.ISO.value,
         Pattern.ISO.value,
+        Pattern.CORE.value,
     ]
-    assert [sl.muscle_group for sl in s.slots[4:]] == ["shoulders", "triceps", "biceps"]
+    assert [sl.muscle_group for sl in s.slots[4:]] == ["shoulders", "triceps", "biceps", "abs"]
     # as duas empurradas horizontais são em regiões DIFERENTES do peito — é o que
     # as torna complementares em vez de redundantes.
     assert s.slots[0].region != s.slots[2].region
@@ -352,7 +354,7 @@ def test_desligar_tecnica_reverte_dicas_ativas(db):
         training_location=TrainingLocation.ACADEMIA_COMPLETA,
         experience_level=ExperienceLevel.INTERMEDIARIO, goal=Goal.HIPERTROFIA,
         training_days_per_week=4, session_length="curto",  # curto sempre prescreve técnica
-        allow_advanced_techniques=True, periodization="auto", wants_cardio=True,
+        allow_advanced_techniques=True, periodization="auto",
     )
     db.add(perfil)
     db.commit()

@@ -105,12 +105,10 @@ def _cycle_context(db: Session, user: User, now: datetime) -> dict:
 
 def _training_prefs_block(db: Session, user: User) -> dict | None:
     """Preferências de treino do Coaching + as opções pro card 'Como eu monto seu
-    treino'. Inclui o aviso de cardio quando a pessoa optou por treinar sem ele
-    e o objetivo se beneficiaria."""
+    treino'."""
     profile = getattr(user, "profile", None)
     if profile is None:
         return None
-    goal = profile.goal.value if profile.goal else None
     wps = training_brain.resolve_weak_points(profile)
     return {
         "weak_points": wps,
@@ -131,10 +129,9 @@ def _training_prefs_block(db: Session, user: User) -> dict | None:
         # semanas achando que estava cobrindo o corpo inteiro.
         "session_fit_warning": session_fit.aviso(
             training_brain.valid_training_days(profile.training_days_per_week) or 3,
-            training_brain.valid_session_length(profile.session_length),
+            training_brain.effective_session_length(profile),
             wps,
         ),
-        "wants_cardio": profile.wants_cardio,
         # Técnica avançada (myo-reps, rest-pause, muscle round). O valor
         # EFETIVO, já com a regra de iniciante aplicada — a tela mostra o que
         # o coach realmente vai fazer, não o campo cru.
@@ -144,7 +141,6 @@ def _training_prefs_block(db: Session, user: User) -> dict | None:
             {"value": v, "label": label, "desc": desc}
             for v, label, desc in training_brain.PERIODIZATIONS
         ],
-        "cardio_warning": training_brain.cardio_warning(goal, profile.wants_cardio),
     }
 
 
@@ -234,7 +230,7 @@ def coaching_analysis(
         periodization=cyc["periodization"],
         planned_deload=cyc["planned_deload"],
         period=cyc["period"],
-        session_length=training_brain.valid_session_length(getattr(profile, "session_length", None)),
+        session_length=training_brain.effective_session_length(profile),
         weak_points=tuple(training_brain.resolve_weak_points(profile)) if profile else (),
         applied_technique_ex_ids=applied_tech_ex_ids,
         allow_advanced=training_brain.advanced_allowed(profile),
@@ -503,8 +499,6 @@ def set_training_prefs(
         profile.session_length = training_brain.valid_session_length(payload.session_length)
     if "training_days_per_week" in enviados:
         profile.training_days_per_week = training_brain.valid_training_days(payload.training_days_per_week)
-    if "wants_cardio" in enviados:
-        profile.wants_cardio = payload.wants_cardio
     if "allow_advanced_techniques" in enviados:
         # Desligar reverte as dicas de técnica já ativas — elas sobrevivem a
         # remontagens de propósito (ver workout_builder.revert_technique_cues),
@@ -611,7 +605,7 @@ def apply_technique(
                 "Objetivo › Preferências de treino."
             ),
         )
-    session_length = training_brain.valid_session_length(getattr(profile, "session_length", None))
+    session_length = training_brain.effective_session_length(profile)
     weak_points = training_brain.resolve_weak_points(profile) if profile else []
     is_weak_point = lift.get("muscle") in weak_points
     tech_key, tech_label, cue_text = training_brain.suggest_technique(

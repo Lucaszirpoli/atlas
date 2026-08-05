@@ -74,10 +74,17 @@ _IMPACTO: dict[str, tuple[str, ...]] = {
     "home_equipment": ("treino",),
     "training_days_per_week": ("treino",),
     "session_length": ("treino",),
+    # Muda o tamanho EFETIVO do treino (training_brain.effective_session_length)
+    # sem trocar o que a pessoa vê em `session_length` — precisa do mesmo
+    # impacto, senão marcar/desmarcar cardio não refaz o treino.
+    "session_includes_cardio": ("treino",),
     # Divisão preferida: desde que `methods.coach_split_for` passou a lê-la, ela
     # decide qual blueprint cai em cada dia. Sem esta linha o diff não marcaria
     # "treino" como impactado e a mudança viraria plano novo com treino velho.
     "split_preference": ("treino",),
+    # Bloqueia full_body e o split Torso/Limbs quando marcado — muda qual
+    # divisão o motor pode escolher, então refaz o treino.
+    "avoid_mixing_upper_lower": ("treino",),
     # Saúde: tira exercício do plano, então refaz o treino.
     "has_injury": ("treino",),
     "injury_regions": ("treino",),
@@ -101,7 +108,6 @@ _IMPACTO: dict[str, tuple[str, ...]] = {
     "stress_level": ("treino", "analise"),
     "recovery_between": ("treino", "analise"),
     "other_sport": ("treino", "analise"),
-    "wants_cardio": ("treino",),
     # Alimentação.
     "dietary_restrictions": ("dieta",),
     "meals_per_day": ("dieta",),
@@ -203,8 +209,8 @@ def answers_from_profile(db: Session, user: User) -> dict[str, Any]:
         "training_location": p.training_location.value if p.training_location else None,
         "training_days_per_week": str(p.training_days_per_week) if p.training_days_per_week else None,
         "session_length": p.session_length,
+        "session_includes_cardio": p.session_includes_cardio,
         "dietary_restrictions": list(p.dietary_restrictions or []),
-        "wants_cardio": p.wants_cardio,
         "allow_advanced_techniques": p.allow_advanced_techniques,
         "periodization": p.periodization or "auto",
         # A fila de prioridade sai da lista ordenada do perfil e volta pros três
@@ -238,7 +244,9 @@ def answers_from_profile(db: Session, user: User) -> dict[str, Any]:
         "stress_level": p.stress_level,
         "recovery_between": p.recovery_between,
         "other_sport": p.other_sport,
-        "food_dislikes_list": list(p.food_dislikes_list or []),
+        # O campo virou texto livre (type TEXT) — devolve a string pra
+        # reabrir a tela já preenchida com o que a pessoa digitou da última vez.
+        "food_dislikes_list": ", ".join(p.food_dislikes_list or []),
         **meta_atual,
     }
 
@@ -411,14 +419,14 @@ def apply_answers_to_profile(db: Session, user: User, answers: dict) -> None:
         int(answers["training_days_per_week"]) if str(answers.get("training_days_per_week") or "").isdigit() else None
     )
     p.session_length = training_brain.valid_session_length(answers.get("session_length"))
+    if answers.get("session_includes_cardio") is not None:
+        p.session_includes_cardio = bool(answers["session_includes_cardio"])
     # A fila de prioridade vem dos TRÊS campos ordenados da tela, não de uma
     # lista de checkbox — a posição é a informação (ver questionnaire).
     training_brain.apply_weak_points(
         p, questionnaire.ordered_priorities(answers), datetime.now(timezone.utc)
     )
     p.periodization = training_brain.valid_periodization(answers.get("periodization"))
-    if answers.get("wants_cardio") is not None:
-        p.wants_cardio = bool(answers["wants_cardio"])
     # None é resposta VÁLIDA aqui (= "não escolheu"), e nesse caso vale o padrão
     # por nível de training_brain.advanced_allowed: iniciante não recebe técnica
     # avançada, os demais recebem. Por isso o `is not None` — sem ele, quem
@@ -476,9 +484,7 @@ def apply_answers_to_profile(db: Session, user: User, answers: dict) -> None:
             setattr(p, campo, training_brain.many_of(answers.get(campo), permitidos))
 
     if answers.get("food_dislikes_list") is not None:
-        p.food_dislikes_list = training_brain.many_of(
-            answers.get("food_dislikes_list"), {v for v, _ in questionnaire.FOOD_DISLIKES}
-        )
+        p.food_dislikes_list = training_brain.parse_food_dislikes(answers.get("food_dislikes_list"))
 
     # Lesão e dor: responder "não" precisa LIMPAR as regiões marcadas antes,
     # senão quem se recupera continua com exercício bloqueado pra sempre.

@@ -12,6 +12,8 @@ de ser uma implementação do manual e virou outra coisa.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from app.ai import exercise_taxonomy as tx
@@ -359,7 +361,7 @@ def rotinas(db):
         training_location=TrainingLocation.ACADEMIA_COMPLETA,
         experience_level=ExperienceLevel.INTERMEDIARIO, goal=Goal.HIPERTROFIA,
         training_days_per_week=4, session_length="longo",
-        allow_advanced_techniques=False, periodization="auto", wants_cardio=False,
+        allow_advanced_techniques=False, periodization="auto",
     ))
     db.commit()
     db.refresh(u)
@@ -440,7 +442,7 @@ def test_a_duracao_estimada_bate_com_o_rotulo_escolhido(db):
             training_location=TrainingLocation.ACADEMIA_COMPLETA,
             experience_level=ExperienceLevel.INTERMEDIARIO, goal=Goal.HIPERTROFIA,
             training_days_per_week=3, session_length=tempo,
-            allow_advanced_techniques=False, periodization="auto", wants_cardio=False,
+            allow_advanced_techniques=False, periodization="auto",
         ))
         db.commit()
         db.refresh(u)
@@ -454,13 +456,18 @@ def test_a_duracao_estimada_bate_com_o_rotulo_escolhido(db):
     assert medias["curto"] < medias["medio"] < medias["longo"], (
         f"escolher mais tempo deveria dar treino mais longo: {medias}"
     )
-    # O rótulo declara "cerca de N min"; o real não pode passar do dobro nem
-    # ficar abaixo da metade — aí deixou de ser ordem de grandeza.
-    declarado = {v: int(txt.split()[-2]) for v, _, txt, _ in training_brain.SESSION_LENGTHS}
+    # O rótulo declara uma faixa ("30–45 min", "60+ min"...); o real não pode
+    # passar do dobro do teto nem ficar abaixo da metade do piso — aí deixou
+    # de ser ordem de grandeza.
+    def _faixa_minutos(txt: str) -> tuple[int, int]:
+        nums = [int(n) for n in re.findall(r"\d+", txt)]
+        return nums[0], nums[-1]
+
+    declarado = {v: _faixa_minutos(txt) for v, _, txt, _ in training_brain.SESSION_LENGTHS}
     for tempo, real in medias.items():
-        alvo = declarado[tempo]
-        assert alvo / 2 <= real <= alvo * 2, (
-            f"{tempo}: rótulo diz ~{alvo} min e o treino sai com {real:.0f} min"
+        lo, hi = declarado[tempo]
+        assert lo / 2 <= real <= hi * 2, (
+            f"{tempo}: rótulo diz {lo}–{hi} min e o treino sai com {real:.0f} min"
         )
 
 

@@ -70,6 +70,8 @@ def _perfil_lines(profile) -> list[str]:
          _um(training_brain.GYM_CROWDING, getattr(profile, "gym_crowding", None))),
         ("Dias por semana", getattr(profile, "training_days_per_week", None)),
         ("Tempo por sessão", getattr(profile, "session_length", None)),
+        ("Esse tempo inclui cardio (musculação de verdade é 1 degrau menor)",
+         "SIM" if getattr(profile, "session_includes_cardio", None) else None),
         ("Divisão preferida",
          _um(training_brain.SPLIT_PREFERENCES, getattr(profile, "split_preference", None))),
         ("Pode misturar superior e inferior no mesmo treino",
@@ -103,7 +105,6 @@ def _perfil_lines(profile) -> list[str]:
         ("Chega no treino seguinte",
          _um(training_brain.RECOVERY_BETWEEN, getattr(profile, "recovery_between", None))),
         ("Outro esporte", _um(training_brain.OTHER_SPORT, getattr(profile, "other_sport", None))),
-        ("Quer cardio", getattr(profile, "wants_cardio", None)),
         ("Restrições alimentares", ", ".join(getattr(profile, "dietary_restrictions", None) or []) or None),
         ("Não come", _rot(FOOD_DISLIKES_LABELS, getattr(profile, "food_dislikes_list", None))),
         # Respostas do questionário ANTIGO. Ficam por último e só aparecem em

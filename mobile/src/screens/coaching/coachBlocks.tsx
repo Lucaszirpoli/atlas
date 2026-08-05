@@ -221,7 +221,7 @@ function OptionSheet({
 // única dessas mesmas informações. Mantido aqui, sem estar montado em tela
 // nenhuma, porque as opções e os rótulos ainda descrevem bem o domínio — se um
 // dia voltar a existir um atalho de edição rápida, é daqui que ele sai.
-type PrefSheetField = "weak_point" | "session_length" | "training_days" | "cardio" | "tecnicas" | "periodization";
+type PrefSheetField = "weak_point" | "session_length" | "training_days" | "tecnicas" | "periodization";
 
 export function TrainingPrefsCard({
   prefs,
@@ -257,10 +257,9 @@ export function TrainingPrefsCard({
     setBuilding(true);
     try {
       const r = await buildCoachWorkout();
-      const extra = r.cardio_note ? `\n\n${r.cardio_note}` : "";
       const tecnica = r.technique_note ? `\n\n${r.technique_note}` : "";
       const foco = r.weak_point_label ? ` Priorizei ${r.weak_point_label}.` : "";
-      onChanged("Treino montado", `${r.message}${foco}${extra}${tecnica}`);
+      onChanged("Treino montado", `${r.message}${foco}${tecnica}`);
     } catch (e: any) {
       setErroMontar(mensagemDeErro(e, "Não consegui montar agora."));
     } finally {
@@ -272,7 +271,6 @@ export function TrainingPrefsCard({
   const tempoOpt = prefs.session_length_options.find((x) => x.value === prefs.session_length);
   const tempoTxt = tempoOpt ? `${tempoOpt.label} · ${tempoOpt.range}` : "Não definido";
   const diasTxt = prefs.training_days_per_week ? `${prefs.training_days_per_week}× por semana` : "Automático";
-  const cardioTxt = prefs.wants_cardio == null ? "Não definido" : prefs.wants_cardio ? "Com cardio" : "Sem cardio";
   const tecnicasTxt = prefs.allow_advanced_techniques ? "Pode usar" : "Só séries normais";
   const periodTxt = prefs.periodization_options.find((x) => x.value === prefs.periodization)?.label ?? "Automática";
 
@@ -315,17 +313,6 @@ export function TrainingPrefsCard({
           ],
           pick: (v: string) =>
             salvar({ training_days_per_week: v === "__auto__" ? null : parseInt(v, 10) }, "Dias por semana"),
-        }
-      : sheet === "cardio"
-      ? {
-          title: "Cardio",
-          subtitle: "Se você quer cardio no plano. Sem cardio, o coach avisa quando o seu objetivo pedir.",
-          current: prefs.wants_cardio == null ? "" : prefs.wants_cardio ? "sim" : "nao",
-          options: [
-            { value: "sim", label: "Com cardio", desc: "Inclui condicionamento junto da musculação." },
-            { value: "nao", label: "Sem cardio", desc: "Só musculação. Bom pra quem prioriza força/massa." },
-          ],
-          pick: (v: string) => salvar({ wants_cardio: v === "sim" }, "Cardio"),
         }
       : sheet === "tecnicas"
       ? {
@@ -379,25 +366,13 @@ export function TrainingPrefsCard({
           <PrefRow icon="fitness-outline" label="Ponto fraco" value={pontoFracoTxt} onPress={() => setSheet("weak_point")} />
           <PrefRow icon="calendar-outline" label="Dias por semana" value={diasTxt} onPress={() => setSheet("training_days")} />
           <PrefRow icon="time-outline" label="Tempo por sessão" value={tempoTxt} onPress={() => setSheet("session_length")} />
-          <PrefRow icon="heart" label="Cardio" value={cardioTxt} onPress={() => setSheet("cardio")} />
           <PrefRow icon="flash" label="Técnicas avançadas" value={tecnicasTxt} onPress={() => setSheet("tecnicas")} />
           <PrefRow icon="repeat" label="Periodização" value={periodTxt} onPress={() => setSheet("periodization")} last />
 
-          {/* Aviso de cobertura ANTES do de cardio: ele fala do treino que a
-              pessoa acabou de configurar, então é o mais próximo do que ela
-              está fazendo agora. Fundo azul (informação), não amarelo (alerta) —
-              a escolha dela é legítima, só precisa ser informada. */}
           {prefs.session_fit_warning ? (
             <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: spacing.sm, backgroundColor: colors.primary + "14", borderRadius: radius.card, padding: spacing.sm }}>
               <Ionicons name="information-circle" size={15} color={colors.primary} style={{ marginTop: 1 }} />
               <Text style={[type.caption, { color: colors.textSecondary, flex: 1, lineHeight: 18 }]}>{prefs.session_fit_warning}</Text>
-            </View>
-          ) : null}
-
-          {prefs.cardio_warning ? (
-            <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: spacing.sm, backgroundColor: colors.warning + "14", borderRadius: radius.card, padding: spacing.sm }}>
-              <Ionicons name="alert-circle" size={15} color={colors.warning} style={{ marginTop: 1 }} />
-              <Text style={[type.caption, { color: colors.textSecondary, flex: 1, lineHeight: 18 }]}>{prefs.cardio_warning}</Text>
             </View>
           ) : null}
 
@@ -459,10 +434,9 @@ export function WorkoutCard({
     setBuilding(true);
     try {
       const r = await buildCoachWorkout();
-      const extra = r.cardio_note ? `\n\n${r.cardio_note}` : "";
       const tecnica = r.technique_note ? `\n\n${r.technique_note}` : "";
       const foco = r.weak_point_label ? ` Priorizei ${r.weak_point_label}.` : "";
-      onApplied("Treino montado", `${r.message}${foco}${extra}${tecnica}`);
+      onApplied("Treino montado", `${r.message}${foco}${tecnica}`);
     } catch (e: any) {
       setErro(mensagemDeErro(e, "Não consegui montar agora."));
     } finally {

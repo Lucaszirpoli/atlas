@@ -300,17 +300,16 @@ RECOVERY_BETWEEN: list[tuple[str, str, str]] = [
     ("dolorido", "Quase sempre dolorido ou rendendo menos",
      "Eu reduzo o volume até isso melhorar."),
 ]
-OTHER_SPORT: list[tuple[str, str, str]] = [
-    ("nao", "Não pratico outro esporte", ""),
-    ("leve", "1 a 2 vezes por semana, leve", "Caminhada, pilates, yoga."),
-    ("moderado", "3 a 4 vezes por semana", "Corrida, futebol, natação, luta."),
-    ("intenso", "5 ou mais vezes, ou competitivo",
-     "Eu tiro volume do treino pra isso caber na sua recuperação."),
+OTHER_SPORT: list[tuple[str, str]] = [
+    ("nao", "Não pratico outro esporte"),
+    ("leve", "1 a 2 vezes por semana, leve"),
+    ("moderado", "3 a 4 vezes por semana"),
+    ("intenso", "5 ou mais vezes"),
 ]
 SLEEP_QUALITY_VALUES = {v for v, _ in SLEEP_QUALITY}
 STRESS_LEVEL_VALUES = {v for v, _ in STRESS_LEVEL}
 RECOVERY_BETWEEN_VALUES = {v for v, _, _ in RECOVERY_BETWEEN}
-OTHER_SPORT_VALUES = {v for v, _, _ in OTHER_SPORT}
+OTHER_SPORT_VALUES = {v for v, _ in OTHER_SPORT}
 
 
 def one_of(value, permitidos: set[str]) -> str | None:
@@ -330,6 +329,30 @@ def many_of(valores, permitidos: set[str]) -> list[str]:
         if v in permitidos and v not in out:
             out.append(v)
     return out
+
+
+FOOD_DISLIKES_MAX_ITEMS = 20
+FOOD_DISLIKE_MAX_LEN = 40
+
+
+def parse_food_dislikes(value) -> list[str]:
+    """"Alimentos que não come" virou texto livre — aceita tanto a STRING do
+    formulário (separada por vírgula) quanto a LISTA que o chat já manda
+    (`chat_tools._AJUSTES["alimentos_que_nao_come"]`). Aqui só limpa (sem
+    vazio, sem duplicata, com teto de tamanho/quantidade); se o nome digitado
+    é um alimento que o motor sabe excluir é decidido depois, na hora de montar
+    a dieta, por `app.data.food_roles.normalize_tokens` — que também avisa o
+    que não reconheceu (`unsupported`), em vez de fingir que aplicou."""
+    brutos = value.split(",") if isinstance(value, str) else list(value or [])
+    limpos: list[str] = []
+    vistos: set[str] = set()
+    for item in brutos:
+        texto = str(item).strip()[:FOOD_DISLIKE_MAX_LEN]
+        chave = texto.lower()
+        if texto and chave not in vistos:
+            vistos.add(chave)
+            limpos.append(texto)
+    return limpos[:FOOD_DISLIKES_MAX_ITEMS]
 
 
 # Quanto cada resposta de recuperação desloca o volume semanal. Somados a 1.0,
@@ -492,10 +515,11 @@ def valid_training_days(value: int | None) -> int | None:
 # calculada na montagem e sai em `duration_note` — este texto aqui é só a
 # ordem de grandeza pra escolher na hora de responder.
 SESSION_LENGTHS: list[tuple[str, str, str, int]] = [
-    ("curto", "Curto", "cerca de 30 min", 5),
-    ("medio", "Médio", "cerca de 45 min", 6),
-    ("longo", "Longo", "cerca de 60 min", 8),
+    ("curto", "Curto", "30–45 min", 5),
+    ("medio", "Médio", "45–60 min", 6),
+    ("longo", "Longo", "60+ min", 8),
 ]
+_SESSION_ORDER = [v for v, _, _, _ in SESSION_LENGTHS]
 
 # PISO de exercícios por sessão. Abaixo disso não é um treino curto — é um treino
 # pela metade: não dá pra cobrir os padrões de movimento do dia, alternar
@@ -524,10 +548,25 @@ def session_exercise_target(session_length: str | None) -> int | None:
 
 
 def session_range_text(session_length: str | None) -> str | None:
-    """Tempo aproximado legível (ex.: 'cerca de 45 min') ou None. É a ordem de
+    """Tempo aproximado legível (ex.: '45–60 min') ou None. É a ordem de
     grandeza da escolha; o número real do plano montado sai em `duration_note`."""
     meta = _SESSION_META.get(session_length or "")
     return meta[1] if meta else None
+
+
+def effective_session_length(profile) -> str | None:
+    """O tempo por sessão que REALMENTE sobra pra musculação.
+
+    Quem respondeu "médio" mas fez essa conta incluindo cardio treina menos
+    musculação do que o rótulo sugere — o tempo de peso de verdade é um degrau
+    abaixo. Sem isto, `session_includes_cardio` seria só um dado guardado e
+    nunca lido, a mesma falha que já derrubou `wants_cardio` e
+    `known_techniques` deste arquivo."""
+    bruto = valid_session_length(getattr(profile, "session_length", None))
+    if bruto is None or not getattr(profile, "session_includes_cardio", False):
+        return bruto
+    i = _SESSION_ORDER.index(bruto)
+    return _SESSION_ORDER[max(0, i - 1)]
 
 
 # ---------------------------------------------------------------------------
@@ -895,23 +934,6 @@ def suggest_technique(
         key = _TECH_BY_PERIOD.get((is_compound, period)) or ("rest_pause" if is_compound else "myo_reps")
     info = TECHNIQUES[key]
     return key, info.label, info.how_to
-
-
-# ---------------------------------------------------------------------------
-# CARDIO — sem cardio pode faltar pro objetivo; o coach avisa (não obriga).
-# ---------------------------------------------------------------------------
-def cardio_warning(goal: str | None, wants_cardio: bool | None) -> str | None:
-    """Aviso quando a pessoa optou por treinar SEM cardio e o objetivo se
-    beneficiaria dele. None quando não escolheu (None) ou escolheu com cardio."""
-    if wants_cardio is not False:
-        return None
-    if goal in {"emagrecimento", "performance"}:
-        return (
-            "Você escolheu treinar sem cardio. Pro seu objetivo o cardio ajuda bastante — sem ele, o gasto "
-            "calórico fica todo por conta da dieta e do seu dia a dia (passos/NEAT). Dá pra ir sem, mas o "
-            "coach vai cobrar mais precisão na comida e no movimento fora do treino."
-        )
-    return None
 
 
 # ---------------------------------------------------------------------------

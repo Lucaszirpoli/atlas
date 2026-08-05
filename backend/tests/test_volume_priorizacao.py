@@ -85,7 +85,7 @@ def usuario(db, *, handle: str, weak_points: list[str] | None = None, dias: int 
         # Técnica avançada desligada: ela desconta do teto de séries por
         # exercício (muscle round e myo-reps valem 2), e aqui o que está sendo
         # medido é a DISTRIBUIÇÃO do volume, não a densidade.
-        allow_advanced_techniques=False, periodization="auto", wants_cardio=False,
+        allow_advanced_techniques=False, periodization="auto",
         weak_points=list(weak_points or []),
     ))
     db.commit()

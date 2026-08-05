@@ -306,7 +306,7 @@ def _montar(db, **campos_perfil):
             training_location=TrainingLocation.ACADEMIA_COMPLETA,
             experience_level=ExperienceLevel.INTERMEDIARIO, goal=Goal.HIPERTROFIA,
             training_days_per_week=4, session_length="longo",
-            allow_advanced_techniques=False, periodization="auto", wants_cardio=False,
+            allow_advanced_techniques=False, periodization="auto",
             **campos_perfil,
         ))
         db.commit()

@@ -124,12 +124,10 @@ export type TrainingPrefs = {
    * frequência, e qual tempo cobriria tudo. null = a combinação cobre o corpo
    * inteiro. Nenhuma combinação é bloqueada — isto é aviso, não erro. */
   session_fit_warning: string | null;
-  wants_cardio: boolean | null;
   /** Valor EFETIVO (já com a regra de iniciante aplicada no backend). */
   allow_advanced_techniques: boolean;
   periodization: Periodization;
   periodization_options: { value: Periodization; label: string; desc: string }[];
-  cardio_warning: string | null;
 };
 
 export type CoachingChart = "peso" | "calorias" | "macros" | "sono" | "carga";
@@ -403,12 +401,11 @@ export type TrainingPrefsUpdate = {
   weak_points?: string[] | null;
   session_length?: SessionLength | null;
   training_days_per_week?: number | null;
-  wants_cardio?: boolean | null;
   allow_advanced_techniques?: boolean | null;
   periodization?: Periodization;
 };
 
-/** Define preferências de treino do Coaching (ponto fraco, tempo, cardio,
+/** Define preferências de treino do Coaching (ponto fraco, tempo,
  * periodização). É o que o coach usa pra montar/ajustar treino e escolher
  * técnica/deload. */
 export async function setTrainingPrefs(prefs: TrainingPrefsUpdate): Promise<{ ok: boolean; message: string }> {
@@ -424,7 +421,6 @@ export type BuildWorkoutResult = {
   total_exercises: number;
   weak_point_label: string | null;
   session_range: string | null;
-  cardio_note: string | null;
   technique_note: string | null;
   extra_exercises_note: string | null;
   periodization_label: string;

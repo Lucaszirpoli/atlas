@@ -129,6 +129,7 @@ SUPERIOR_A: list[SlotSpec] = [
     _iso(M.SHOULDERS, DELT_LATERAL),
     _iso(M.TRICEPS, priority=2),
     _iso(M.BICEPS, priority=2),
+    _minor(P.CORE, M.ABS, priority=3),
 ]
 
 SUPERIOR_B: list[SlotSpec] = [
@@ -243,6 +244,7 @@ FULL_BODY_B: list[SlotSpec] = [
     _iso(M.SHOULDERS, DELT_POSTERIOR),
     _iso(M.BICEPS, priority=2),
     SlotSpec(ROLE_ISO, P.KNEE_FLEX, M.HAMSTRINGS, POST_FLEX_JOELHO, priority=3),
+    _minor(P.CORE, M.ABS, priority=3),
 ]
 
 FULL_BODY_C: list[SlotSpec] = [
@@ -273,6 +275,7 @@ TORSO_A: list[SlotSpec] = [
     _iso(M.CHEST, ESTERNAL),
     _iso(M.SHOULDERS, DELT_LATERAL),
     _iso(M.SHOULDERS, DELT_POSTERIOR, priority=2),
+    _minor(P.CORE, M.ABS, priority=3),
 ]
 
 TORSO_B: list[SlotSpec] = [

@@ -170,7 +170,11 @@ export function WorkoutPreviewScreen() {
                 <ExerciseThumb url={ex.exercise.video_url} size={44} />
                 <View style={{ flex: 1, marginLeft: spacing.sm }}>
                   <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>{ex.exercise.name}</Text>
+                    {/* flex:1 no nome: sem isso, um nome de exercício comprido
+                        empurrava o "?" pra fora da coluna (que é flex:1 lá em
+                        cima) e ele ficava sobreposto/cortado atrás da setinha
+                        de trocar exercício, ao lado. */}
+                    <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700", flex: 1 }]}>{ex.exercise.name}</Text>
                     <HelpDot title="Tipos de série" text={SET_TYPES_HELP_TEXT} />
                   </View>
                   <Text style={[type.caption, { color: colors.textSecondary }]}>

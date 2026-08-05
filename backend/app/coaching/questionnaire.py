@@ -230,6 +230,18 @@ def steps() -> list[dict]:
                 {"key": "load_preference", "label": "Prefere carga alta ou mais repetições?",
                  "type": SINGLE, "required": False,
                  "options": _opts3(training_brain.LOAD_PREFERENCE)},
+                # Mudaram de "O que você quer desenvolver" pra cá: técnica
+                # avançada e periodização são método de treino (como você
+                # treina), não prioridade muscular (o que você prioriza) — a
+                # etapa errada pra elas era essa confusão de assunto.
+                {"key": "allow_advanced_techniques",
+                 "label": "Posso usar técnicas avançadas nos seus treinos?",
+                 "type": BOOL, "required": False,
+                 "help": "Myo-reps, rest-pause, muscle round, back-off e superset. Rendem mais "
+                         "estímulo no mesmo tempo, mas trabalham perto da falha."},
+                {"key": "periodization", "label": "Como o treino evolui ao longo dos meses",
+                 "type": SINGLE, "required": False,
+                 "options": _opts3(training_brain.PERIODIZATIONS)},
             ],
         },
         # --- 4 -------------------------------------------------------------
@@ -278,6 +290,17 @@ def steps() -> list[dict]:
                  "help": "É a ordem de grandeza. O tempo real cai conforme você treina mais "
                          "dias na semana, porque o mesmo volume se divide em mais treinos — "
                          "eu te digo a duração exata assim que montar o plano."},
+                # Sem isto, quem faz cardio DENTRO do tempo respondido acima
+                # recebia um treino de musculação do tamanho do "médio" ou
+                # "longo" que ela marcou — mas boa parte daquele tempo já foi
+                # gasta antes de pegar o primeiro peso. "Sim" desce o tempo
+                # efetivo um degrau (ver training_brain.effective_session_length).
+                {"key": "session_includes_cardio",
+                 "label": "O tempo que você respondeu acima inclui cardio?",
+                 "type": BOOL, "required": False,
+                 "help": "Se você faz cardio dentro desse tempo (ex.: 15 min de esteira nos 45 "
+                         "min totais), sua musculação de verdade é menor do que o tempo que você "
+                         "marcou. Eu ajusto o tamanho do treino pra caber certinho."},
                 # "Qual divisão você prefere?" (`split_preference`) SAIU de novo:
                 # sobrepunha esta pergunta abaixo sem acrescentar nada que ela já
                 # não resolvesse — quem tem uma opinião sobre misturar superior e
@@ -348,14 +371,6 @@ def steps() -> list[dict]:
                  "options": _opts(training_brain.WEAK_POINTS),
                  "help": "Fica perto do volume mínimo — manter custa bem menos que crescer, e "
                          "sobra recuperação pras suas prioridades."},
-                {"key": "allow_advanced_techniques",
-                 "label": "Posso usar técnicas avançadas nos seus treinos?",
-                 "type": BOOL, "required": False,
-                 "help": "Myo-reps, rest-pause, muscle round, back-off e superset. Rendem mais "
-                         "estímulo no mesmo tempo, mas trabalham perto da falha."},
-                {"key": "periodization", "label": "Como o treino evolui ao longo dos meses",
-                 "type": SINGLE, "required": False,
-                 "options": _opts3(training_brain.PERIODIZATIONS)},
             ],
         },
         # --- 8 -------------------------------------------------------------
@@ -382,18 +397,24 @@ def steps() -> list[dict]:
                  "options": _opts3(training_brain.RECOVERY_BETWEEN)},
                 {"key": "other_sport", "label": "Pratica outro esporte ou atividade?",
                  "type": SINGLE, "required": False,
-                 "options": _opts3(training_brain.OTHER_SPORT),
+                 "options": _opts(training_brain.OTHER_SPORT),
                  "help": "Não é pra te desencorajar — é pra o treino caber junto, "
                          "sem te deixar sem recuperação."},
-                {"key": "wants_cardio", "label": "Quer cardio no plano?", "type": BOOL, "required": False},
                 {"key": "dietary_restrictions", "label": "Restrições alimentares", "type": MULTI,
                  "required": False, "options": _opts(RESTRICOES)},
                 {"key": "meals_per_day", "label": "Refeições por dia", "type": SINGLE, "required": False,
                  "options": [{"value": str(n), "label": f"{n} refeições"} for n in (3, 4, 5, 6)]},
-                {"key": "food_dislikes_list", "label": "Alimentos que você não come", "type": MULTI,
-                 "required": False, "options": _opts(FOOD_DISLIKES),
-                 "help": "Eu não coloco nenhum destes na sua dieta. O que não estiver na lista "
-                         "você troca no plano com 1 toque."},
+                # Virou texto livre (era uma lista fixa de 19 alimentos): a
+                # pessoa digita qualquer coisa, separado por vírgula, e o
+                # backend casa cada nome com o catálogo da dieta (mesmo
+                # caminho que o chat já usa em `food_roles.normalize_tokens` —
+                # ver `training_brain.parse_food_dislikes`). O que eu não sei
+                # filtrar eu aviso, não finjo que apliquei.
+                {"key": "food_dislikes_list", "label": "Alimentos que você não come", "type": TEXT,
+                 "required": False, "multiline": True, "max_length": 300,
+                 "placeholder": "Ex.: camarão, fígado, jiló...",
+                 "help": "Separe por vírgula. Eu não coloco nenhum destes na sua dieta — o que eu "
+                         "não conseguir reconhecer, eu te aviso em vez de fingir que apliquei."},
                 # CONSENTIMENTO (LGPD). Vive aqui porque este questionário virou
                 # o CADASTRO do Coaching: criar conta não pede mais nada, então
                 # é neste ponto — e só neste — que a pessoa passa a entregar dado

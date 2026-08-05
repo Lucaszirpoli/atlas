@@ -243,7 +243,7 @@ export function CoachingScreen() {
   const { colors, type, spacing } = useTheme();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const insets = useSafeAreaInsets();
   const isPro = user?.plan === "pro";
 
@@ -356,7 +356,18 @@ export function CoachingScreen() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       >
-        <ObjectiveScreen onScrollTop={() => scrollRef.current?.scrollTo({ y: 0, animated: true })} onPlanActivated={load} />
+        <ObjectiveScreen
+          onScrollTop={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+          onPlanActivated={async () => {
+            // Ativar o plano vira `onboarding_completed = true` no backend,
+            // mas o `user` daqui é o do AuthContext — sem recarregar ele, este
+            // gate nunca reavalia e a pessoa fica presa nesta tela, sem volta
+            // pro hub normal (era exatamente esse o bug: terminar o
+            // questionário e não ter como sair do Objetivo).
+            await refreshUser().catch(() => {});
+            load();
+          }}
+        />
       </ScrollView>
     );
   }

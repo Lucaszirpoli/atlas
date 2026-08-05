@@ -1100,7 +1100,7 @@ function FieldEditor({
   return (
     <View style={{ marginBottom: spacing.md }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: spacing.xs }}>
-        <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "700" }]}>
+        <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "700", flex: 1 }]}>
           {field.label}
           {field.required ? <Text style={{ color: colors.primary }}> *</Text> : null}
         </Text>

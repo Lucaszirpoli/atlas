@@ -157,7 +157,11 @@ class UserProfile(Base):
     # None = sem especialização em curso (nenhum ponto fraco marcado).
     weak_points_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     session_length: Mapped[str | None] = mapped_column(String(10), nullable=True)  # curto|medio|longo
-    wants_cardio: Mapped[bool | None] = mapped_column(Boolean, nullable=True)  # None = não escolheu
+    # O tempo acima inclui cardio, ou é só musculação? None/False = só
+    # musculação (o padrão). True desce o tempo EFETIVO um degrau (ver
+    # training_brain.effective_session_length) — quem respondeu "médio" com
+    # cardio dentro treina musculação do tamanho de um "curto" de verdade.
+    session_includes_cardio: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     periodization: Mapped[str] = mapped_column(
         String(12), default="auto", server_default="auto"
     )  # auto|linear|ondulatoria

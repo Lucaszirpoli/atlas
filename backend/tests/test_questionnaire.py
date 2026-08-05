@@ -39,10 +39,19 @@ def test_nenhuma_pergunta_e_de_texto_livre():
     O questionário antigo perguntava lesões num campo aberto e guardava a
     resposta num TEXT que nenhuma regra lia: quem escrevia "dor no ombro direito
     em supino reto" recebia supino reto do mesmo jeito. Se um campo de texto
-    voltar aqui, é porque alguém está coletando algo que o plano vai ignorar.
+    voltar aqui SEM estar nesta lista, é porque alguém está coletando algo que
+    o plano vai ignorar.
+
+    As duas exceções OBEDECEM ao motor, por isso não contam como texto livre
+    "morto": `display_name` muda como o coach FALA (vai direto pro prompt) e
+    `food_dislikes_list` passa por `food_roles.normalize_tokens` na hora de
+    montar a dieta — o que ele não reconhece vira aviso, não é ignorado calado.
     """
+    EXCECOES_DE_TEXTO_LIVRE = {"display_name", "food_dislikes_list"}
     abertos = [f["key"] for f in TODOS_CAMPOS if f["type"] == "text"]
-    assert abertos == [], f"campos de texto livre voltaram ao questionário: {abertos}"
+    assert set(abertos) == EXCECOES_DE_TEXTO_LIVRE, (
+        f"campos de texto livre fora da lista de exceções: {set(abertos) - EXCECOES_DE_TEXTO_LIVRE}"
+    )
 
 
 def test_todo_campo_tem_opcao_ou_e_numero():
@@ -64,12 +73,20 @@ def test_toda_pergunta_declara_o_que_ela_muda():
     como vazio no próprio código), a academia cheia (que só teria efeito sobre
     superset, que o motor nunca prescreve) e a divisão preferida (cuja única
     alternativa possível quebraria a frequência mínima de 2×/semana).
+
+    Três chaves ficam de fora por não serem "conteúdo de plano": `display_name`
+    é identidade (muda a fala do coach, não treino/dieta), e os dois
+    `accepted_*` são consentimento LGPD — um gate legal pra ativação acontecer,
+    não uma escolha que redesenha o plano.
     """
     from app.coaching import plan_service
 
+    NAO_SAO_CONTEUDO_DE_PLANO = {
+        "display_name", "accepted_lgpd_health_data", "accepted_medical_disclaimer",
+    }
     sem_efeito = [
         f["key"] for f in TODOS_CAMPOS
-        if not plan_service._IMPACTO.get(f["key"])
+        if f["key"] not in NAO_SAO_CONTEUDO_DE_PLANO and not plan_service._IMPACTO.get(f["key"])
     ]
     assert sem_efeito == [], (
         f"perguntas que não mudam nada no plano: {sem_efeito}. "
@@ -107,6 +124,7 @@ def test_obrigatorio_escondido_nao_bloqueia_a_conclusao():
         "weight_kg": 80, "activity_level": "moderate", "calorie_goal_mode": "auto",
         "training_time": "1_3a", "training_location": "academia_completa",
         "training_days_per_week": "4", "session_length": "medio",
+        "accepted_lgpd_health_data": True, "accepted_medical_disclaimer": True,
     }
     assert questionnaire.missing_required(base) == []
     manual = {**base, "calorie_goal_mode": "manual"}
@@ -471,7 +489,7 @@ RESPOSTAS_ESQUEMA_ANTIGO = {
     "training_location": "academia_completa",
     "training_days_per_week": "4", "session_length": "medio",
     "weak_points": ["chest"],                 # campo que NÃO existe mais
-    "allow_advanced_techniques": False, "periodization": "auto", "wants_cardio": False,
+    "allow_advanced_techniques": False, "periodization": "auto",
 }
 
 
@@ -562,6 +580,7 @@ def test_ativar_sobre_plano_antigo_troca_o_treino_de_verdade(db, perfil):
         **RESPOSTAS_BASE, "weight_kg": 82,
         "training_days_per_week": "4", "session_length": "medio",
         "priority_1": "back", "allow_advanced_techniques": False, "periodization": "auto",
+        "accepted_lgpd_health_data": True, "accepted_medical_disclaimer": True,
     }
     plan_service.activate(db, perfil, novas, reason="atualizacao")
 

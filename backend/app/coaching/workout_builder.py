@@ -178,10 +178,13 @@ def build_and_save(db: Session, user: User) -> dict:
             wps.append(MuscleGroup(w))
         except ValueError:
             pass
-    session_target = training_brain.session_exercise_target(profile.session_length)
+    # Tempo EFETIVO de musculação — desce um degrau quando o tempo respondido
+    # inclui cardio (ver training_brain.effective_session_length). É este valor,
+    # não o bruto, que decide tamanho de treino daqui pra baixo.
+    tempo_sessao = training_brain.effective_session_length(profile)
+    session_target = training_brain.session_exercise_target(tempo_sessao)
     # Sessão curta: prioriza compostos multiarticulares e máquinas que pegam
     # vários músculos, pra render mais estímulo no pouco tempo.
-    tempo_sessao = training_brain.valid_session_length(profile.session_length)
     curto = tempo_sessao == "curto"
     prefs_exercicio = training_brain.valid_exercise_prefs(getattr(profile, "exercise_prefs", None))
     # Lesão, dor (moderada ou forte), limitação funcional e equipamento de casa.
@@ -644,7 +647,7 @@ def build_and_save(db: Session, user: User) -> dict:
             tech_key, tech_label, cue_text = training_brain.suggest_technique(
                 finisher.is_compound,
                 training_brain.training_period(weeks_acc),
-                session_length=profile.session_length,
+                session_length=tempo_sessao,
                 is_weak_point=eh_ponto_fraco,
             )
             db.add(CoachingTechniqueCue(
@@ -773,11 +776,6 @@ def build_and_save(db: Session, user: User) -> dict:
             + ". É outro exercício em vez de mais séries no mesmo — passar do teto de séries por "
             "exercício acumula fadiga sem estímulo novo. O treino cresce ao longo do ciclo e alivia no deload."
         )
-    if profile.wants_cardio:
-        cardio_note = ("Como você quer cardio, inclua 2× de 20–30 min na semana (esteira, bike ou elíptico), "
-                       "de preferência longe dos dias pesados de perna.")
-    else:
-        cardio_note = training_brain.cardio_warning(goal, profile.wants_cardio)
     period_label = training_brain.PERIODIZATION_LABEL.get(
         training_brain.valid_periodization(profile.periodization), "Automática"
     )
@@ -789,8 +787,7 @@ def build_and_save(db: Session, user: User) -> dict:
         "total_exercises": total_ex,
         "weak_point_label": weak_label,
         "priority_note": priority_note,
-        "session_range": training_brain.session_range_text(profile.session_length),
-        "cardio_note": cardio_note,
+        "session_range": training_brain.session_range_text(tempo_sessao),
         "technique_note": technique_note,
         "extra_exercises_note": extra_note,
         "periodization_label": period_label,

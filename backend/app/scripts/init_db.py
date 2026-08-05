@@ -32,7 +32,7 @@ from app.scripts import (
 def _ensure_profile_columns() -> None:
     """ALTER idempotente (SQLite dev + Postgres prod) pras colunas novas de
     user_profiles: goal_pace, target_weight_kg e as preferências de treino do
-    Coaching (weak_point, session_length, wants_cardio, periodization).
+    Coaching (weak_point, session_length, periodization).
     Roda logo após o create_all, ANTES de qualquer select(UserProfile)."""
     from sqlalchemy import inspect, text
 
@@ -44,7 +44,7 @@ def _ensure_profile_columns() -> None:
         ("weak_point", "VARCHAR(20)", "VARCHAR(20)"),
         ("weak_points", "VARCHAR(20)[]", "TEXT"),  # até 2 pontos fracos (lista)
         ("session_length", "VARCHAR(10)", "VARCHAR(10)"),
-        ("wants_cardio", "BOOLEAN", "BOOLEAN"),
+        ("session_includes_cardio", "BOOLEAN", "BOOLEAN"),
         ("periodization", "VARCHAR(12) NOT NULL DEFAULT 'auto'", "VARCHAR(12) NOT NULL DEFAULT 'auto'"),
         ("training_days_per_week", "INTEGER", "INTEGER"),
         # Fuso do aparelho — define o dia de calendário de cada registro.

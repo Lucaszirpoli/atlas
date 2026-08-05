@@ -107,6 +107,14 @@ TOOLS = [
                 },
                 "dias_por_semana": {"type": "integer", "description": "2 a 6."},
                 "tempo_por_sessao": {"type": "string", "enum": ["curto", "medio", "longo"]},
+                "tempo_inclui_cardio": {
+                    "type": "boolean",
+                    "description": (
+                        "true = o tempo por sessão respondido inclui cardio, então a musculação de "
+                        "verdade é um degrau menor (médio vira curto, longo vira médio). Use quando a "
+                        "pessoa mencionar que faz cardio dentro do tempo de treino."
+                    ),
+                },
                 "prioridades": {
                     "type": "array", "items": {"type": "string"},
                     "description": (
@@ -128,7 +136,6 @@ TOOLS = [
                     ),
                 },
                 "tecnicas_avancadas": {"type": "boolean"},
-                "quer_cardio": {"type": "boolean"},
                 "refeicoes_por_dia": {"type": "integer", "description": "3 a 6."},
                 "restricoes_alimentares": {
                     "type": "array", "items": {"type": "string"},
@@ -286,10 +293,10 @@ _AJUSTES: dict[str, tuple[str, Any]] = {
     "divisao": ("split_preference", lambda v: str(v)),
     "dias_por_semana": ("training_days_per_week", lambda v: str(int(v))),
     "tempo_por_sessao": ("session_length", lambda v: str(v)),
+    "tempo_inclui_cardio": ("session_includes_cardio", bool),
     "nunca_misturar_superior_inferior": ("avoid_mixing_upper_lower", bool),
     "periodizacao": ("periodization", lambda v: str(v)),
     "tecnicas_avancadas": ("allow_advanced_techniques", bool),
-    "quer_cardio": ("wants_cardio", bool),
     "refeicoes_por_dia": ("meals_per_day", lambda v: str(int(v))),
     "restricoes_alimentares": ("dietary_restrictions", lambda v: [str(x) for x in v]),
     "alimentos_que_nao_come": ("food_dislikes_list", lambda v: [str(x) for x in v]),
@@ -297,10 +304,11 @@ _AJUSTES: dict[str, tuple[str, Any]] = {
 
 _ROTULO_AJUSTE = {
     "divisao": "divisão do treino", "dias_por_semana": "dias por semana",
-    "tempo_por_sessao": "tempo por treino", "prioridades": "prioridades",
+    "tempo_por_sessao": "tempo por treino", "tempo_inclui_cardio": "se o tempo inclui cardio",
+    "prioridades": "prioridades",
     "nunca_misturar_superior_inferior": "misturar superior e inferior no mesmo treino",
     "periodizacao": "periodização", "tecnicas_avancadas": "técnicas avançadas",
-    "quer_cardio": "cardio", "refeicoes_por_dia": "refeições por dia",
+    "refeicoes_por_dia": "refeições por dia",
     "restricoes_alimentares": "restrições alimentares",
     "alimentos_que_nao_come": "alimentos que não come",
 }
