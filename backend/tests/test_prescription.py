@@ -27,7 +27,7 @@ from app.ai.exercise_taxonomy import (
     Taxon,
     Tier,
 )
-from app.coaching import prescription
+from app.coaching import prescription, training_brain
 
 
 def taxon(**kw) -> Taxon:
@@ -482,3 +482,50 @@ def test_o_que_foi_gravado_bate_com_a_prescricao(rotinas):
         assert descanso == prescription.rest_seconds(t, goal="hipertrofia"), (
             f"{nome}: descanso gravado diverge"
         )
+
+
+# --- Cap. XVII: auditoria da técnica antes de aplicar ----------------------
+def _tx(nome):
+    from app.ai.exercise_taxonomy import TAXONOMY
+
+    return TAXONOMY[nome]
+
+
+@pytest.mark.parametrize("tecnica", sorted(training_brain.TECNICAS_DE_INTENSIFICACAO))
+@pytest.mark.parametrize(
+    "exercicio",
+    ("Agachamento livre", "Levantamento terra tradicional", "Stiff com barra",
+     "Agachamento búlgaro"),
+)
+def test_intensificacao_e_rejeitada_em_livre_pesado(exercicio, tecnica):
+    """Cap. XVII Parte C: técnica de intensificação deve ser evitada em
+    "exercícios livres pesados, com grande carga axial, em que uma repetição
+    falhada represente risco".
+
+    Antes o motor escolhia a técnica por período/tempo/ponto fraco e aplicava sem
+    nunca perguntar se o exercício aguentava — rest-pause em agachamento livre
+    passava direto."""
+    motivo = training_brain.technique_audit(_tx(exercicio), tecnica)
+    assert motivo, f"{tecnica} deveria ser rejeitada em {exercicio}"
+    assert len(motivo) > 20, "a rejeição tem que explicar o porquê, não só negar"
+
+
+@pytest.mark.parametrize("tecnica", sorted(training_brain.TECNICAS_DE_INTENSIFICACAO))
+@pytest.mark.parametrize("exercicio", ("Cadeira extensora", "Rosca Scott na máquina"))
+def test_intensificacao_e_autorizada_em_maquina_estavel(exercicio, tecnica):
+    """"Priorizar em máquinas, cabos, exercícios guiados, com apoio, altamente
+    estáveis, com interrupção segura." A auditoria não pode ser tão dura que
+    esvazie a técnica — ela existe pra separar, não pra proibir."""
+    assert training_brain.technique_audit(_tx(exercicio), tecnica) is None
+
+
+@pytest.mark.parametrize(
+    "exercicio",
+    ("Agachamento livre", "Levantamento terra tradicional", "Cadeira extensora"),
+)
+def test_back_off_passa_em_qualquer_exercicio(exercicio):
+    """Back-off é organização de CARGA, não intensificação: "pode ser utilizado
+    em exercícios compostos livres [...] a aplicação depende da segurança e da
+    competência técnica, não apenas da categoria do exercício". É ele que sobra
+    quando a intensificação é barrada."""
+    assert training_brain.technique_audit(_tx(exercicio), "back_off") is None

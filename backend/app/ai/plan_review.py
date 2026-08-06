@@ -174,6 +174,56 @@ def redundancias(plan) -> list[tuple[str, str, int]]:
     return achados
 
 
+# --- 5b) Perfil de resistência (Cap. V) ------------------------------------
+# Quantos exercícios do MESMO músculo, no MESMO dia, podem ter pico de tensão no
+# mesmo ponto da amplitude. Dois é normal (e às vezes inevitável: todo empurrar
+# horizontal tem pico embaixo). Três é o que o manual chama de concentrar "todos
+# os exercícios na mesma região da curva de força".
+MAX_MESMA_RESISTENCIA = 2
+
+
+def concentracao_de_resistencia(plan) -> list[tuple[str, str, str, int]]:
+    """(foco, músculo, curva, quantas) pra todo músculo que empilha exercícios
+    no mesmo ponto da curva de força dentro de um dia.
+
+    O atributo já existia em cada exercício (`Taxon.resistance`) e só era lido
+    pra decidir a faixa de repetições. Na SELEÇÃO ele não pesava nada, então um
+    dia de peito podia sair com três picos no alongamento e nenhum na contração —
+    tecnicamente sem redundância de FUNÇÃO (padrão+região diferentes), e ainda
+    assim um estímulo só, repetido.
+
+    FICA FORA de `review()` de propósito, e a distinção importa: o que `review`
+    devolve é o que REPROVA o treino, e reprovar exige que exista conserto. Aqui
+    nem sempre existe — o dia de pull da biblioteca atual tem três vagas de
+    costas e todos os isoladores de dorsais disponíveis têm pico no alongamento
+    (pullover é pullover). Uma pendência que o motor não consegue resolver vira
+    ruído permanente em `coherence_issues` e ensina a ignorar a lista inteira.
+
+    Então isto é AVISO, não reprovação: sai em `coverage_notes` pra ficar visível
+    (inclusive pra mim, quando a lacuna for da biblioteca e não do motor), e quem
+    de fato melhora a distribuição é a preferência de seleção em
+    `methods_engine.equivalencia`, que escolhe curva inédita antes de tier.
+    """
+    from app.ai.exercise_taxonomy import taxon_for
+
+    achados: list[tuple[str, str, str, int]] = []
+    for s in plan.sessions:
+        contagem: Counter[tuple[str, str]] = Counter()
+        for sl in s.slots:
+            if not sl.exercise_name:
+                continue
+            try:
+                musculo = MuscleGroup(sl.muscle_group)
+            except ValueError:
+                continue
+            taxon = taxon_for(sl.exercise_name, musculo, bool(sl.is_compound))
+            contagem[(sl.muscle_group, taxon.resistance.value)] += 1
+        for (musculo, curva), n in contagem.items():
+            if n > MAX_MESMA_RESISTENCIA:
+                achados.append((s.focus, musculo, curva, n))
+    return achados
+
+
 # --- 5) Ordem preserva desempenho -----------------------------------------
 def problemas_de_ordem(plan) -> list[str]:
     """A sessão abre com movimento pesado e fecha com músculo menor.
@@ -214,6 +264,58 @@ def problemas_de_ordem(plan) -> list[str]:
 
 
 # --- 8) A vaga recebeu um exercício da função que ela pedia ----------------
+# --- 5c) Interferência e fadiga entre exercícios (Caps. VII e VIII) --------
+# "Evite posicionar exercícios consecutivos quando a fadiga produzida pelo
+# primeiro comprometer significativamente a qualidade do segundo."
+#
+# O manual pede que a ordem seja CONSEQUÊNCIA da fadiga prevista, e os blueprints
+# são sequências fixas. A decisão de produto foi manter os blueprints (é o que
+# torna o motor determinístico, testável e explicável) e cobrar deles o que o
+# manual cobra da ordem — o blueprint propõe, isto audita. Um blueprint que
+# empilha fadiga vira erro de DESENHO, corrigido no blueprint, e não um remendo
+# caso a caso que esconderia o problema.
+#
+# Só duas sobreposições entram, e as duas por serem MENSURÁVEIS com os atributos
+# que a biblioteca já tem — cobrar "fadiga neural" sem um número que a descreva
+# seria checagem decorativa:
+#   1. dois exercícios de custo sistêmico ALTO em sequência (carga axial +
+#      demanda neural empilhadas: agachamento seguido de terra);
+#   2. dois exercícios seguidos cujo limitante dominante é o MESMO e não é o
+#      músculo-alvo (duas puxadas que acabam pela pegada; dois movimentos que
+#      acabam pela lombar). O segundo nasce já limitado pelo que o primeiro
+#      gastou, então o músculo-alvo nem chega a ser estimulado.
+def sobreposicoes_de_fadiga(plan) -> list[str]:
+    """Pares consecutivos que empilham o mesmo tipo de fadiga (Caps. VII e VIII)."""
+    from app.ai.exercise_taxonomy import Limiter, Systemic, taxon_for
+
+    def _taxon(sl):
+        try:
+            musculo = MuscleGroup(sl.muscle_group)
+        except ValueError:
+            return None
+        return taxon_for(sl.exercise_name, musculo, bool(sl.is_compound)) if sl.exercise_name else None
+
+    problemas: list[str] = []
+    for s in plan.sessions:
+        taxons = [(sl, _taxon(sl)) for sl in s.slots]
+        for (a, ta), (b, tb) in zip(taxons, taxons[1:]):
+            if ta is None or tb is None:
+                continue
+            if ta.systemic is Systemic.ALTO and tb.systemic is Systemic.ALTO:
+                problemas.append(
+                    f"Sessão '{s.focus}': '{b.exercise_name}' vem logo depois de "
+                    f"'{a.exercise_name}' e os dois têm custo sistêmico alto — carga axial e "
+                    "demanda neural empilhadas derrubam o desempenho do segundo."
+                )
+            elif ta.limiter is tb.limiter and ta.limiter is not Limiter.ALVO:
+                problemas.append(
+                    f"Sessão '{s.focus}': '{a.exercise_name}' e '{b.exercise_name}' são "
+                    f"encerrados pelo mesmo fator ({ta.limiter.value}), que não é o músculo-alvo — "
+                    "o segundo começa já limitado pelo que o primeiro gastou."
+                )
+    return problemas
+
+
 def vagas_sem_funcao(plan) -> list[str]:
     """Vaga sem exercício ou sem padrão registrado.
 
@@ -298,6 +400,7 @@ def review(plan, *, method=None) -> list[str]:
         )
 
     problemas += problemas_de_ordem(plan)
+    problemas += sobreposicoes_de_fadiga(plan)
 
     if method is not None and method.days_per_week and plan.days_per_week not in method.days_per_week:
         problemas.append(

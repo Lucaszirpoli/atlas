@@ -889,6 +889,53 @@ def advanced_allowed(profile) -> bool:
     return nivel != "iniciante"
 
 
+# ---------------------------------------------------------------------------
+# AUDITORIA DA TÉCNICA (Cap. XVII) — antes de aplicar, o exercício aguenta?
+# ---------------------------------------------------------------------------
+# O Cap. XIII diz COMO escolher a técnica; o XVII manda AUDITAR antes de aplicar
+# e decidir entre autorizar, ajustar ou rejeitar. Faltava a auditoria: o motor
+# escolhia por período/tempo/ponto fraco e aplicava, sem nunca perguntar se
+# aquele exercício suportava aquela técnica.
+#
+# O manual é específico sobre onde técnica de INTENSIFICAÇÃO pode entrar
+# ("máquinas, cabos, exercícios guiados, com apoio, altamente estáveis, com
+# interrupção segura") e onde não pode ("exercícios livres pesados, de elevada
+# complexidade técnica, com grande carga axial, em que uma repetição falhada
+# represente risco, em que estabilizadores ou capacidade cardiovascular sejam os
+# principais limitantes").
+#
+# Rest-pause, myo-reps e muscle round são todas de intensificação: trabalham
+# perto da falha com pausas curtas. Back-off e superset são de ORGANIZAÇÃO (de
+# carga e de tempo) e o manual as libera em peso livre — "a aplicação depende da
+# segurança e da competência técnica, não apenas da categoria do exercício".
+TECNICAS_DE_INTENSIFICACAO = frozenset({"rest_pause", "myo_reps", "muscle_round"})
+
+
+def technique_audit(taxon, technique_key: str) -> str | None:
+    """None quando a técnica está autorizada nesse exercício; senão, o MOTIVO da
+    rejeição, em texto (Cap. XVII Partes C e E).
+
+    O motivo volta em texto e não como booleano porque quem chama precisa saber
+    o que oferecer no lugar — e porque um "não" sem motivo é exatamente o tipo de
+    decisão silenciosa que este projeto já pagou caro pra tirar do motor.
+    """
+    from app.ai.exercise_taxonomy import Limiter, Stability, Systemic
+
+    if technique_key not in TECNICAS_DE_INTENSIFICACAO:
+        return None  # back-off e superset organizam carga/tempo, não intensificam
+
+    if taxon.stability is Stability.BAIXA:
+        return ("o exercício depende de equilíbrio, e a técnica exige chegar perto da falha "
+                "com a execução ainda inteira")
+    if taxon.systemic is Systemic.ALTO:
+        return ("o exercício tem carga axial e demanda neural altas — falhar uma repetição "
+                "aqui é risco, não estímulo")
+    if taxon.limiter in (Limiter.ESTABILIZADORES, Limiter.CARDIO, Limiter.LOMBAR):
+        return (f"quem encerra a série nesse exercício é {taxon.limiter.value}, não o músculo — "
+                "a técnica só ia acumular fadiga onde ela não vira estímulo")
+    return None
+
+
 def suggest_technique(
     is_compound: bool,
     period: str,

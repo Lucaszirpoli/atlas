@@ -155,6 +155,58 @@ def weekly_set_range(muscle: MuscleGroup, level: str | None) -> tuple[int, int]:
     return max(1, round(mev * factor)), max(mev + 2, round(mrv * factor))
 
 
+# --- COMO A PERIODIZAÇÃO MEXE NO VOLUME (Cap. III, Partes C e D) ------------
+# A periodização era a resposta mais ignorada do questionário: ela decidia
+# QUANDO o coach oferece deload (`training_brain.offer_deload`) e nada mais. O
+# volume subia ao longo do mesociclo para todo mundo, inclusive pra quem tinha
+# escolhido LINEAR — que é justamente a estratégia definida pelo volume que NÃO
+# sobe. Duas partes do mesmo motor discordando: `offer_deload` já dizia "linear
+# nunca desloada" enquanto o volume acumulava como se fosse deslodar.
+#
+# O manual separa as três com clareza:
+#
+#   LINEAR       — Volume FIXO. "Após definido, permanece constante durante todo
+#                  o ciclo, sofrendo apenas progressões por carga, repetições ou
+#                  desempenho, sem alterações planejadas no número de séries."
+#                  Faixa própria, 6 a 16.
+#   ONDULATÓRIA  — CAMADAS discretas: C1 é o Volume Base, C2 é +20~25% sobre C1,
+#                  C3 é +30~40% sobre C2. Degraus, não rampa contínua.
+#   AUTOMATIZADA — Volume Base como referência, com ajuste flexível. É a rampa
+#                  contínua que o motor já fazia.
+VOLUME_FIXO_MIN = 6
+VOLUME_FIXO_MAX = 16
+
+# Os saltos das camadas da ondulatória. Meio de cada faixa do manual (20–25% e
+# 30–40%), porque o manual dá faixa e o motor precisa de número — e o meio é a
+# escolha que não puxa nem pro conservador nem pro agressivo sem motivo.
+CAMADA_2_GANHO = 0.225
+CAMADA_3_GANHO = 0.35
+
+
+def camada_do_ciclo(weeks_accumulating: float | None) -> int:
+    """Em qual camada da ondulatória a pessoa está (1, 2 ou 3).
+
+    O mesociclo tem MESOCYCLE_WEEKS semanas e três camadas, então cada camada
+    dura pouco mais de uma semana. A última semana antes do deload é a camada 3 —
+    o topo do acúmulo, que é exatamente o que o deload planejado vem aliviar.
+    """
+    semanas = max(0.0, weeks_accumulating or 0.0)
+    if semanas >= training_brain.MESOCYCLE_WEEKS - 1:
+        return 3
+    if semanas >= (training_brain.MESOCYCLE_WEEKS - 1) / 2:
+        return 2
+    return 1
+
+
+def _multiplicador_da_camada(camada: int) -> float:
+    """Quanto a camada multiplica o Volume Base. C1 = 1.0 (é o próprio base)."""
+    if camada >= 3:
+        return (1 + CAMADA_2_GANHO) * (1 + CAMADA_3_GANHO)
+    if camada == 2:
+        return 1 + CAMADA_2_GANHO
+    return 1.0
+
+
 def _progress(weeks_accumulating: float | None) -> float:
     """0 a 1 ao longo do mesociclo — o volume sobe do piso da faixa até o topo
     conforme a pessoa acumula semanas sem deload."""
@@ -200,6 +252,7 @@ def weekly_target_sets(
     session_length: str | None = None,
     recovery: float = 1.0,
     tolerance: float = 1.0,
+    periodization: str | None = None,
 ) -> int:
     """Séries semanais efetivas pro músculo. `priority`:
 
@@ -230,12 +283,21 @@ def weekly_target_sets(
     Prescrever 16 séries para quem registra 9 não é ambição, é ignorar o
     histórico e transformar o plano em ficção.
 
+    `periodization` decide COMO o alvo evolui dentro do mesociclo (Cap. III
+    Partes C e D) — ver o bloco de constantes acima. Sem ela, "auto".
+
     O teto de recuperação do músculo (MRV ajustado pelo nível) vence sempre:
     prescrever 16 séries de posterior porque virou prioridade não faz o
     posterior recuperar 16.
     """
     _, mrv = weekly_set_range(muscle, level)
-    p = _progress(weeks_accumulating)
+    modo = training_brain.valid_periodization(periodization)
+    # LINEAR trabalha com Volume Fixo: o alvo não anda com as semanas. Zerar o
+    # progresso é o que torna isso verdade em todos os ramos abaixo de uma vez —
+    # o volume passa a ser função só do músculo, do nível e da prioridade, que é
+    # a definição de "fixo" do manual. A progressão dela vem por carga e
+    # repetições, no motor de progressão.
+    p = 0.0 if modo == "linear" else _progress(weeks_accumulating)
     fator = _LEVEL_FACTOR.get(level or "intermediario", 1.0)
     inicio = band_start(session_length)
 
@@ -255,8 +317,40 @@ def weekly_target_sets(
         # volume pro corpo inteiro) e o INÍCIO dado pelo tempo de sessão.
         alvo = _dentro_da_faixa(BASE_MIN, _band_top(muscle), p, inicio)
 
+    # ONDULATÓRIA: as camadas multiplicam o Volume Base em degraus (Cap. III
+    # Parte D). "As prioridades musculares devem permanecer exatamente as
+    # mesmas" — por isso a camada entra DEPOIS de a prioridade já ter escolhido
+    # a faixa, multiplicando o que saiu dela, em vez de mexer na faixa.
+    if modo == "ondulatoria":
+        alvo *= _multiplicador_da_camada(camada_do_ciclo(weeks_accumulating))
+
     alvo = round(alvo * fator * recovery * tolerance)
-    teto = mrv if priority == "excepcional" else min(mrv, EXCEPTIONAL_MAX)
+
+    # LINEAR tem faixa própria (6–16), e ela é um teto/piso do resultado, não uma
+    # faixa de partida: o manual descreve o Volume Fixo como um número escolhido
+    # dentro de 6–16 e mantido. Quem financia um ponto fraco pode ficar abaixo de
+    # 6? Não — na linear não existe camada pra compensar depois, então o piso
+    # protege o financiador de passar o ciclo inteiro em volume de manutenção.
+    if modo == "linear":
+        alvo = max(VOLUME_FIXO_MIN, min(alvo, VOLUME_FIXO_MAX))
+
+    # --- VOLUME MÁXIMO PERMITIDO (Cap. III, Parte E) ------------------------
+    # "Músculos prioritários podem atingir até 22 séries efetivas semanais [...]
+    # músculos SEM prioridade normalmente devem permanecer dentro da faixa
+    # correspondente ao Volume Base."
+    #
+    # Sem este teto as camadas da ondulatória levavam peito não-prioritário a 18
+    # séries na camada 3 — mais que o topo da faixa de um PONTO FRACO de segunda
+    # posição. Isso inverte a Compensação de Volume: a camada é justamente onde o
+    # manual manda o aumento "continuar priorizando exclusivamente os músculos
+    # definidos como prioridade". Quem não é prioridade para no topo da
+    # faixa-base; a camada existe pros que são.
+    if priority == "excepcional":
+        teto = mrv
+    elif priority.startswith("alta"):
+        teto = min(mrv, EXCEPTIONAL_MAX)
+    else:
+        teto = min(mrv, BASE_MAX)
     return max(1, min(alvo, teto))
 
 
@@ -270,6 +364,7 @@ def weekly_plan(
     session_length: str | None = None,
     recovery: float = 1.0,
     tolerance: float = 1.0,
+    periodization: str | None = None,
 ) -> dict[MuscleGroup, int]:
     """O volume semanal de TODOS os músculos da semana, de uma vez.
 
@@ -312,7 +407,7 @@ def weekly_plan(
         m: weekly_target_sets(
             m, level, weeks_accumulating,
             priority=prioridade(m), session_length=session_length,
-            recovery=recovery, tolerance=tolerance,
+            recovery=recovery, tolerance=tolerance, periodization=periodization,
         )
         for m in muscles
     }

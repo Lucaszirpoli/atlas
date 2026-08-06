@@ -163,9 +163,16 @@ def test_leituras_repetidas_convergem_em_vez_de_oscilar():
 # --- Regra 5: evidência -----------------------------------------------------
 
 def test_todo_valor_usado_sabe_se_explicar():
+    """A evidência precisa citar os números de onde o valor saiu.
+
+    Os trechos cobrados são em LINGUAGEM DE GENTE ("kcal por dia", vírgula
+    decimal), não na notação técnica de antes ("kcal/dia", "0.50 kg/semana"): o
+    texto foi reescrito de propósito pra tela e o teste tinha ficado preso à
+    forma antiga. O que o teste protege é que os números apareçam — não a
+    pontuação com que eles são escritos."""
     a = ad.energia_observada(**BOM)
     assert a.usar
-    for pedaco in ("2400", "kcal/dia", "0.50 kg/semana"):
+    for pedaco in ("2400", "kcal por dia", "0,50 kg por semana"):
         assert pedaco in a.evidencia, a.evidencia
 
 

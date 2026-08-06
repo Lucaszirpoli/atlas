@@ -39,11 +39,14 @@ from sqlalchemy.orm import Session
 
 from app.ai import session_blueprints as bp
 from app.ai.exercise_taxonomy import (
+    Limiter,
     ORDER_MINOR,
     REQUIRED_REGIONS,
     Pattern,
+    Systemic,
     Taxon,
     order_class_for_pattern,
+    taxon_for,
     taxon_for_exercise,
     tier_rank,
 )
@@ -294,6 +297,8 @@ def _pick_for_slot(
     prefer_machines: bool,
     seed: int | None = None,
     restricoes: restrictions.Perfil = restrictions.PERFIL_LIVRE,
+    resistencias_na_sessao: frozenset = frozenset(),
+    anterior: Taxon | None = None,
 ) -> _Cand | None:
     """O exercício certo pra uma vaga, ou None quando a base não tem nada que
     sirva. Ordem de decisão: tier, preferência da pessoa, qualidade da imagem.
@@ -330,8 +335,45 @@ def _pick_for_slot(
     # igualmente bem pelas regras do motor. É só entre eles que o sorteio por
     # pessoa acontece; a qualidade fica FORA da chave (ela é o desempate final) e
     # continua limitando o sorteio aos melhores do grupo.
+    #
+    # PERFIL DE RESISTÊNCIA inédito no dia entra ANTES do tier (Cap. V: "evite
+    # concentrar todos os exercícios na mesma região da curva de força"). O
+    # atributo `resistance` existia em cada exercício desde sempre e só era lido
+    # pra decidir a faixa de repetições — na SELEÇÃO ele não pesava nada, então
+    # um dia de peito podia sair com três exercícios de pico no alongamento e
+    # nenhum na contração, sem nada reclamar.
+    #
+    # Por que antes do tier, e não depois: entre dois exercícios que cumprem a
+    # mesma vaga, o que cobre uma curva de força que o dia ainda não tem entrega
+    # estímulo NOVO; o tier mais alto entrega o mesmo estímulo um pouco melhor. O
+    # manual é explícito sobre qual dos dois vale mais ("adicione novos exercícios
+    # apenas quando eles ampliarem a cobertura biomecânica"). E o custo é
+    # limitado: a busca já foi filtrada por músculo, padrão e região, então todo
+    # candidato aqui é legítimo pra vaga.
+    # DISTRIBUIR a fadiga em vez de empilhar (Caps. VII Parte E e VIII Parte C):
+    # quando o exercício ANTERIOR já cobra caro do corpo inteiro, um candidato
+    # que cobre igual entra atrás dos que cobram menos. Não é proibição — é
+    # desempate: se o único candidato do padrão é pesado, ele entra do mesmo
+    # jeito e o validador registra a sobreposição.
+    #
+    # O caso real: num dia de perna, a vaga de dobradiça de quadril podia sair
+    # "Stiff com barra" (sistêmico alto) logo antes do segundo estímulo de
+    # quadríceps, que também saía pesado. Com o desempate, a vaga pega "Stiff com
+    # halteres" (médio) e a sessão distribui o custo — mesma função, mesma
+    # região, mesmo tier.
+    def _empilha_fadiga(c: _Cand) -> int:
+        if anterior is None:
+            return 0
+        if anterior.systemic is Systemic.ALTO and c.taxon.systemic is Systemic.ALTO:
+            return 1
+        if anterior.limiter is not Limiter.ALVO and c.taxon.limiter is anterior.limiter:
+            return 1
+        return 0
+
     def equivalencia(c: _Cand) -> tuple:
         return (
+            0 if c.taxon.resistance not in resistencias_na_sessao else 1,
+            _empilha_fadiga(c),
             tier_rank(c.taxon.tier),
             _ordenar_por_preferencia(c.nome_norm, c.ex.equipment, prefs),
             0 if (prefer_machines and c.ex.equipment in _ESTAVEIS) else 1,
@@ -547,8 +589,14 @@ def build_plan(
         session = PlannedSession(day_index=i, day_label=f"Dia {i + 1}", focus=focus, phase_name=None)
         ids_na_sessao: set[int] = set()
         funcoes_na_sessao: set[tuple[Pattern, str]] = set()
+        # Curvas de força já cobertas no dia (Cap. V). Por MÚSCULO, não pela
+        # sessão inteira: diversificar o perfil de resistência é sobre cobrir o
+        # músculo, e cobrar variedade entre peito e bíceps não quer dizer nada.
+        resistencias_por_musculo: dict[MuscleGroup, set] = {}
 
+        anterior_taxon: Taxon | None = None
         for spec in blueprint:
+            ja_cobertas = frozenset(resistencias_por_musculo.get(spec.muscle, ()))
             escolher = lambda s: _pick_for_slot(  # noqa: E731
                 s,
                 pool,
@@ -559,6 +607,8 @@ def build_plan(
                 prefer_machines=time_efficient or "maquinas" in prefs,
                 seed=seed,
                 restricoes=restricoes,
+                resistencias_na_sessao=ja_cobertas,
+                anterior=anterior_taxon,
             )
             escolhido = escolher(spec)
             if escolhido is None:
@@ -577,6 +627,10 @@ def build_plan(
             ids_na_sessao.add(escolhido.ex.id)
             used_na_semana.add(escolhido.ex.id)
             funcoes_na_sessao.add(escolhido.taxon.function_key)
+            resistencias_por_musculo.setdefault(
+                escolhido.ex.primary_muscle_group, set()
+            ).add(escolhido.taxon.resistance)
+            anterior_taxon = escolhido.taxon
             session.slots.append(
                 PlannedSlot(
                     order=len(session.slots) + 1,
@@ -697,11 +751,38 @@ def add_accessory_slot(
     if not pool:
         return None
 
+    # Curvas de força que este músculo já tem NESTE dia (Cap. V). O acessório de
+    # volume é justamente onde a redundância de perfil aparecia mais: ele entra
+    # pra fechar séries, então acrescentar um terceiro exercício com pico no
+    # mesmo ponto da amplitude é volume que não amplia cobertura nenhuma.
+    resistencias_do_musculo = {
+        taxon_for(sl.exercise_name, muscle, bool(sl.is_compound)).resistance
+        for sl in sessao.slots
+        if sl.muscle_group == muscle.value and sl.exercise_name
+    }
+
+    # Limitantes que NÃO são o músculo-alvo e já aparecem no dia (Caps. VII/VIII).
+    # O acessório de volume entra no fim do treino, encostado no que já está lá —
+    # e era por aqui que a sobreposição de fadiga nascia: com duas vagas de
+    # abdômen, o preenchimento escolhia "Prancha lateral" logo depois de
+    # "Abdominal com roda", os dois encerrados pelos estabilizadores. O segundo
+    # começava já limitado pelo que o primeiro gastou, e o abdômen mal era
+    # estimulado nos dois.
+    limitantes_no_dia = {
+        taxon_for(sl.exercise_name, _muscle_do_slot(sl), bool(sl.is_compound)).limiter
+        for sl in sessao.slots
+        if sl.exercise_name
+    } - {Limiter.ALVO}
+
     def equivalencia(c: _Cand) -> tuple:
         return (
             # 1) função que o dia ainda não tem — é o que faz a vaga ser volume
             #    novo e não repetição.
             0 if (c.taxon.pattern.value, c.taxon.region) not in funcoes else 1,
+            # 1b) curva de força que este músculo ainda não tem no dia (Cap. V).
+            0 if c.taxon.resistance not in resistencias_do_musculo else 1,
+            # 1c) não repetir no dia um limitante que já não é o músculo-alvo.
+            0 if c.taxon.limiter not in limitantes_no_dia else 1,
             # 2) exercício que a semana ainda não usou.
             0 if c.ex.id not in usados else 1,
             # 3) isolador antes de composto: acessório de volume não deve
@@ -819,6 +900,16 @@ def drop_surplus_slot(
     for i, sl in enumerate(sessao.slots, start=1):
         sl.order = i
     return removida
+
+
+def _muscle_do_slot(slot: PlannedSlot) -> MuscleGroup | None:
+    """O músculo da vaga como enum, ou None quando o valor gravado é
+    desconhecido — um músculo que o enum não conhece não pode derrubar a
+    montagem, só faz a taxonomia cair no palpite conservador dela."""
+    try:
+        return MuscleGroup(slot.muscle_group)
+    except ValueError:
+        return None
 
 
 def _ordem_da_vaga(slot: PlannedSlot) -> int:

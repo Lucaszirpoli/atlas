@@ -104,6 +104,18 @@ def revert_technique_cues(db: Session, user_id: int) -> int:
     return len(cues)
 
 
+# Quantas rodadas de "corrigir e re-auditar" (Cap. XIX). O manual manda repetir a
+# auditoria depois de corrigir, e não confirmar o conserto é como não consertar:
+# o reparo de uma lacuna pode abrir outra (acrescentar peito clavicular mexe no
+# equilíbrio empurrar/puxar da semana).
+#
+# 3 é teto de segurança do laço, não meta. Quem para o laço de verdade é a
+# auditoria voltar limpa ou parar de melhorar — se em 3 rodadas o motor não
+# convergiu, o que sobra é lacuna que ele não sabe consertar, e insistir só
+# gastaria consulta ao banco pra chegar no mesmo lugar.
+_MAX_RODADAS_DE_AUDITORIA = 3
+
+
 def _reparar_cobertura(
     db: Session,
     plan,
@@ -112,41 +124,63 @@ def _reparar_cobertura(
     prefer_machines: bool,
     exercise_prefs: list[str],
     restricoes: restrictions.Perfil = restrictions.PERFIL_LIVRE,
+    method=None,
 ) -> list[str]:
-    """Tenta CONSERTAR o que a revisão global apontou, e devolve o que sobrou.
+    """CORRIGE o que a auditoria apontou, RE-AUDITA, e devolve o que sobrou.
 
     A regra mestra manda reestruturar o treino quando a validação reprova, e a
     lacuna que dá pra consertar mecanicamente é a de cobertura regional
     (Princípio 6): falta 'peito clavicular' na semana -> acrescenta um exercício
     dessa região exata num dia que já treina peito.
 
-    Desequilíbrio e redundância NÃO são reparados aqui de propósito: eles vêm da
-    estrutura do blueprint, então consertar caso a caso esconderia um erro de
-    desenho que tem que ser corrigido no blueprint (e os testes cobram isso).
-    O que sobra volta como pendência, pra ficar registrado em vez de silencioso.
+    O Cap. XIX pede o CICLO, não uma passada: "detectar falhas → identificar a
+    etapa responsável → corrigir a prescrição → repetir a auditoria → aprovar ou
+    reprovar". Antes era uma passada só, e isso tinha um furo real: o reparo
+    acrescenta exercício, e acrescentar exercício pode abrir uma lacuna nova
+    (uma vaga de peito a mais desequilibra empurrar/puxar da semana). A pendência
+    nova nascia depois da única checagem e ia embora sem ninguém ver.
+
+    Desequilíbrio e redundância continuam SEM reparo automático de propósito:
+    eles vêm da estrutura do blueprint, então consertar caso a caso esconderia um
+    erro de desenho que tem que ser corrigido no blueprint (e os testes cobram
+    isso). O que sobra volta como pendência, pra ficar registrado em vez de
+    silencioso.
     """
     if not pendencias:
         return []
-    faltando = plan_review.regioes_descobertas(plan)
-    for musculo, regiao in faltando:
-        methods_engine.add_accessory_slot(
-            db, plan, musculo,
-            prefer_machines=prefer_machines,
-            exercise_prefs=exercise_prefs,
-            max_per_session=_MAX_EXERCICIOS_POR_SESSAO,
-            region=regiao,
-            # ESTE caminho já reintroduziu um levantamento terra romeno num plano
-            # de quem tinha marcado dor lombar: a montagem filtrava certo, a
-            # revisão apontava "falta posterior (extensão de quadril)" — que era
-            # justamente a região que o filtro tinha esvaziado — e o reparo
-            # recolocava o exercício proibido pra fechar a cobertura.
-            #
-            # Cobertura NUNCA vence segurança. Quando a região só existe em
-            # movimentos que a pessoa não pode fazer, o certo é a lacuna
-            # PERMANECER e sair como pendência declarada.
-            restricoes=restricoes,
-        )
-    return plan_review.review(plan)
+    for _ in range(_MAX_RODADAS_DE_AUDITORIA):
+        faltando = plan_review.regioes_descobertas(plan)
+        if not faltando:
+            break
+        reparou = False
+        for musculo, regiao in faltando:
+            slot = methods_engine.add_accessory_slot(
+                db, plan, musculo,
+                prefer_machines=prefer_machines,
+                exercise_prefs=exercise_prefs,
+                max_per_session=_MAX_EXERCICIOS_POR_SESSAO,
+                region=regiao,
+                # ESTE caminho já reintroduziu um levantamento terra romeno num
+                # plano de quem tinha marcado dor lombar: a montagem filtrava
+                # certo, a revisão apontava "falta posterior (extensão de
+                # quadril)" — que era justamente a região que o filtro tinha
+                # esvaziado — e o reparo recolocava o exercício proibido pra
+                # fechar a cobertura.
+                #
+                # Cobertura NUNCA vence segurança. Quando a região só existe em
+                # movimentos que a pessoa não pode fazer, o certo é a lacuna
+                # PERMANECER e sair como pendência declarada.
+                restricoes=restricoes,
+            )
+            reparou = reparou or slot is not None
+        # Nada foi acrescentado nesta rodada: o que falta não tem conserto na
+        # base (ou as sessões estão cheias). Insistir só repetiria a consulta.
+        if not reparou:
+            break
+        pendencias = plan_review.review(plan, method=method)
+        if not pendencias:
+            break
+    return plan_review.review(plan, method=method)
 
 
 def build_and_save(db: Session, user: User) -> dict:
@@ -228,7 +262,7 @@ def build_and_save(db: Session, user: User) -> dict:
     pendencias = plan_review.review(plan, method=method)
     pendencias = _reparar_cobertura(db, plan, pendencias, prefer_machines=curto,
                                     exercise_prefs=prefs_exercicio,
-                                    restricoes=restricoes)
+                                    restricoes=restricoes, method=method)
 
     # Volume semanal por grupo muscular (regra: sobe/desce série por músculo
     # dentro da faixa MEV-MRV baseada em evidência, ajustada por nível — nunca
@@ -277,10 +311,17 @@ def build_and_save(db: Session, user: User) -> dict:
     # respondeu uma vez; este vem do histórico e vai se corrigindo sozinho.
     # Sem treinos suficientes o fator é 1.0 e nada muda.
     tolerancia = adaptive.tolerancia_a_volume(db, user.id)
+    # A periodização escolhida decide como o volume EVOLUI no mesociclo (Cap.
+    # III Partes C e D): linear mantém Volume Fixo, ondulatória sobe em camadas,
+    # automática usa a rampa contínua. Antes ela só decidia quando o coach
+    # OFERECE deload — o volume subia igual pros três, inclusive pra linear, que
+    # é definida por não subir.
+    periodizacao = training_brain.valid_periodization(profile.periodization)
     plano_semanal = volume_landmarks.weekly_plan(
         musculos, exp, weeks_acc, weak_points=wps, session_length=tempo_sessao,
         recovery=recuperacao,
         tolerance=tolerancia.valor if tolerancia.usar else 1.0,
+        periodization=periodizacao,
     )
 
     # --- VOLUME QUE NÃO CABE NAS VAGAS -> OUTRO EXERCÍCIO -------------------
@@ -414,7 +455,7 @@ def build_and_save(db: Session, user: User) -> dict:
             musculos.append(muscle)
             plano_semanal[muscle] = volume_landmarks.weekly_target_sets(
                 muscle, exp, weeks_acc, priority="alta", session_length=tempo_sessao,
-                recovery=recuperacao,
+                recovery=recuperacao, periodization=periodizacao,
             )
 
     for _ in range(_MAX_VAGAS_EXTRAS):
@@ -494,9 +535,19 @@ def build_and_save(db: Session, user: User) -> dict:
             exercicios_extras.append(entrou.exercise_name)
             ids_extras.add(entrou.exercise_id)
 
-    # Revisão global FINAL: as vagas de volume acima entraram depois da primeira
-    # checagem, então é aqui que o treino que vai ser entregue é conferido.
+    # --- AUDITORIA FINAL (Cap. XIX) -----------------------------------------
+    # "A prescrição não deve ser aprovada apenas porque cada variável parece
+    # adequada isoladamente."
+    #
+    # As vagas de volume, o resgate do ponto fraco e o piso por sessão entraram
+    # DEPOIS da primeira auditoria, e cada um deles mexe no que ela já tinha
+    # aprovado — acrescentar exercício muda cobertura, equilíbrio e ordem. Então
+    # a auditoria roda de novo aqui, e de novo com poder de CORRIGIR: era só
+    # `review()` (relatório) e virou o ciclo do manual, corrigir → re-auditar.
     pendencias = plan_review.review(plan, method=method)
+    pendencias = _reparar_cobertura(db, plan, pendencias, prefer_machines=curto,
+                                    exercise_prefs=prefs_exercicio,
+                                    restricoes=restricoes, method=method)
 
     base_by_muscle: dict[str, int] = {}
     remainder_by_muscle: dict[str, int] = {}
@@ -533,6 +584,10 @@ def build_and_save(db: Session, user: User) -> dict:
     # toda sessão"). Não sobrescreve dica já ativa por outro motivo (ex.: platô)
     # nem duplica ao refazer o treino.
     technique_applied: list[str] = []
+    # O que a auditoria do Cap. XVII barrou, com o motivo. Rejeição silenciosa
+    # seria pior que não auditar: a pessoa veria o exercício mais pesado do
+    # treino ser o único sem técnica e não saberia se foi decisão ou esquecimento.
+    technique_rejected: list[str] = []
     # Todo RoutineExercise criado nesta montagem, por exercício (o mesmo
     # exercício pode aparecer em mais de um dia). O teto por técnica é aplicado
     # numa passada só, DEPOIS — ver o bloco "TETO DE SÉRIES" no fim.
@@ -659,6 +714,40 @@ def build_and_save(db: Session, user: User) -> dict:
                 session_length=tempo_sessao,
                 is_weak_point=eh_ponto_fraco,
             )
+            # --- AUDITORIA DA TÉCNICA (Cap. XVII) ---------------------------
+            # O Cap. XIII escolhe a técnica; o XVII manda AUDITAR antes de
+            # aplicar. Faltava exatamente isto: o motor escolhia por período,
+            # tempo e ponto fraco e aplicava, sem nunca perguntar se aquele
+            # exercício suportava aquela técnica. Rest-pause num agachamento
+            # livre passava — e o manual proíbe nominalmente ("evitar em
+            # exercícios livres pesados, com grande carga axial, em que uma
+            # repetição falhada represente risco").
+            #
+            # Rejeitada, a técnica NÃO some em silêncio: o back-off entra no
+            # lugar quando ele mesmo passa na auditoria (é organização de carga,
+            # não intensificação, e o manual o libera em peso livre). Sem
+            # alternativa, o exercício fica com séries retas e o motivo sai em
+            # `technique_notes` — a pessoa merece saber por que o exercício mais
+            # pesado do treino dela é o único sem técnica.
+            taxon_finisher = exercise_taxonomy.taxon_for(
+                finisher.exercise_name, _muscle_or_none(finisher.muscle_group),
+                bool(finisher.is_compound),
+            )
+            motivo = training_brain.technique_audit(taxon_finisher, tech_key)
+            if motivo is not None:
+                alternativa = "back_off"
+                if training_brain.technique_audit(taxon_finisher, alternativa) is None:
+                    info = training_brain.technique_info(alternativa)
+                    tech_key, tech_label, cue_text = alternativa, info.label, info.how_to
+                    technique_rejected.append(
+                        f"Em {finisher.exercise_name} eu troquei a técnica: {motivo}. "
+                        f"Ficou {info.label}, que organiza a carga em vez de forçar a falha."
+                    )
+                else:
+                    technique_rejected.append(
+                        f"{finisher.exercise_name} ficou só com séries normais: {motivo}."
+                    )
+                    continue
             db.add(CoachingTechniqueCue(
                 user_id=user.id, finding_key=f"densidade:{finisher.exercise_id}",
                 exercise_id=finisher.exercise_id, exercise_name=finisher.exercise_name,
@@ -739,6 +828,10 @@ def build_and_save(db: Session, user: User) -> dict:
             "Marquei fragmentação de série (rende volume com descanso curto dentro da própria série) em "
             + "; ".join(technique_applied) + ". Vê na prévia do treino; dá pra remover em 'O que o coach mudou'."
         )
+    if technique_rejected:
+        technique_note = ((technique_note + " ") if technique_note else "") + " ".join(
+            technique_rejected
+        )
 
     weak_labels = [training_brain.WEAK_POINT_LABEL[w] for w in weak_values]
     weak_label = ", ".join(weak_labels) if weak_labels else None
@@ -785,9 +878,27 @@ def build_and_save(db: Session, user: User) -> dict:
             + ". É outro exercício em vez de mais séries no mesmo — passar do teto de séries por "
             "exercício acumula fadiga sem estímulo novo. O treino cresce ao longo do ciclo e alivia no deload."
         )
-    period_label = training_brain.PERIODIZATION_LABEL.get(
-        training_brain.valid_periodization(profile.periodization), "Automática"
-    )
+    period_label = training_brain.PERIODIZATION_LABEL.get(periodizacao, "Automática")
+    # A periodização agora MEXE no volume, então ela precisa ser visível — a
+    # mesma lição do ponto fraco: diferença que a pessoa não consegue ler é
+    # diferença que, pra ela, não existe.
+    if periodizacao == "linear":
+        period_note = (
+            f"Periodização linear: seu volume fica fixo em torno de "
+            f"{volume_landmarks.VOLUME_FIXO_MIN}–{volume_landmarks.VOLUME_FIXO_MAX} séries por "
+            "músculo na semana, e quem sobe é a carga. Sem semana de deload programada."
+        )
+    elif periodizacao == "ondulatoria":
+        camada = volume_landmarks.camada_do_ciclo(weeks_acc)
+        period_note = (
+            f"Periodização ondulatória: você está na camada {camada} de 3 do ciclo. "
+            "O volume sobe em degraus até o topo e alivia no deload."
+        )
+    else:
+        period_note = (
+            "Periodização automática: o volume sobe junto com as semanas sem deload, "
+            "e eu puxo um deload quando sua carga total começar a cair."
+        )
     return {
         "method_name": method.name,
         "author": method.author,
@@ -800,6 +911,7 @@ def build_and_save(db: Session, user: User) -> dict:
         "technique_note": technique_note,
         "extra_exercises_note": extra_note,
         "periodization_label": period_label,
+        "periodization_note": period_note,
         # Resultado da revisão global (as 8 perguntas da regra mestra). O treino
         # aprovado sai com is_coherent=true e lista vazia. Se algo sobrou, sai
         # AQUI em vez de sumir num log — um treino entregue com pendência é algo
@@ -810,6 +922,16 @@ def build_and_save(db: Session, user: User) -> dict:
         # Filtrar em silêncio é pior que não filtrar: a pessoa procura o supino
         # livre, não acha, e conclui que o app é ruim.
         "restriction_notes": restrictions.avisos(profile) + ([split_note] if split_note else []),
+        # Cap. V: onde a semana concentrou a curva de força num ponto só. É
+        # AVISO, não pendência — quando a biblioteca não tem alternativa (todo
+        # isolador de dorsais tem pico no alongamento), reprovar o treino por
+        # isso seria cobrar do motor um conserto que não existe. Ver
+        # `plan_review.concentracao_de_resistencia`.
+        "coverage_notes": [
+            f"{musculo} no dia '{foco}': {n} exercícios com pico de tensão no mesmo ponto "
+            f"da amplitude ({curva}). Variar a curva de força rende mais que repetir o estímulo."
+            for foco, musculo, curva, n in plan_review.concentracao_de_resistencia(plan)
+        ],
         # O que o coach aprendeu vendo ela treinar e usou AQUI. Ajustar o volume
         # em silêncio faria o treino "mudar sozinho" sem explicação — que é a
         # forma mais rápida de a pessoa perder a confiança no plano.

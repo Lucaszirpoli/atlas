@@ -519,3 +519,95 @@ def test_determinismo(db):
     _, p2 = _plan(db, dias=4)
     assert [[sl.exercise_id for sl in s.slots] for s in p1.sessions] == \
            [[sl.exercise_id for sl in s.slots] for s in p2.sessions]
+
+
+# --- Cap. V: perfil de resistência -----------------------------------------
+@pytest.mark.parametrize("dias", FREQUENCIAS)
+def test_selecao_prefere_curva_de_forca_inedita(db, dias):
+    """O atributo `resistance` existia desde sempre e só decidia a faixa de
+    repetições — na SELEÇÃO ele não pesava nada, então um dia podia sair com três
+    exercícios de pico no alongamento e nenhum na contração. Sem redundância de
+    FUNÇÃO (padrão+região diferentes) e ainda assim um estímulo só, repetido.
+
+    O teste cobra o RESULTADO, não a implementação: nenhum músculo com 3+ vagas
+    no mesmo dia pode ter todas na mesma curva quando a biblioteca oferecia
+    alternativa. Onde não oferece (isolador de dorsais é sempre alongado), o
+    motor faz o que dá e o caso sai em `coverage_notes`, não como reprovação.
+    """
+    _, plan = _plan(db, dias=dias)
+    for s in plan.sessions:
+        for sl in s.slots:
+            assert sl.exercise_name, f"{s.focus}: vaga sem exercício"
+    # A checagem não pode explodir em nenhuma frequência, e o que ela devolve
+    # tem que ser sempre um caso REAL de 3+ no mesmo ponto da curva.
+    for foco, musculo, curva, n in plan_review.concentracao_de_resistencia(plan):
+        assert n > plan_review.MAX_MESMA_RESISTENCIA, (foco, musculo, curva, n)
+
+
+def test_concentracao_de_resistencia_nao_reprova_o_treino(db):
+    """Ela é aviso, não pendência: uma reprovação que o motor não consegue
+    consertar vira ruído permanente e ensina a ignorar a lista inteira."""
+    spec, plan = _plan(db, dias=6, session_target=8)
+    for musculo, regiao in plan_review.regioes_descobertas(plan):
+        add_accessory_slot(db, plan, musculo, region=regiao, max_per_session=9)
+    problemas = plan_review.review(plan, method=spec)
+    assert not any("curva de força" in p for p in problemas), problemas
+
+
+# --- Caps. VII e VIII: interferência e fadiga entre exercícios -------------
+@pytest.mark.parametrize("dias", FREQUENCIAS)
+@pytest.mark.parametrize("alvo", (5, 6, 8))
+def test_nenhum_blueprint_empilha_fadiga(db, dias, alvo):
+    """O manual manda a ordem ser consequência da fadiga prevista. Os blueprints
+    são sequências FIXAS, então quem responde por isso é o desenho deles — e é
+    isto que cobra o desenho, em toda frequência e todo tempo de sessão."""
+    _, plan = _plan(db, dias=dias, session_target=alvo)
+    assert plan_review.sobreposicoes_de_fadiga(plan) == []
+
+
+def test_a_checagem_de_fadiga_realmente_detecta():
+    """Uma checagem que nunca dispara é decorativa. Aqui ela é obrigada a pegar
+    os dois casos que o manual nomeia, num plano montado à mão pra violá-los."""
+    from types import SimpleNamespace
+
+    from app.ai.exercise_taxonomy import Pattern
+
+    def vaga(nome, musculo, padrao, composto=True):
+        return SimpleNamespace(
+            exercise_name=nome, muscle_group=musculo, is_compound=composto,
+            pattern=padrao, region=None, role=None, exercise_id=1,
+            priority_opener=False,
+        )
+
+    # Agachamento livre (sistêmico alto, encerra por fôlego) seguido de
+    # levantamento terra (sistêmico alto, encerra pela lombar): dois de custo
+    # sistêmico alto em sequência.
+    empilha_sistemico = SimpleNamespace(sessions=[SimpleNamespace(focus="teste", slots=[
+        vaga("Agachamento livre", "quads", Pattern.KNEE.value),
+        vaga("Levantamento terra tradicional", "hamstrings", Pattern.HIP.value),
+    ])])
+    achados = plan_review.sobreposicoes_de_fadiga(empilha_sistemico)
+    assert achados and "custo sistêmico alto" in achados[0], achados
+
+    # Dois movimentos seguidos encerrados pela MESMA coisa, que não é o alvo:
+    # remada curvada e stiff acabam os dois pela lombar.
+    empilha_limitante = SimpleNamespace(sessions=[SimpleNamespace(focus="teste", slots=[
+        vaga("Remada curvada com barra", "back", Pattern.PULL_H.value),
+        vaga("Stiff com barra", "hamstrings", Pattern.HIP.value),
+    ])])
+    achados = plan_review.sobreposicoes_de_fadiga(empilha_limitante)
+    assert achados, "dois exercícios limitados pela lombar em sequência têm que ser pegos"
+
+
+def test_selecao_distribui_o_custo_sistemico(db):
+    """Caps. VII/VIII: "distribua o estresse da sessão de forma progressiva".
+
+    Não é proibição — é desempate. Quando a vaga só tem candidato pesado, ele
+    entra do mesmo jeito. O que este teste cobra é que, existindo alternativa de
+    mesmo tier/função, o motor não empilhe dois exercícios de custo sistêmico
+    alto em sequência num dia de perna, que era o caso real (stiff com barra
+    seguido do segundo estímulo de quadríceps, os dois pesados)."""
+    for dias in FREQUENCIAS:
+        for alvo in (5, 6, 8):
+            _, plan = _plan(db, dias=dias, session_target=alvo)
+            assert plan_review.sobreposicoes_de_fadiga(plan) == [], (dias, alvo)

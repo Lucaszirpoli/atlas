@@ -540,3 +540,104 @@ def test_resumo_da_montagem_bate_com_o_que_foi_gravado(db):
             .where(Routine.user_id == u.id, Routine.is_archived.is_(False))
         ).scalar_one()
         assert resultado["total_exercises"] == total_no_banco
+
+
+# --- Cap. III Partes C/D/E: a periodização MEXE no volume -------------------
+# A periodização era a resposta mais ignorada do questionário: decidia só QUANDO
+# o coach oferece deload. O volume subia ao longo do mesociclo para todo mundo,
+# inclusive pra quem escolheu LINEAR — que é, por definição, a estratégia do
+# volume que não sobe. O motor contradizia a si mesmo: `offer_deload` já dizia
+# "linear nunca desloada" enquanto o volume acumulava como se fosse deslodar.
+_SEMANAS = (0, 1, 2, 3, 4, 5)
+
+
+def _alvo(semana, periodizacao, priority="normal"):
+    return volume_landmarks.weekly_target_sets(
+        M.CHEST, "intermediario", semana, priority=priority,
+        session_length="medio", periodization=periodizacao,
+    )
+
+
+def test_linear_mantem_volume_fixo_no_ciclo_inteiro():
+    """"Após definido, permanece constante durante todo o ciclo, sofrendo apenas
+    progressões por carga, repetições ou desempenho.\""""
+    alvos = {_alvo(s, "linear") for s in _SEMANAS}
+    assert len(alvos) == 1, f"volume da linear variou no ciclo: {sorted(alvos)}"
+    (fixo,) = alvos
+    assert volume_landmarks.VOLUME_FIXO_MIN <= fixo <= volume_landmarks.VOLUME_FIXO_MAX
+
+
+def test_ondulatoria_sobe_em_camadas_e_a_automatica_em_rampa():
+    """A ondulatória tem DEGRAUS (C1 -> C2 +20~25% -> C3 +30~40%); a automática
+    é contínua. Se as duas subissem igual, escolher uma ou outra não mudaria o
+    treino — e a pergunta do questionário seria decorativa."""
+    ondulatoria = [_alvo(s, "ondulatoria", priority="alta") for s in _SEMANAS]
+    automatica = [_alvo(s, "auto", priority="alta") for s in _SEMANAS]
+    assert ondulatoria == sorted(ondulatoria), "camadas nunca descem dentro do ciclo"
+    assert automatica == sorted(automatica)
+    assert max(ondulatoria) > max(automatica), (
+        "a ondulatória tem que chegar mais alto no topo do mesociclo que a automática"
+    )
+    assert volume_landmarks.camada_do_ciclo(0) == 1
+    assert volume_landmarks.camada_do_ciclo(volume_landmarks.training_brain.MESOCYCLE_WEEKS) == 3
+
+
+@pytest.mark.parametrize("periodizacao", ("auto", "linear", "ondulatoria"))
+def test_sem_prioridade_nunca_passa_do_topo_da_faixa_base(periodizacao):
+    """Cap. III Parte E: "músculos sem prioridade normalmente devem permanecer
+    dentro da faixa correspondente ao Volume Base".
+
+    Sem este teto, a camada 3 da ondulatória levava peito NÃO prioritário a 18
+    séries — mais que o topo de um ponto fraco de 2ª posição. Isso inverte a
+    Compensação de Volume: a camada existe pra servir quem é prioridade."""
+    for nivel in ("iniciante", "intermediario", "avancado"):
+        for semana in _SEMANAS:
+            for musculo in (M.CHEST, M.BACK, M.QUADS, M.SHOULDERS):
+                alvo = volume_landmarks.weekly_target_sets(
+                    musculo, nivel, semana, priority="normal",
+                    session_length="longo", periodization=periodizacao,
+                )
+                assert alvo <= volume_landmarks.BASE_MAX, (
+                    f"{musculo.value} sem prioridade recebeu {alvo} séries "
+                    f"({periodizacao}, {nivel}, semana {semana})"
+                )
+
+
+def test_prioritario_pode_passar_do_teto_de_quem_nao_e():
+    """O teto do Volume Base vale pra quem NÃO é prioridade. O ponto fraco tem
+    que conseguir passar dele — senão a priorização deixa de existir no topo do
+    ciclo, que é justamente onde ela deveria aparecer mais."""
+    topo_prioritario = max(_alvo(s, "ondulatoria", priority="alta") for s in _SEMANAS)
+    assert topo_prioritario > volume_landmarks.BASE_MAX
+    assert topo_prioritario <= volume_landmarks.EXCEPTIONAL_MAX
+
+
+# --- Cap. XIX: auditoria final com laço de correção ------------------------
+@pytest.mark.parametrize("dias", (2, 3, 4, 5, 6))
+@pytest.mark.parametrize("tempo", ("curto", "medio", "longo"))
+def test_treino_entregue_passa_na_auditoria_final(db, dias, tempo):
+    """O Cap. XIX pede o CICLO, não uma passada: "detectar falhas → corrigir a
+    prescrição → repetir a auditoria → aprovar ou reprovar".
+
+    O furo era real: o reparo ACRESCENTA exercício, e acrescentar exercício pode
+    abrir uma lacuna nova (uma vaga de peito a mais desequilibra empurrar/puxar
+    da semana). A pendência nova nascia depois da única checagem e ia embora sem
+    ninguém ver. Este teste cobra o resultado do ciclo — o que a pessoa recebe."""
+    with usuario(db, handle=f"audit{dias}{tempo[0]}", dias=dias) as u:
+        u.profile.session_length = tempo
+        db.commit()
+        r = workout_builder.build_and_save(db, u)
+        assert r["is_coherent"], r["coherence_issues"]
+
+
+@pytest.mark.parametrize("periodizacao", ("auto", "linear", "ondulatoria"))
+def test_periodizacao_muda_o_treino_entregue(db, periodizacao):
+    """A periodização decidia só QUANDO oferecer deload. Agora ela manda no
+    volume — e o treino entregue tem que continuar coerente nas três."""
+    with usuario(db, handle=f"per{periodizacao[:4]}", dias=4) as u:
+        u.profile.session_length = "medio"
+        u.profile.periodization = periodizacao
+        db.commit()
+        r = workout_builder.build_and_save(db, u)
+        assert r["is_coherent"], r["coherence_issues"]
+        assert r["periodization_note"], "a periodização precisa se explicar pra pessoa"
