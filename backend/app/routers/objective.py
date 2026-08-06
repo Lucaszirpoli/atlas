@@ -21,8 +21,11 @@ from app.coaching import plan_service, questionnaire
 from app.core.db import get_db
 from app.core.security import get_current_user
 from app.models.user import User
+from app.models.user_profile import Goal
 from app.schemas.meal import MealLogCreate, MealLogItemCreate
 from app.schemas.objective import (
+    GoalChangeRequest,
+    GoalChangeResult,
     ObjectiveState,
     PlanSummary,
     QuestionnaireDraftUpdate,
@@ -187,6 +190,104 @@ def activate_plan(
             ),
         ) from exc
     return get_state(current_user, db)
+
+
+@router.post("/goal", response_model=GoalChangeResult)
+def change_goal(
+    payload: GoalChangeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> GoalChangeResult:
+    """"Alterar meu objetivo" — troca SÓ o objetivo, sem refazer o questionário.
+
+    Trocar de objetivo é a mudança mais comum e mais pesada que existe aqui:
+    mexe no treino, nas metas, na dieta e na periodização. Antes, pra mudar
+    "hipertrofia" pra "emagrecimento" a pessoa tinha que reabrir as 8 etapas e
+    passar por todas de novo — e o caminho estava lá, então ela mexia em outras
+    respostas sem querer.
+
+    A meta de calorias NÃO vira a chave de uma vez: quando o alvo do objetivo
+    novo está longe do que ela come hoje, `plan_service` aplica um degrau e abre
+    a transição (ver `goal_service.stage_auto_goal`). O resto do plano — treino,
+    dieta, periodização — é regerado inteiro, porque isso não tem meio-termo.
+    """
+    _require_pro(current_user)
+    validos = {g.value for g in Goal}
+    if payload.goal not in validos:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Objetivo inválido. Escolha um entre: {', '.join(sorted(validos))}.",
+        )
+    ativo = plan_service.active_plan(db, current_user.id)
+    if ativo is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Você ainda não tem um plano — responda o questionário primeiro.",
+        )
+
+    base = {**plan_service.answers_from_profile(db, current_user), **dict(ativo.answers or {})}
+    if base.get("goal") == payload.goal:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Esse já é o seu objetivo atual.",
+        )
+
+    # Consentimento de dado de saúde é dado UMA VEZ, no questionário, e é
+    # inegociável (LGPD). Quem tem plano de antes dessa etapa existir não tem o
+    # aceite guardado — e este atalho não pode "assumir" a autorização por ela.
+    # A mensagem diz onde resolver, em vez de repetir o erro genérico da
+    # geração, que aqui pareceria um bug do botão.
+    if questionnaire.consent_error(base):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Antes de trocar o objetivo eu preciso da sua autorização pra usar dados de saúde — "
+                "ela é dada uma vez, na última etapa do questionário. Toque em 'Alterar respostas', "
+                "vá até o fim e confirme; depois este botão funciona direto."
+            ),
+        )
+
+    # Edição pendente do questionário não pode ser engolida pela troca: a
+    # ativação transforma o rascunho nas respostas ativas, então guardo o que
+    # estava pendente e devolvo depois, já com o objetivo novo por cima.
+    draft = plan_service.get_draft(db, current_user.id)
+    pendente = dict(draft.answers or {}) if draft else {}
+    tinha_pendencia = bool(pendente) and bool(plan_service.diff_answers(base, pendente))
+
+    antes = goal_service.get_current_goal(db, current_user.id)
+    kcal_antes = round(antes.kcal) if antes else None
+
+    try:
+        plan_service.activate(
+            db, current_user, {**base, "goal": payload.goal}, reason="troca_objetivo"
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Não consegui montar seu plano com o objetivo novo agora, então não mudei nada — "
+                "seu objetivo e seu plano atuais continuam valendo. Pode tentar de novo."
+            ),
+        ) from exc
+
+    if tinha_pendencia:
+        plan_service.save_draft(db, current_user.id, {**pendente, "goal": payload.goal}, 0)
+        db.commit()
+
+    agora = goal_service.get_current_goal(db, current_user.id)
+    transicao = goal_service.active_transition(db, current_user.id)
+    kcal_agora = round(agora.kcal) if agora else (kcal_antes or 0)
+    alvo = round(transicao.target_kcal) if transicao is not None else kcal_agora
+    return GoalChangeResult(
+        state=get_state(current_user, db),
+        goal_label=questionnaire.GOAL_LABELS.get(payload.goal, payload.goal),
+        kcal_antes=kcal_antes,
+        kcal_agora=kcal_agora,
+        kcal_alvo=alvo,
+        em_transicao=transicao is not None,
+    )
 
 
 def _build_personal_diet(current_user: User, db: Session):

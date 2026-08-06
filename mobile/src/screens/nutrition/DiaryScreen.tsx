@@ -3,6 +3,7 @@ import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/nativ
 import React, { useCallback, useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
+  Modal,
   Platform,
   RefreshControl,
   ScrollView,
@@ -637,41 +638,49 @@ export function DiaryScreen() {
         message={dayAviso?.message}
       />
 
-      {/* Editor de quantidade de um item já registrado (toque no alimento). */}
-      {editing ? (
+      {/* Editor de quantidade de um item já registrado (toque no lápis).
+          `Modal` e não uma View absoluta: esta tela É um ScrollView, e um
+          absolute lá dentro se posiciona em relação ao CONTEÚDO ROLÁVEL, não à
+          tela. Era por isso que editar um alimento da ceia abria a janelinha lá
+          em cima, no meio do diário, e a pessoa tinha que rolar atrás dela. O
+          Modal desenha por cima da tela, sempre onde os olhos já estão. */}
+      <Modal
+        visible={editing !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditing(null)}
+      >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            top: 0,
-            bottom: 0,
+            flex: 1,
             backgroundColor: "rgba(0,0,0,0.55)",
             alignItems: "center",
             justifyContent: "center",
             padding: spacing.lg,
           }}
         >
-          <Card style={{ width: "100%" }}>
-            <Text style={[type.h2, { color: colors.textPrimary, marginBottom: 2 }]} numberOfLines={2}>
-              {editing.food.name}
-            </Text>
-            <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.md }]}>
-              Ajuste a quantidade — as calorias são recalculadas.
-            </Text>
-            <QuantityEditor food={editing.food} value={editQty} onChange={setEditQty} compact />
-            <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.lg }}>
-              <View style={{ flex: 1 }}>
-                <Button title="Salvar" compact onPress={salvarEdicao} loading={savingEdit} />
+          {editing ? (
+            <Card style={{ width: "100%" }}>
+              <Text style={[type.h2, { color: colors.textPrimary, marginBottom: 2 }]} numberOfLines={2}>
+                {editing.food.name}
+              </Text>
+              <Text style={[type.caption, { color: colors.textSecondary, marginBottom: spacing.md }]}>
+                Ajuste a quantidade — as calorias são recalculadas.
+              </Text>
+              <QuantityEditor food={editing.food} value={editQty} onChange={setEditQty} compact />
+              <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.lg }}>
+                <View style={{ flex: 1 }}>
+                  <Button title="Salvar" compact onPress={salvarEdicao} loading={savingEdit} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Button title="Cancelar" variant="ghost" compact onPress={() => setEditing(null)} />
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Button title="Cancelar" variant="ghost" compact onPress={() => setEditing(null)} />
-              </View>
-            </View>
-          </Card>
+            </Card>
+          ) : null}
         </KeyboardAvoidingView>
-      ) : null}
+      </Modal>
     </ScrollView>
   );
 }

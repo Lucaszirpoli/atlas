@@ -156,23 +156,36 @@ def _macros_at(kcal: float, protein_g: float, sug: dict) -> tuple[float, float]:
     return round(resto * ratio / 4, 1), round(resto * (1 - ratio) / 9, 1)
 
 
-def apply_auto_goal(db: Session, user_id: int, suggestion: dict, *, immediate: bool = False) -> CalorieGoal:
-    """Aplica a meta automática. Se a mudança for GRANDE (troca de objetivo, salto
-    de calorias), NÃO estoura de uma vez: aplica UM passo capado e abre uma
-    TRANSIÇÃO — o coach leva até o alvo aos poucos, pelos passos diários. Mudança
-    pequena vai direto.
+def stage_auto_goal(
+    db: Session,
+    user_id: int,
+    suggestion: dict,
+    *,
+    current: CalorieGoal | None,
+    objective: str,
+    immediate: bool = False,
+) -> CalorieGoal:
+    """A REGRA da troca de meta, sem commitar nada (só `add` + `flush`).
+
+    Se a mudança for GRANDE (troca de objetivo, salto de calorias), NÃO estoura
+    de uma vez: aplica UM passo capado e abre uma TRANSIÇÃO — o coach leva até o
+    alvo aos poucos, pelos passos seguintes. Mudança pequena vai direto.
 
     `immediate=True` ("considerar como primeiro objetivo"): esquece a fase
     anterior e vai DIRETO ao alvo, sem transição gradual (ex.: cutting → bulking
     tratado como recomeço).
 
-    IDEMPOTENTE por clique: re-aplicar o MESMO objetivo enquanto já há transição
-    pra ele NÃO empilha reduções/aumentos — o ramifica só acontece nos passos
-    diários (era o bug de 'clicar várias vezes baixava as kcal')."""
+    IDEMPOTENTE: re-aplicar o MESMO objetivo enquanto já há transição pra ele NÃO
+    empilha reduções/aumentos — o degrau seguinte só sai nos passos da transição
+    (era o bug de 'clicar várias vezes baixava as kcal').
+
+    Fica separada do commit porque tem DOIS chamadores com transações
+    diferentes: a tela de meta (`apply_auto_goal`, commita na hora) e a ativação
+    atômica do plano da aba Objetivo (`plan_service`, onde um commit no meio
+    quebraria o "tudo ou nada" do §12).
+    """
     now = datetime.now(timezone.utc)
-    current = suggestion.get("current_goal")
     target_kcal = float(suggestion["kcal"])
-    objective = suggestion.get("objective", "")
     prior = active_transition(db, user_id)
 
     def _full_goal() -> CalorieGoal:
@@ -180,20 +193,18 @@ def apply_auto_goal(db: Session, user_id: int, suggestion: dict, *, immediate: b
                         protein_g=suggestion["protein_g"], carbs_g=suggestion["carbs_g"],
                         fat_g=suggestion["fat_g"])
         db.add(g)
+        if prior is not None:
+            prior.completed_at = now
+        db.flush()
         return g
 
     # "Primeiro objetivo": vai direto ao alvo, encerra qualquer transição aberta.
     if immediate:
-        goal = _full_goal()
-        if prior is not None:
-            prior.completed_at = now
-        db.commit()
-        db.refresh(goal)
-        return goal
+        return _full_goal()
 
     if current is not None and abs(target_kcal - current.kcal) > TRANSITION_STEP_KCAL:
         # Já em transição PRO MESMO objetivo? Re-aplicar é NO-OP: o degrau já foi
-        # dado e o resto do ramp acontece nos passos diários (não a cada clique).
+        # dado e o resto do ramp acontece nos passos seguintes (não a cada clique).
         if prior is not None and prior.to_objective == objective:
             return current
         # Novo rumo: fecha transição antiga (se houver), aplica o 1º degrau capado
@@ -208,14 +219,24 @@ def apply_auto_goal(db: Session, user_id: int, suggestion: dict, *, immediate: b
             prior.completed_at = now  # troca de rumo cancela a transição antiga
         db.add(CoachingTransition(user_id=user_id, to_objective=objective,
                                   from_kcal=current.kcal, target_kcal=target_kcal))
-        db.commit()
-        db.refresh(goal)
+        db.flush()
         return goal
 
     # Mudança pequena (ou primeira meta): aplica cheia e encerra transição aberta.
-    goal = _full_goal()
-    if prior is not None:
-        prior.completed_at = now
+    return _full_goal()
+
+
+def apply_auto_goal(db: Session, user_id: int, suggestion: dict, *, immediate: bool = False) -> CalorieGoal:
+    """`stage_auto_goal` + commit — o caminho de quem aplica a meta sozinha
+    (tela de meta calórica, ação do coach)."""
+    goal = stage_auto_goal(
+        db,
+        user_id,
+        suggestion,
+        current=suggestion.get("current_goal"),
+        objective=suggestion.get("objective", ""),
+        immediate=immediate,
+    )
     db.commit()
     db.refresh(goal)
     return goal

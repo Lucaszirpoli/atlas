@@ -36,6 +36,21 @@ def _snapshot_item(food: Food, quantity_g: float) -> dict:
 
 
 def log_meal(db: Session, user_id: int, payload: MealLogCreate) -> MealLog:
+    # MESMA CHAVE = MESMO REGISTRO. O app manda uma chave por tentativa; se ela
+    # já entrou, esta chamada é a segunda cópia de um POST que o servidor já
+    # atendeu (a resposta se perdeu e o app retentou) e devolver o registro
+    # existente é a resposta certa — criar outro é duplicar a refeição no
+    # diário, que foi o bug relatado de "salvou duas vezes".
+    if payload.idempotency_key:
+        ja = db.execute(
+            select(MealLog).where(
+                MealLog.user_id == user_id,
+                MealLog.idempotency_key == payload.idempotency_key,
+            ).limit(1)
+        ).scalar_one_or_none()
+        if ja is not None:
+            return ja
+
     food_ids = [item.food_id for item in payload.items]
     foods = {f.id: f for f in db.execute(select(Food).where(Food.id.in_(food_ids))).scalars()}
 
@@ -43,6 +58,7 @@ def log_meal(db: Session, user_id: int, payload: MealLogCreate) -> MealLog:
         user_id=user_id,
         meal_category_id=payload.meal_category_id,
         logged_at=payload.logged_at,
+        idempotency_key=payload.idempotency_key,
     )
     db.add(meal_log)
     db.flush()

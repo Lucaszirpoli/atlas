@@ -179,6 +179,30 @@ def _ensure_routine_columns() -> None:
         conn.execute(text(marca))
 
 
+def _ensure_meal_log_columns() -> None:
+    """ALTER idempotente pra `meal_logs.idempotency_key` — a chave que impede a
+    MESMA refeição de entrar duas vezes quando o app retenta um POST cuja
+    resposta se perdeu. Mesma regra das outras: select(MealLog) roda em toda
+    abertura do diário, então num banco antigo a coluna precisa existir antes."""
+    from sqlalchemy import inspect, text
+
+    existentes = {c["name"] for c in inspect(engine).get_columns("meal_logs")}
+    if "idempotency_key" in existentes:
+        return
+    pg = engine.dialect.name == "postgresql"
+    with engine.begin() as conn:
+        if pg:
+            conn.execute(text("ALTER TABLE meal_logs ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(64)"))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_meal_logs_idempotency_key ON meal_logs (idempotency_key)"
+            ))
+        else:
+            conn.execute(text("ALTER TABLE meal_logs ADD COLUMN idempotency_key VARCHAR(64)"))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_meal_logs_idempotency_key ON meal_logs (idempotency_key)"
+            ))
+
+
 def _ensure_set_log_columns() -> None:
     """ALTER idempotente pras colunas de BLOCO em workout_set_logs (técnicas
     avançadas: myo-reps, cluster, rest-pause, drop-set). Mesma regra das
@@ -277,6 +301,9 @@ def run() -> None:
     # origem ("coach"/"manual") em routines — mesma regra, e com backfill de
     # quem já existe (ver a função).
     _ensure_routine_columns()
+
+    # idempotency_key em meal_logs (anti-duplicata do registro de refeição).
+    _ensure_meal_log_columns()
 
     # Blocos das técnicas avançadas em workout_set_logs — mesma regra.
     _ensure_set_log_columns()

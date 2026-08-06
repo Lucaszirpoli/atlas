@@ -63,7 +63,7 @@ export function AddFoodScreen() {
   const { colors, type, spacing, radius, shadow } = useTheme();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { categoryId, barcodeResult, date } = route.params ?? {};
+  const { categoryId, barcodeResult, date, itemDaFicha } = route.params ?? {};
   const metaKcal = useMetaCalorica();
 
   // Quando chega de um dia passado (Diário › setinha de dia), registra NAQUELE
@@ -75,6 +75,9 @@ export function AddFoodScreen() {
     const [y, m, d] = String(date).split("-").map(Number);
     return new Date(y, m - 1, d, agora.getHours(), agora.getMinutes(), agora.getSeconds()).toISOString();
   }
+
+  // Trava síncrona de "já estou registrando" (ver registrarCesta).
+  const registrando = React.useRef(false);
 
   const [aba, setAba] = useState<AbaId>("alimento");
   const [query, setQuery] = useState("");
@@ -136,7 +139,13 @@ export function AddFoodScreen() {
   );
 
   async function registrarCesta() {
-    if (cesta.length === 0) return;
+    // Guarda de clique duplo com REF, não com o estado `isSubmitting`: o estado
+    // só desabilita o botão no próximo render, e dois toques rápidos disparam
+    // os dois antes disso — a refeição entrava duas vezes. O ref muda no mesmo
+    // instante. (A outra metade da proteção é a chave de idempotência do POST,
+    // que cobre o retry automático da rede.)
+    if (cesta.length === 0 || registrando.current) return;
+    registrando.current = true;
     setIsSubmitting(true);
     try {
       // UMA chamada com todos os itens: o endpoint já aceita lista.
@@ -152,6 +161,9 @@ export function AddFoodScreen() {
       });
     } catch (err: any) {
       Alert.alert("Não foi possível registrar", mensagemDeErro(err, "Tente novamente."));
+      // Libera o ref só no erro: quem deu certo já está saindo da tela, e
+      // reabrir o botão ali seria convidar o registro em dobro.
+      registrando.current = false;
       setIsSubmitting(false);
       return;
     }
@@ -262,6 +274,26 @@ export function AddFoodScreen() {
     abrirFicha(barcodeResult);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [barcodeResult]);
+
+  // Volta da ficha do alimento: ela não registra mais nada sozinha, só devolve
+  // o alimento com a quantidade escolhida pra ENTRAR NA CESTA — do mesmo jeito
+  // que o quadradinho da lista. Assim marcar três alimentos e abrir a ficha do
+  // quarto continua terminando numa refeição com os quatro; antes o registro
+  // saía com um só e os marcados sumiam sem aviso.
+  useEffect(() => {
+    if (!itemDaFicha) return;
+    navigation.setParams({ itemDaFicha: undefined });
+    setCesta((c) => [
+      ...c.filter((i) => i.food.id !== itemDaFicha.food.id),
+      {
+        food: itemDaFicha.food,
+        quantity_g: itemDaFicha.quantity_g,
+        unit_label: itemDaFicha.unit_label ?? null,
+        unit_amount: itemDaFicha.unit_amount ?? null,
+      },
+    ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemDaFicha]);
 
   // Busca em duas fases: (1) local sem acento, instantânea, aparece na hora;
   // (2) marcas ao vivo no Open Food Facts (já prioriza o catálogo do Brasil —

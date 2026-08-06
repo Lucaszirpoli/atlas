@@ -42,6 +42,13 @@ class MealLog(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     meal_category_id: Mapped[int] = mapped_column(ForeignKey("meal_categories.id"))
     logged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Chave gerada pelo APP, uma por tentativa de registro. Existe por causa do
+    # retry: numa rede ruim o POST chega ao servidor, a resposta se perde no
+    # caminho e o app tenta de novo — e a mesma refeição entrava duas vezes no
+    # diário. Com a chave, a segunda tentativa devolve o registro que já existe
+    # em vez de criar outro. Nulo em registro antigo e em quem não manda chave
+    # (dieta aplicada pelo servidor, por exemplo).
+    idempotency_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

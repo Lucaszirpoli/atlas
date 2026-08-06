@@ -113,6 +113,24 @@ export async function activateObjectivePlan(): Promise<ObjectiveState> {
   return data;
 }
 
+/** O que aconteceu ao trocar de objetivo. Os números de caloria vêm junto
+ * porque a troca NÃO muda a meta de uma vez quando o salto é grande: o coach
+ * caminha até o alvo em degraus, e a tela precisa poder dizer isso. */
+export type GoalChangeResult = {
+  state: ObjectiveState;
+  goal_label: string;
+  kcal_antes: number | null;
+  kcal_agora: number;
+  kcal_alvo: number;
+  em_transicao: boolean;
+};
+
+/** "Alterar meu objetivo" — troca só o objetivo, sem reabrir as 8 etapas. */
+export async function changeObjectiveGoal(goal: string): Promise<GoalChangeResult> {
+  const { data } = await api.post<GoalChangeResult>("/objective/goal", { goal }, { timeout: 120000 });
+  return data;
+}
+
 export type PersonalDietItem = {
   food_id: number;
   food_name: string;

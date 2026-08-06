@@ -99,6 +99,34 @@ GOAL_LABELS = {
     "emagrecimento": "Emagrecimento", "hipertrofia": "Hipertrofia", "manutencao": "Manutenção",
     "performance": "Performance", "recomposicao": "Recomposição",
 }
+# Uma linha por objetivo, no card da opção — a pessoa escolhe sabendo o que cada
+# um faz com a comida e com o treino, sem precisar abrir o "?".
+GOAL_DESCS = {
+    "emagrecimento": "Comer abaixo do gasto pra perder gordura, segurando o músculo com treino pesado.",
+    "hipertrofia": "Comer um pouco acima do gasto pra ganhar músculo, aceitando ganhar algo de gordura junto.",
+    "manutencao": "Ficar onde está: comer perto do gasto e seguir treinando forte.",
+    "performance": "O foco é render mais (força e trabalho), não o número da balança.",
+    "recomposicao": "Perder gordura e ganhar músculo ao mesmo tempo, comendo perto do gasto. É o mais lento.",
+}
+# O texto do "?" ao lado da pergunta do objetivo. Mora aqui, e não no app, por um
+# motivo prático: a mesma explicação precisa aparecer no questionário E no
+# "Alterar meu objetivo" da aba Objetivo. Uma fonte só, dois lugares.
+GOAL_HELP = (
+    "Emagrecimento — comer abaixo do gasto pra perder gordura. O treino continua pesado: "
+    "é ele que segura o músculo enquanto o peso cai.\n\n"
+    "Hipertrofia — comer um pouco acima do gasto pra ganhar músculo. Ganhar alguma gordura "
+    "junto faz parte; o ritmo é o que controla quanto.\n\n"
+    "Manutenção — comer perto do gasto pra ficar onde está. Serve pra estabilizar depois de "
+    "um corte ou de um bulk, e pra quem está feliz com o peso e quer só treinar bem.\n\n"
+    "Performance — o alvo é render mais: mais força e mais trabalho aguentado. A comida fica "
+    "perto do gasto (ou um pouco acima) porque treino forte precisa de energia.\n\n"
+    "Recomposição — perder gordura e ganhar músculo ao mesmo tempo, comendo perto do gasto. "
+    "Funciona melhor pra quem está começando, voltando depois de uma pausa ou com bastante "
+    "gordura pra perder. É o caminho mais lento na balança — o que muda é o espelho.\n\n"
+    "Trocar de objetivo não vira a chave de uma vez: quando a meta de calorias muda muito, "
+    "eu levo você até lá em degraus de uns dias, que é como se faz sem perder músculo nem "
+    "acumular gordura à toa."
+)
 PACE_LABELS = {"slow": "Devagar e sustentável", "normal": "Equilibrado (recomendado)", "fast": "Mais rápido"}
 LOCAL_LABELS = {
     "academia_completa": "Academia completa", "academia_basica": "Academia básica",
@@ -151,7 +179,8 @@ def steps() -> list[dict]:
                  "type": TEXT, "required": False, "max_length": 40,
                  "help": "É como o coach vai falar com você."},
                 {"key": "goal", "label": "O que você quer alcançar", "type": SINGLE, "required": True,
-                 "options": _enum_opts(Goal, GOAL_LABELS)},
+                 "options": _opts3([(g.value, GOAL_LABELS[g.value], GOAL_DESCS.get(g.value, "")) for g in Goal]),
+                 "help": GOAL_HELP},
                 {"key": "goal_pace", "label": "Em que ritmo", "type": SINGLE, "required": False,
                  "options": _enum_opts(GoalPace, PACE_LABELS),
                  "help": "O ritmo escala o déficit ou o superávit. Devagar preserva mais músculo "

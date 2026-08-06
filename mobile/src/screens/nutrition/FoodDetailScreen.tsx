@@ -9,7 +9,6 @@ import {
   removeFavoriteFood,
   type Food,
 } from "../../api/foods";
-import { logMeal } from "../../api/meals";
 import { Button } from "../../components/Button";
 import { voltarPara } from "../../navigation/voltarPara";
 import { UnitPicker } from "../../components/UnitPicker";
@@ -17,7 +16,6 @@ import type { QuantityValue } from "../../components/QuantityEditor";
 import { useTheme } from "../../theme/ThemeProvider";
 import { useMetaCalorica } from "../../utils/calorieTarget";
 import { diaLabel, isoToday } from "../../utils/date";
-import { mensagemDeErro } from "../../utils/errorMessage";
 import {
   gramasBr,
   idrPercent,
@@ -29,16 +27,19 @@ import {
 import { formatQuantity, initialQuantityFor } from "../../utils/portion";
 import { addRecentFood } from "../../utils/recentFoods";
 
-/** Ficha do alimento: escolhe a quantidade, salva na refeição e mostra a
- * informação nutricional completa daquela porção (não por 100 g — o número que
- * interessa é o do que a pessoa vai comer). */
+/** Ficha do alimento: escolhe a quantidade, MARCA o alimento pra refeição e
+ * mostra a informação nutricional completa daquela porção (não por 100 g — o
+ * número que interessa é o do que a pessoa vai comer).
+ *
+ * Quem registra de verdade é a tela de busca, com a cesta inteira. Aqui a
+ * pessoa só decide "quanto" — ver `adicionarNaLista`. */
 export function FoodDetailScreen() {
   const { colors, type, spacing, radius } = useTheme();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  // categoryId nunca falta: só se chega aqui pela busca (que veio do Diário,
-  // sempre por uma refeição) ou pelo código de barras, que repassa o mesmo.
-  const { food, categoryId, date } = route.params as {
+  // `date` só serve pro aviso de "registrando em outro dia": a refeição e o dia
+  // continuam com a tela de busca, que é quem grava.
+  const { food, date } = route.params as {
     food: Food;
     categoryId: number;
     date?: string;
@@ -76,46 +77,38 @@ export function FoodDetailScreen() {
   const carb = ((food.carbs_g_per_100g || 0) * gramas) / 100;
   const gord = ((food.fat_g_per_100g || 0) * gramas) / 100;
 
-  function loggedAtFor(): string {
-    if (!date) return new Date().toISOString();
-    const agora = new Date();
-    const [y, m, d] = String(date).split("-").map(Number);
-    return new Date(y, m - 1, d, agora.getHours(), agora.getMinutes(), agora.getSeconds()).toISOString();
-  }
-
-  async function salvar() {
+  /** ESTE BOTÃO NÃO REGISTRA — ele marca.
+   *
+   * Antes, salvar aqui gravava só ESTE alimento e ia embora pro diário. Quem
+   * tinha marcado outros na lista de busca (o quadradinho de cada linha)
+   * perdia todos eles em silêncio: a cesta ficava pra trás e a refeição
+   * entrava com um item só. Agora a ficha faz o mesmo que o quadradinho —
+   * marca o alimento com a quantidade escolhida e devolve a pessoa pra lista,
+   * onde ela confirma tudo de uma vez. Um só caminho, um só lugar de confirmar.
+   */
+  function adicionarNaLista() {
     if (!gramas || gramas <= 0) {
       Alert.alert("Quantidade inválida", "Informe a quantidade.");
       return;
     }
     setSalvando(true);
-    try {
-      await logMeal({
-        meal_category_id: categoryId,
-        logged_at: loggedAtFor(),
-        items: [
-          {
-            food_id: food.id,
-            quantity_g: gramas,
-            unit_label: qty.unit_label,
-            unit_amount: qty.unit_amount,
-          },
-        ],
-      });
-    } catch (err: any) {
-      Alert.alert("Não foi possível registrar", mensagemDeErro(err, "Tente novamente."));
-      setSalvando(false);
-      return;
-    }
-    await addRecentFood(food).catch(() => {});
-    setSalvando(false);
-    // Volta direto pro diário (e não pra busca): o registro terminou, e o
-    // diário recarrega sozinho ao ganhar foco.
-    //
-    // `voltarPara` e não `navigate`: no React Navigation 7 o navigate EMPILHA um
-    // diário novo em cima da busca e do alimento, e a seta de voltar levava a
-    // pessoa de volta pra dentro do alimento que ela acabara de registrar.
-    voltarPara(navigation, "Diary");
+    addRecentFood(food).catch(() => {});
+    // `merge`: o popTo troca os parâmetros da tela de destino, e sem mesclar a
+    // busca perderia `categoryId`/`date` — ou seja, a refeição e o dia em que
+    // o registro vai cair.
+    voltarPara(
+      navigation,
+      "AddFood",
+      {
+        itemDaFicha: {
+          food,
+          quantity_g: gramas,
+          unit_label: qty.unit_label ?? null,
+          unit_amount: qty.unit_amount ?? null,
+        },
+      },
+      true
+    );
   }
 
   return (
@@ -165,7 +158,10 @@ export function FoodDetailScreen() {
         <UnitPicker food={food} value={qty} onChange={setQty} />
 
         <View style={{ marginTop: spacing.lg }}>
-          <Button title="SALVAR" onPress={salvar} loading={salvando} />
+          <Button title="ADICIONAR" onPress={adicionarNaLista} loading={salvando} />
+          <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm, textAlign: "center", lineHeight: 17 }]}>
+            Volta pra busca com este alimento marcado. Dá pra marcar outros e registrar todos de uma vez.
+          </Text>
         </View>
       </View>
 

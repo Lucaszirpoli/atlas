@@ -36,6 +36,10 @@ class MealLogCreate(BaseModel):
     meal_category_id: int
     logged_at: datetime
     items: list[MealLogItemCreate] = Field(min_length=1)
+    # Uma chave por tentativa de registro, gerada pelo app. Reenviar a MESMA
+    # chave devolve o registro que já existe em vez de duplicar a refeição —
+    # ver o comentário no model MealLog.
+    idempotency_key: str | None = Field(default=None, max_length=64)
 
 
 class MealLogItemUpdate(BaseModel):

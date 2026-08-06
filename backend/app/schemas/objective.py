@@ -55,3 +55,31 @@ class ObjectiveState(BaseModel):
     # recentes), então `len(history)` travava no teto — quem estava na v36 via
     # "Histórico de planos · 20" pra sempre, como se tivesse parado de evoluir.
     history_total: int = 0
+
+
+class GoalChangeRequest(BaseModel):
+    """"Alterar meu objetivo": um campo só. O resto do questionário fica como
+    está — trocar de objetivo não é motivo pra reperguntar altura e lesão."""
+
+    goal: str = Field(min_length=1, max_length=30)
+
+
+class GoalChangeResult(BaseModel):
+    """Resposta do "Alterar meu objetivo".
+
+    Devolve o estado novo da aba E o que aconteceu com a META DE CALORIAS, que é
+    a parte que a pessoa precisa entender: quando o salto é grande, a meta não
+    vai direto pro alvo — ela caminha em degraus. Sem esses números, a tela só
+    conseguiria dizer "pronto", e a pessoa abriria a Dieta achando que o coach
+    errou a conta."""
+
+    state: ObjectiveState
+    goal_label: str
+    # kcal da meta ANTES da troca (None = a pessoa não tinha meta ainda).
+    kcal_antes: int | None
+    # kcal que passou a valer HOJE (o degrau, quando há transição).
+    kcal_agora: int
+    # kcal do destino final do novo objetivo.
+    kcal_alvo: int
+    # True = a meta vai chegar no alvo aos poucos, não hoje.
+    em_transicao: bool

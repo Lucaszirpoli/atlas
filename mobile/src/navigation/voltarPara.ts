@@ -26,11 +26,21 @@ import type { NavigationProp } from "@react-navigation/native";
  * lançaria e a pessoa ficaria presa.
  */
 type Nav = NavigationProp<any> & {
-  popTo?: (name: string, params?: object) => void;
+  // O terceiro argumento é um objeto de OPÇÕES ({ merge }), não um booleano —
+  // passar `true` cru aqui faz o React Navigation ler `options.merge` como
+  // undefined e trocar os parâmetros da tela de destino em silêncio.
+  popTo?: (name: string, params?: object, options?: { merge?: boolean }) => void;
   getParent?: () => Nav | undefined;
 };
 
-export function voltarPara(navigation: Nav, screen: string, params?: object): void {
+/**
+ * `merge` = MESCLAR os parâmetros com os que a tela de destino já tinha, em vez
+ * de substituí-los. Vale quando a volta leva um recado ("adicione este alimento
+ * à lista") e a tela de destino precisa continuar sabendo o que já sabia (em
+ * qual refeição e em qual dia ela está registrando). Sem isso o recado chega e
+ * o contexto some.
+ */
+export function voltarPara(navigation: Nav, screen: string, params?: object, merge = false): void {
   // Sobe pelos navegadores aninhados até achar quem tem a tela na pilha. A busca
   // no pai importa: as telas de nutrição e de treino vivem em stacks próprios
   // DENTRO do stack principal, então "voltar pra Home" a partir da meta calórica
@@ -40,7 +50,7 @@ export function voltarPara(navigation: Nav, screen: string, params?: object): vo
   for (let nivel = 0; atual && nivel < 5; nivel++) {
     const rotas = atual.getState?.()?.routes as { name: string }[] | undefined;
     if (rotas?.some((r) => r.name === screen) && typeof atual.popTo === "function") {
-      atual.popTo(screen, params);
+      atual.popTo(screen, params, { merge });
       return;
     }
     atual = atual.getParent?.();

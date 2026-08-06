@@ -251,7 +251,35 @@ def answers_from_profile(db: Session, user: User) -> dict[str, Any]:
         # O campo virou texto livre (type TEXT) — devolve a string pra
         # reabrir a tela já preenchida com o que a pessoa digitou da última vez.
         "food_dislikes_list": ", ".join(p.food_dislikes_list or []),
+        # Consentimento JÁ DADO vem do REGISTRO, não de um padrão: quem aceitou
+        # uma vez não precisa reaceitar a cada edição, e quem nunca aceitou
+        # continua com as caixas em branco (a checagem de consentimento segue
+        # valendo, e é ela que barra a geração). Sem ler o registro, qualquer
+        # caminho que remonta as respostas a partir do perfil — inclusive o
+        # "Alterar meu objetivo" — enxergaria um consentimento inexistente e
+        # falharia mesmo com a autorização guardada no banco.
+        **_consent_answers(db, user.id),
         **meta_atual,
+    }
+
+
+def _consent_answers(db: Session, user_id: int) -> dict[str, Any]:
+    """As duas caixas de consentimento, do jeito que o questionário as espera,
+    a partir dos registros de aceite (append-only, com data e versão)."""
+    from app.models.consent import ConsentRecord, ConsentType
+
+    aceitos = set(
+        db.execute(
+            select(ConsentRecord.consent_type).where(
+                ConsentRecord.user_id == user_id,
+                ConsentRecord.version == CONSENT_VERSION,
+                ConsentRecord.accepted.is_(True),
+            )
+        ).scalars()
+    )
+    return {
+        "accepted_lgpd_health_data": ConsentType.LGPD_HEALTH_DATA in aceitos,
+        "accepted_medical_disclaimer": ConsentType.MEDICAL_DISCLAIMER in aceitos,
     }
 
 
@@ -572,12 +600,25 @@ def _rebuild_goals(db: Session, user: User, answers: dict[str, Any]) -> int:
         age=p.age, activity_level=p.activity_level, goal=p.goal,
         tdee_override=tdee,
     )
-    goal = CalorieGoal(
-        user_id=user.id, mode=GoalMode.AUTO, kcal=auto["kcal"],
-        protein_g=auto["protein_g"], carbs_g=auto["carbs_g"], fat_g=auto["fat_g"],
+    # TROCA DE OBJETIVO NÃO VIRA A CHAVE DE UMA VEZ.
+    #
+    # Sair de um corte pra um bulk move a meta em centenas de kcal. O coach já
+    # sabia fazer isso com calma — passo capado + transição aberta, próximo
+    # degrau só depois de alguns dias (goal_service) —, mas essa regra só valia
+    # no caminho da tela de meta. Quem trocava o objetivo AQUI, pelo
+    # questionário, recebia a meta nova inteira no mesmo dia, que é exatamente o
+    # que um treinador de verdade não faz.
+    #
+    # `stage_auto_goal` e não `apply_auto_goal`: aqui não pode haver commit — a
+    # meta é um componente da ativação atômica (§12), e se o treino falhar
+    # depois, ela também não pode ter entrado.
+    from app.services import goal_service
+
+    goal = goal_service.stage_auto_goal(
+        db, user.id, auto,
+        current=goal_service.get_current_goal(db, user.id),
+        objective=p.goal.value if p.goal else "",
     )
-    db.add(goal)
-    db.flush()
     return goal.id
 
 

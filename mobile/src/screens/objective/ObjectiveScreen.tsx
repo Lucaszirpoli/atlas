@@ -5,6 +5,7 @@ import { ActivityIndicator, Modal, ScrollView, Text, TextInput, TouchableOpacity
 import {
   activateObjectivePlan,
   applyPersonalDiet,
+  changeObjectiveGoal,
   COMPONENT_LABEL,
   discardObjectiveDraft,
   formatAnswer,
@@ -13,6 +14,7 @@ import {
   getQuestionnaire,
   saveObjectiveDraft,
   type Answers,
+  type GoalChangeResult,
   type ObjectiveState,
   type PendingChange,
   type PersonalDiet,
@@ -20,7 +22,6 @@ import {
   type QuestionField,
   type Questionnaire,
 } from "../../api/objective";
-import { getCurrentGoal, type CalorieGoal } from "../../api/goals";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
@@ -73,9 +74,17 @@ export function ObjectiveScreen({
   const [confirmarDescarte, setConfirmarDescarte] = useState(false);
   const [verRespostas, setVerRespostas] = useState(false);
   const [verHistorico, setVerHistorico] = useState(false);
-  const [verMetas, setVerMetas] = useState(false);
-  const [metaAtual, setMetaAtual] = useState<CalorieGoal | null>(null);
   const [planoNovo, setPlanoNovo] = useState<PlanSummary | null>(null);
+
+  // "Alterar meu objetivo" — trocar SÓ o objetivo, sem reabrir as 8 etapas.
+  // Era o caminho que faltava: pra sair de hipertrofia pra emagrecimento a
+  // pessoa tinha que passar o questionário inteiro de novo, e no caminho mexia
+  // sem querer em respostas que não queria mudar.
+  const [trocaAberta, setTrocaAberta] = useState(false);
+  const [objetivoEscolhido, setObjetivoEscolhido] = useState<string | null>(null);
+  const [trocando, setTrocando] = useState(false);
+  const [erroTroca, setErroTroca] = useState<string | null>(null);
+  const [resultadoTroca, setResultadoTroca] = useState<GoalChangeResult | null>(null);
 
   // "Ver dieta em PDF" — modal interno (não uma tela navegada): a dieta que o
   // Coaching montou pra ESSA pessoa (meta + restrições do questionário), nunca
@@ -144,7 +153,6 @@ export function ObjectiveScreen({
       setState(s);
       setRespostas(s.draft_answers ?? {});
       setEtapa(Math.min(s.draft_step ?? 0, Math.max(q.steps.length - 1, 0)));
-      if (s.has_plan) getCurrentGoal().then(setMetaAtual).catch(() => {});
     } catch (e: any) {
       setErro(mensagemDeErro(e, "Não consegui carregar seu objetivo agora."));
     } finally {
@@ -263,7 +271,6 @@ export function ObjectiveScreen({
       setModo("atualizado");
       onPlanActivated?.();
       onScrollTop?.();
-      getCurrentGoal().then(setMetaAtual).catch(() => {});
     } catch (e: any) {
       setErro(mensagemDeErro(e, "Não consegui gerar seu plano agora. Seu plano atual continua valendo."));
     } finally {
@@ -296,6 +303,29 @@ export function ObjectiveScreen({
 
   function campoPorChave(key: string): QuestionField | undefined {
     return passos.flatMap((s) => s.fields).find((f) => f.key === key);
+  }
+
+  /** Troca só o objetivo. O plano inteiro é regerado (objetivo mexe em treino,
+   * dieta e periodização), mas a META DE CALORIAS não pula pro alvo de uma vez
+   * quando a diferença é grande — o servidor aplica um degrau e abre a
+   * transição. Por isso a tela mostra os três números na volta. */
+  async function trocarObjetivo() {
+    if (!objetivoEscolhido || trocando) return;
+    setTrocando(true);
+    setErroTroca(null);
+    try {
+      const r = await changeObjectiveGoal(objetivoEscolhido);
+      setState(r.state);
+      setRespostas(r.state.draft_answers ?? {});
+      setTrocaAberta(false);
+      setObjetivoEscolhido(null);
+      setResultadoTroca(r);
+      onPlanActivated?.();
+    } catch (e: any) {
+      setErroTroca(mensagemDeErro(e, "Não consegui trocar seu objetivo agora."));
+    } finally {
+      setTrocando(false);
+    }
   }
 
   if (carregando) {
@@ -528,14 +558,6 @@ export function ObjectiveScreen({
         </Card>
 
         <View style={{ gap: spacing.sm, marginTop: spacing.md, marginBottom: spacing.xl }}>
-          <Button
-            title="Ver novas metas"
-            onPress={() => {
-              setModo("resumo");
-              setVerMetas(true);
-              getCurrentGoal().then(setMetaAtual).catch(() => {});
-            }}
-          />
           <Button title="Ver dieta em PDF" variant="secondary" onPress={abrirDietaPdf} />
           <TouchableOpacity onPress={() => setModo("resumo")} style={{ alignItems: "center", paddingVertical: spacing.sm }}>
             <Text style={[type.bodySmall, { color: colors.textSecondary, fontWeight: "700" }]}>
@@ -638,56 +660,23 @@ export function ObjectiveScreen({
         ) : null}
       </Card>
 
-      {/* Atalhos — só a dieta personalizada mora aqui (a do Coaching, não uma
-          pronta). "Ver meu treino" e "Ver análise" saíram: quem quiser essas
-          informações vai direto nas abas Treino e Coaching. */}
+      {/* Atalhos — a dieta personalizada e a troca de objetivo. "Ver metas
+          nutricionais" saiu daqui: as metas já são o assunto inteiro da aba
+          Dieta (número do dia, macros, histórico), e repetir uma leitura
+          congelada delas aqui era uma segunda versão da mesma verdade. */}
       <View style={{ gap: spacing.xs, marginBottom: spacing.md }}>
         <Atalho icon="document-text" tint={colors.info} title="Ver dieta em PDF" onPress={abrirDietaPdf} />
+        <Atalho
+          icon="compass"
+          tint={colors.primary}
+          title="Alterar meu objetivo"
+          onPress={() => {
+            setErroTroca(null);
+            setObjetivoEscolhido(String(a.goal ?? ""));
+            setTrocaAberta(true);
+          }}
+        />
       </View>
-
-      {/* Metas nutricionais — só consulta. Editar é só pelo questionário
-          ("Alterar respostas" abaixo), não existe mais uma tela separada. */}
-      <Card style={{ marginBottom: spacing.md }}>
-        <TouchableOpacity
-          onPress={() => setVerMetas((v) => !v)}
-          activeOpacity={0.7}
-          style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
-        >
-          <Ionicons name="restaurant-outline" size={16} color={colors.primary} />
-          <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "700", flex: 1 }]}>
-            Ver metas nutricionais
-          </Text>
-          <Ionicons name={verMetas ? "chevron-up" : "chevron-down"} size={18} color={colors.textSecondary} />
-        </TouchableOpacity>
-
-        {verMetas ? (
-          metaAtual ? (
-            <View style={{ marginTop: spacing.sm }}>
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <Text style={[type.caption, { color: colors.textSecondary, flex: 1 }]}>
-                  {metaAtual.mode === "auto" ? "AUTOMÁTICA" : "MANUAL"}
-                </Text>
-                <Text style={[type.h2, { color: colors.textPrimary }]}>
-                  {Math.round(metaAtual.kcal)}
-                  <Text style={[type.caption, { color: colors.textSecondary }]}> kcal</Text>
-                </Text>
-              </View>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.sm }}>
-                <Pill icon="flag" text={`P ${Math.round(metaAtual.protein_g)}g`} />
-                <Pill icon="flag" text={`C ${Math.round(metaAtual.carbs_g)}g`} />
-                <Pill icon="flag" text={`G ${Math.round(metaAtual.fat_g)}g`} />
-              </View>
-              <Text style={[type.caption, { color: colors.textSecondary, marginTop: spacing.sm, lineHeight: 17 }]}>
-                Pra mudar entre automática e manual, ou ajustar os números, use "Alterar respostas" abaixo.
-              </Text>
-            </View>
-          ) : (
-            <Text style={[type.bodySmall, { color: colors.textSecondary, marginTop: spacing.sm }]}>
-              Você ainda não tem meta calórica.
-            </Text>
-          )
-        ) : null}
-      </Card>
 
       {/* Respostas do questionário — recolhido por padrão (§3.4), só consulta. */}
       <Card style={{ marginBottom: spacing.md }}>
@@ -774,6 +763,125 @@ export function ObjectiveScreen({
         confirmLabel="Descartar"
         destructive
         onConfirm={descartar}
+      />
+
+      {/* ALTERAR MEU OBJETIVO — as mesmas opções e o mesmo "?" do questionário
+          (vêm do campo `goal` do backend, então explicação é uma só nos dois
+          lugares). Modal em vez de tela navegada: é uma decisão de um toque. */}
+      <Modal
+        visible={trocaAberta}
+        transparent
+        animationType="slide"
+        onRequestClose={() => (trocando ? null : setTrocaAberta(false))}
+      >
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: colors.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: "88%" }}>
+            <View
+              style={{
+                flexDirection: "row", alignItems: "center", padding: spacing.lg,
+                borderBottomWidth: 1, borderBottomColor: colors.border,
+              }}
+            >
+              <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
+                <Text style={[type.h1, { color: colors.textPrimary, fontSize: 21 }]}>Alterar meu objetivo</Text>
+                {campoPorChave("goal")?.help ? (
+                  <HelpDot title="Os objetivos" text={campoPorChave("goal")!.help!} />
+                ) : null}
+              </View>
+              <TouchableOpacity onPress={() => setTrocaAberta(false)} disabled={trocando} hitSlop={10}>
+                <Ionicons name="close" size={26} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={{ padding: spacing.lg }} showsVerticalScrollIndicator={false}>
+              <Text style={[type.bodySmall, { color: colors.textSecondary, lineHeight: 20, marginBottom: spacing.md }]}>
+                Troco só o objetivo — o resto das suas respostas fica como está. Seu treino é remontado
+                pro objetivo novo, e a meta de calorias caminha até o alvo aos poucos, não de uma vez.
+              </Text>
+
+              {(campoPorChave("goal")?.options ?? []).map((o) => {
+                const on = objetivoEscolhido === o.value;
+                const atual = String(a.goal ?? "") === o.value;
+                return (
+                  <TouchableOpacity
+                    key={o.value}
+                    onPress={() => setObjetivoEscolhido(o.value)}
+                    disabled={trocando}
+                    activeOpacity={0.8}
+                    style={{
+                      flexDirection: "row", alignItems: "flex-start", gap: 10,
+                      borderWidth: 1.5, borderColor: on ? colors.primary : colors.border,
+                      backgroundColor: on ? colors.primary + "12" : colors.surface,
+                      borderRadius: radius.card, padding: spacing.md, marginBottom: spacing.sm,
+                    }}
+                  >
+                    <Ionicons
+                      name={on ? "radio-button-on" : "radio-button-off"}
+                      size={19}
+                      color={on ? colors.primary : colors.textSecondary}
+                      style={{ marginTop: 1 }}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <Text style={[type.body, { color: colors.textPrimary, fontWeight: on ? "800" : "600" }]}>
+                          {o.label}
+                        </Text>
+                        {atual ? (
+                          <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: radius.pill, paddingVertical: 2, paddingHorizontal: 8 }}>
+                            <Text style={[type.caption, { color: colors.textSecondary, fontWeight: "700", fontSize: 10 }]}>
+                              atual
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      {o.desc ? (
+                        <Text style={[type.caption, { color: colors.textSecondary, marginTop: 3, lineHeight: 17 }]}>
+                          {o.desc}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+
+              {erroTroca ? (
+                <Text style={[type.bodySmall, { color: colors.warning, marginTop: spacing.xs, textAlign: "center" }]}>
+                  {erroTroca}
+                </Text>
+              ) : null}
+            </ScrollView>
+
+            <View style={{ padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border }}>
+              <Button
+                title="Trocar objetivo"
+                onPress={trocarObjetivo}
+                loading={trocando}
+                disabled={!objetivoEscolhido || objetivoEscolhido === String(a.goal ?? "")}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* O que a troca fez com a meta de calorias. Sem estes números a pessoa
+          abriria a aba Dieta, veria uma meta que não é a do objetivo novo e
+          concluiria que o app errou a conta — quando na verdade ele está
+          fazendo a transição direito. */}
+      <InfoDialog
+        visible={resultadoTroca !== null}
+        onClose={() => setResultadoTroca(null)}
+        title={`Objetivo: ${resultadoTroca?.goal_label ?? ""}`}
+        message={
+          resultadoTroca
+            ? resultadoTroca.em_transicao
+              ? `Seu treino já foi remontado pro objetivo novo.\n\nA meta de calorias não pula de uma vez: ` +
+                `hoje ela vai de ${resultadoTroca.kcal_antes ?? "—"} pra ${resultadoTroca.kcal_agora} kcal, ` +
+                `e daqui a alguns dias eu dou o próximo degrau até chegar em ${resultadoTroca.kcal_alvo} kcal. ` +
+                "É assim que se troca de fase sem perder músculo nem acumular gordura à toa."
+              : `Seu treino já foi remontado pro objetivo novo, e sua meta de calorias agora é ` +
+                `${resultadoTroca.kcal_agora} kcal — a diferença era pequena, então não precisou de transição.`
+            : undefined
+        }
       />
 
       {/* Dieta personalizada — montada pelo Coaching (meta + restrições do

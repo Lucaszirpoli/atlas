@@ -71,12 +71,23 @@ export async function deleteMealCategory(id: number): Promise<void> {
   await api.delete(`/meals/categories/${id}`);
 }
 
+/** Chave de UMA tentativa de registro. Vai junto no corpo do POST, então o
+ * retry automático do axios (rede que cai depois de o servidor já ter gravado)
+ * reenvia a MESMA chave — e o backend devolve o registro que já existe em vez
+ * de criar outro. É o conserto do "às vezes o alimento salva duas vezes". */
+function chaveDeRegistro(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export async function logMeal(payload: {
   meal_category_id: number;
   logged_at: string;
   items: MealItemInput[];
 }): Promise<MealLog> {
-  const { data } = await api.post<MealLog>("/meals", payload);
+  const { data } = await api.post<MealLog>("/meals", {
+    ...payload,
+    idempotency_key: chaveDeRegistro(),
+  });
   return data;
 }
 
