@@ -395,7 +395,10 @@ def duplicate_routine(
             detail=f"Limite de {limit} rotinas ativas atingido para o plano {current_user.plan.value}.",
         )
     original = _load(db, routine_id, current_user.id)
-    copy = Routine(user_id=current_user.id, name=f"{original.name} (cópia)")
+    # A cópia é SEMPRE manual, mesmo copiando uma do coach: duplicar é
+    # justamente o caminho de "quero essa ficha pra mexer do meu jeito", e o
+    # plano do coach continua apontando pra original, não pra cópia.
+    copy = Routine(user_id=current_user.id, name=f"{original.name} (cópia)", origem="manual")
     db.add(copy)
     db.flush()
     for idx, item in enumerate(original.exercises):

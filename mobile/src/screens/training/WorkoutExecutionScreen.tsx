@@ -67,8 +67,8 @@ const SET_TYPE_ORDER = Object.keys(SET_TYPE_LABELS) as SetType[];
 const SET_LETTER_HELP_TEXT =
   "A = Aquecimento: a primeira série, bem leve (25% da carga de trabalho), só pra preparar a articulação e o músculo — não é série de esforço.\n\n" +
   "P = Feeder: a segunda série, um pouco mais pesada (50% da carga de trabalho), pra chegar afiado na primeira série de trabalho — também não conta como esforço.\n\n" +
-  "1, 2, 3... = Séries de trabalho: as séries que valem, com o peso e reps que você realmente treina.\n\n" +
-  "F = Até a falha: a última série de trabalho, levada até não dar mais pra fazer outra rep com boa forma (RIR 0).";
+  "T = Série de trabalho: as séries que valem, com o peso e reps que você realmente treina.\n\n" +
+  "F = Até a falha: série levada até não dar mais pra fazer outra rep com boa forma. Marcar RIR 0 já transforma a série em F.";
 
 // Badge da série: toque cicla entre os 4 tipos "rápidos" (normal → A → P → F).
 // As demais técnicas (drop-set, superset etc.) continuam só no "mais opções".
@@ -81,6 +81,18 @@ const QUICK_TYPE_LETTER: Partial<Record<SetType, string>> = {
 function nextQuickType(current: SetType): SetType {
   const idx = QUICK_TYPE_CYCLE.indexOf(current);
   return QUICK_TYPE_CYCLE[(idx + 1) % QUICK_TYPE_CYCLE.length] ?? "warmup";
+}
+
+/** RIR 0 É ir até a falha — não são duas informações diferentes. Escolher 0 já
+ * vira a série em "até a falha" (F vermelho) sozinho, e sair do 0 devolve ela
+ * pra série de trabalho normal. Vale em qualquer treino, do coach ou montado à
+ * mão. Só se aplica a séries de trabalho: dentro de uma técnica avançada a
+ * ativação também vai a RIR 0, mas ali o tipo é o da técnica (myo-reps,
+ * cluster...) e sobrescrever isso apagaria a prescrição. */
+function mudancaDeRir(row: SetRow, valor: string): Partial<SetRow> {
+  if (valor === "0") return { rir: valor, setType: "to_failure" };
+  if (row.setType === "to_failure") return { rir: valor, setType: "straight" };
+  return { rir: valor };
 }
 
 /** As linhas de série de UM exercício: rampa de preparação (do histórico) +
@@ -113,14 +125,18 @@ function linhasDoExercicio(
     // não precisa lembrar de marcar na hora. Rotina sem intenção (manual) cai
     // no normal.
     const isFailure = routineExercise.set_intents?.[i] === "to_failure";
+    // Mesma regra do toque na tela: RIR 0 É falha. Se o RIR sugerido pro
+    // momento do ciclo já vier 0, a série nasce marcada como F — não faria
+    // sentido pedir 0 de reserva e chamar de série reta.
+    const rir = isFailure ? "0" : String(pre?.suggested_rir ?? 2);
     return {
       // Arredonda pro input não mostrar ruído de float (54.599999… → "54.6").
       weight: previous ? String(Math.round(previous.weight_kg * 10) / 10) : "",
       reps: previous ? String(previous.reps) : "",
       completed: false,
-      setType: (isFailure ? "to_failure" : "straight") as SetType,
+      setType: (isFailure || rir === "0" ? "to_failure" : "straight") as SetType,
       rpe: "",
-      rir: isFailure ? "0" : String(pre?.suggested_rir ?? 2),
+      rir,
       showMore: false,
       previous,
       role: "work" as const,
@@ -256,6 +272,14 @@ export function WorkoutExecutionScreen() {
 
   const deload = overlays.find((o) => o.kind === "deload");
   const overlaysFor = (exerciseId: number) => overlays.filter((o) => o.exercise_id === exerciseId);
+
+  // Treino montado pelo coach = PRESCRIÇÃO FECHADA. Aqui a pessoa registra o
+  // que fez; o que a série É (tipo, técnica, quantas são) foi decidido pelo
+  // motor a partir do volume da semana e do momento do ciclo — mexer nisso na
+  // hora do treino desmonta a conta sem ninguém perceber. Então some o "mais
+  // opções" e o "+ série extra", e o aquecimento/feeder vêm fixos. Rotina que a
+  // própria pessoa montou continua editável em tudo: lá a ficha é dela.
+  const doCoach = routine.origem === "coach";
 
   const totalSets = setsByExercise.reduce((sum, rows) => sum + rows.length, 0);
   const totalCompleted = setsByExercise.reduce((sum, rows) => sum + rows.filter((s) => s.completed).length, 0);
@@ -633,13 +657,25 @@ export function WorkoutExecutionScreen() {
               {buildDisplayItems(sets).map((item) => {
                 if (item.kind === "single") {
                   const { idx, row } = item;
-                  const letter = QUICK_TYPE_LETTER[row.setType];
-                  // Numeração só conta séries de TRABALHO (sem letra) — a
-                  // rampa de aquecimento/feeder na frente não desloca "1, 2, 3...".
-                  const workNumber =
-                    sets.slice(0, idx).filter((r) => !QUICK_TYPE_LETTER[r.setType] && r.role === "work").length + 1;
-                  const badgeColor = row.setType === "to_failure" ? colors.danger : letter ? colors.warning : undefined;
+                  // A/P/F têm letra própria; a série de trabalho é "T". Antes
+                  // era "1, 2, 3…", mas o número dizia menos do que parecia: o
+                  // que importa na hora é QUE TIPO de série é aquela, e a
+                  // posição já está clara na ordem da tela.
+                  const letter = QUICK_TYPE_LETTER[row.setType] ?? "T";
+                  const badgeColor =
+                    row.setType === "to_failure"
+                      ? colors.danger
+                      : QUICK_TYPE_LETTER[row.setType]
+                      ? colors.warning
+                      : undefined;
                   const chave = `${exerciseIndex}:${idx}`;
+                  // Aquecimento e feeder do coach são conta feita (25% e 50% da
+                  // carga de trabalho, reps definidas) — vêm fixos: nem o tipo
+                  // nem as reps mudam. O kg só abre quando o coach não teve como
+                  // calcular (primeira vez no exercício, sem carga de base) —
+                  // senão a pessoa ficaria sem onde registrar o que levantou.
+                  const prepDoCoach = doCoach && row.role === "prep";
+                  const pesoTravado = prepDoCoach && row.weight !== "";
                   return (
                     <Card
                       key={idx}
@@ -652,10 +688,13 @@ export function WorkoutExecutionScreen() {
                     >
                       <View style={{ padding: spacing.sm }}>
                         <View style={{ flexDirection: "row", alignItems: "center" }}>
-                          {/* Badge da série — toque cicla normal → A (aquecimento) →
-                              P (preparatória) → F (falha) → normal. */}
+                          {/* Badge da série — toque cicla T (trabalho) → A
+                              (aquecimento) → P (preparatória) → F (falha) → T.
+                              No aquecimento/feeder do coach não cicla: aquilo
+                              já está decidido. */}
                           <TouchableOpacity
                             onPress={() => updateSet(exerciseIndex, idx, { setType: nextQuickType(row.setType) })}
+                            disabled={prepDoCoach}
                             hitSlop={8}
                             style={{
                               width: 30,
@@ -667,7 +706,7 @@ export function WorkoutExecutionScreen() {
                             }}
                           >
                             <Text style={[type.caption, { color: badgeColor ?? colors.textSecondary, fontWeight: "800" }]}>
-                              {letter ?? workNumber}
+                              {letter}
                             </Text>
                           </TouchableOpacity>
 
@@ -681,9 +720,17 @@ export function WorkoutExecutionScreen() {
                             )}
                           </View>
 
-                          <SetInput compact value={row.weight} onChangeText={(v) => updateSet(exerciseIndex, idx, { weight: v })} />
+                          {pesoTravado ? (
+                            <LockedValue text={row.weight} />
+                          ) : (
+                            <SetInput compact value={row.weight} onChangeText={(v) => updateSet(exerciseIndex, idx, { weight: v })} />
+                          )}
                           <Text style={[type.body, { color: colors.textSecondary, marginHorizontal: 4 }]}>×</Text>
-                          <SetInput compact value={row.reps} onChangeText={(v) => updateSet(exerciseIndex, idx, { reps: v })} />
+                          {prepDoCoach ? (
+                            <LockedValue text={row.reps} />
+                          ) : (
+                            <SetInput compact value={row.reps} onChangeText={(v) => updateSet(exerciseIndex, idx, { reps: v })} />
+                          )}
                           <ConfirmCheck
                             completed={row.completed}
                             saving={salvando.has(chave)}
@@ -706,25 +753,34 @@ export function WorkoutExecutionScreen() {
                         {/* RIR — sempre visível, quick-select. Não se aplica a
                             aquecimento/feeder (séries submáximas de preparação). */}
                         {row.setType !== "warmup" && row.setType !== "feeder" ? (
-                          <RirRow value={row.rir} onSelect={(v) => updateSet(exerciseIndex, idx, { rir: v })} />
+                          <RirRow
+                            value={row.rir}
+                            onSelect={(v) => updateSet(exerciseIndex, idx, mudancaDeRir(row, v))}
+                          />
                         ) : null}
 
-                        <TouchableOpacity
-                          onPress={() => updateSet(exerciseIndex, idx, { showMore: !row.showMore })}
-                          style={{ flexDirection: "row", alignItems: "center", marginTop: spacing.xs, marginLeft: 38 }}
-                        >
-                          <Text style={[type.caption, { color: colors.primary, fontWeight: "600" }]}>
-                            {row.showMore ? "Menos opções" : "Mais opções"}
-                          </Text>
-                          <Ionicons
-                            name={row.showMore ? "chevron-up" : "chevron-down"}
-                            size={13}
-                            color={colors.primary}
-                            style={{ marginLeft: 3 }}
-                          />
-                        </TouchableOpacity>
+                        {/* "Mais opções" (técnica avançada + RPE) só na rotina
+                            que a pessoa montou. No treino do coach a técnica
+                            vem prescrita e escolher outra ali seria treinar
+                            outra coisa sem o motor saber. */}
+                        {!doCoach ? (
+                          <TouchableOpacity
+                            onPress={() => updateSet(exerciseIndex, idx, { showMore: !row.showMore })}
+                            style={{ flexDirection: "row", alignItems: "center", marginTop: spacing.xs, marginLeft: 38 }}
+                          >
+                            <Text style={[type.caption, { color: colors.primary, fontWeight: "600" }]}>
+                              {row.showMore ? "Menos opções" : "Mais opções"}
+                            </Text>
+                            <Ionicons
+                              name={row.showMore ? "chevron-up" : "chevron-down"}
+                              size={13}
+                              color={colors.primary}
+                              style={{ marginLeft: 3 }}
+                            />
+                          </TouchableOpacity>
+                        ) : null}
 
-                        {row.showMore ? (
+                        {row.showMore && !doCoach ? (
                           <View style={{ marginTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm }}>
                             <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.xs }}>
                               <Text style={[type.caption, { color: colors.textSecondary }]}>Técnica avançada</Text>
@@ -952,7 +1008,13 @@ export function WorkoutExecutionScreen() {
                 );
               })}
 
-              <Button title="+ série extra" variant="ghost" onPress={() => handleAddSet(exerciseIndex)} />
+              {/* Série extra só na rotina da pessoa. No treino do coach o
+                  número de séries É a dose da semana (volume por músculo,
+                  Cap. IX) — acrescentar uma por fora estoura a conta em
+                  silêncio. Quem muda isso é o Coaching, não a tela. */}
+              {!doCoach ? (
+                <Button title="+ série extra" variant="ghost" onPress={() => handleAddSet(exerciseIndex)} />
+              ) : null}
             </View>
           );
         })}
@@ -1268,6 +1330,28 @@ function Meta({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: stri
     <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
       <Ionicons name={icon} size={14} color={colors.textSecondary} />
       <Text style={[type.caption, { color: colors.textSecondary }]}>{text}</Text>
+    </View>
+  );
+}
+
+/** Campo FIXO: mesmo formato de um SetInput compacto, mas só leitura — o valor
+ * foi calculado pelo coach (peso e reps do aquecimento/feeder) e não é palpite
+ * pra pessoa corrigir no meio do treino. Usa o mesmo desenho do campo travado
+ * das técnicas avançadas (reps do método), pra "travado" ter uma cara só. */
+function LockedValue({ text }: { text: string }) {
+  const { colors, type, radius } = useTheme();
+  return (
+    <View
+      style={{
+        width: 56,
+        height: 44,
+        borderRadius: radius.button,
+        backgroundColor: colors.primary + "18",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Text style={[type.body, { color: colors.primary, fontWeight: "800" }]}>{text || "—"}</Text>
     </View>
   );
 }

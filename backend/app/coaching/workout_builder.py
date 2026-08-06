@@ -606,7 +606,9 @@ def build_and_save(db: Session, user: User) -> dict:
         if not slots:
             continue
         nome = f"{method.name} — {s.day_label} · {s.focus}"[:100]
-        routine = Routine(user_id=user.id, name=nome)
+        # origem="coach": é o motor que está montando. A execução lê isso pra
+        # fechar a prescrição (aquecimento/feeder fixos, sem série extra).
+        routine = Routine(user_id=user.id, name=nome, origem="coach")
         db.add(routine)
         db.flush()
         da_rotina: list[RoutineExercise] = []

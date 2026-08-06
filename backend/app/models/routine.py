@@ -18,6 +18,13 @@ class Routine(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(100))
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    # De onde a rotina veio: "coach" (montada pelo motor do Coaching a partir do
+    # plano) ou "manual" (a pessoa montou, importou ou pediu no chat). Não é
+    # enfeite de tela: a execução trata as duas de formas diferentes — na do
+    # coach a prescrição é FECHADA (sem "mais opções", sem série extra,
+    # aquecimento/feeder fixos), porque quem decidiu aquilo foi o motor e mexer
+    # ali por fora desmonta a conta do volume; na manual a pessoa manda em tudo.
+    origem: Mapped[str] = mapped_column(String(10), default="manual", server_default="manual")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

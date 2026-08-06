@@ -252,7 +252,10 @@ export function WorkoutPreviewScreen() {
               {Array.from({ length: ex.target_sets }).map((_, i) => {
                 const last = pf?.sets?.[i];
                 const intent = ex.set_intents?.[i];
-                const isFailure = intent === "to_failure";
+                // RIR 0 É até a falha — mesma regra da tela de execução, senão a
+                // prévia prometeria "série de trabalho · RIR 0" e o treino
+                // abriria com F.
+                const isFailure = intent === "to_failure" || (pf?.suggested_rir ?? 2) === 0;
                 const intentLabel = isFailure ? "Até a falha · RIR 0" : `Série de trabalho · RIR ${pf?.suggested_rir ?? 2}`;
                 const intentColor = isFailure ? colors.danger : colors.textSecondary;
                 return (

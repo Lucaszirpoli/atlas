@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.exercise import ExerciseRead
 
@@ -32,6 +32,16 @@ class RoutineExerciseRead(BaseModel):
     notes: str | None
     set_intents: list[str | None] = []
 
+    @field_validator("set_intents", mode="before")
+    @classmethod
+    def _null_vira_lista(cls, v):
+        # Rotina criada ANTES de a coluna existir ficou com NULL no banco (o
+        # ALTER não backfilla). Sem isto, ler essa rotina estoura na validação
+        # da resposta e a lista de rotinas inteira volta 500 — o que é o mesmo
+        # que perder o treino. Null = sem intenção nenhuma, que é o que a
+        # rotina manual já significa.
+        return v or []
+
 
 class RoutineCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
@@ -49,5 +59,8 @@ class RoutineRead(BaseModel):
     id: int
     name: str
     is_archived: bool
+    # "coach" | "manual" — quem montou. A tela de execução usa isto pra decidir
+    # o que é editável durante o treino (ver o comentário no modelo Routine).
+    origem: str = "manual"
     exercises: list[RoutineExerciseRead]
     created_at: datetime

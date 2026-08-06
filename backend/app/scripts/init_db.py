@@ -137,6 +137,48 @@ def _ensure_routine_exercise_columns() -> None:
             conn.execute(text("ALTER TABLE routine_exercises ADD COLUMN set_intents JSON"))
 
 
+def _ensure_routine_columns() -> None:
+    """ALTER idempotente pra `routines.origem` ("coach" | "manual") — quem
+    montou a rotina. Mesma regra das outras colunas novas: select(Routine) roda
+    o tempo todo, então num banco antigo ela precisa existir antes de qualquer
+    consulta, senão o boot morre.
+
+    Faz também o BACKFILL de quem já existe: rotina antiga nasceria "manual" e
+    as fichas que o coach montou perderiam a prescrição fechada. Quem preenche
+    `set_intents` é só o montador do coach — rotina feita à mão ou importada
+    fica com `[]` —, então essa é a marca de origem confiável no que já está
+    gravado."""
+    from sqlalchemy import inspect, text
+
+    existentes = {c["name"] for c in inspect(engine).get_columns("routines")}
+    if "origem" in existentes:
+        return
+    pg = engine.dialect.name == "postgresql"
+    with engine.begin() as conn:
+        if pg:
+            conn.execute(
+                text(
+                    "ALTER TABLE routines ADD COLUMN IF NOT EXISTS origem "
+                    "VARCHAR(10) NOT NULL DEFAULT 'manual'"
+                )
+            )
+            marca = (
+                "UPDATE routines SET origem = 'coach' WHERE id IN ("
+                "SELECT routine_id FROM routine_exercises "
+                "WHERE set_intents IS NOT NULL AND set_intents::text NOT IN ('[]', 'null'))"
+            )
+        else:
+            conn.execute(
+                text("ALTER TABLE routines ADD COLUMN origem VARCHAR(10) NOT NULL DEFAULT 'manual'")
+            )
+            marca = (
+                "UPDATE routines SET origem = 'coach' WHERE id IN ("
+                "SELECT routine_id FROM routine_exercises "
+                "WHERE set_intents IS NOT NULL AND set_intents NOT IN ('[]', 'null'))"
+            )
+        conn.execute(text(marca))
+
+
 def _ensure_set_log_columns() -> None:
     """ALTER idempotente pras colunas de BLOCO em workout_set_logs (técnicas
     avançadas: myo-reps, cluster, rest-pause, drop-set). Mesma regra das
@@ -231,6 +273,10 @@ def run() -> None:
     # set_intents em routine_exercises — mesma regra (select(RoutineExercise)
     # roda o tempo todo em prod).
     _ensure_routine_exercise_columns()
+
+    # origem ("coach"/"manual") em routines — mesma regra, e com backfill de
+    # quem já existe (ver a função).
+    _ensure_routine_columns()
 
     # Blocos das técnicas avançadas em workout_set_logs — mesma regra.
     _ensure_set_log_columns()

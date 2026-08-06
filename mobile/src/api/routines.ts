@@ -22,6 +22,10 @@ export type Routine = {
   id: number;
   name: string;
   is_archived: boolean;
+  /** Quem montou: "coach" = o motor do Coaching (prescrição fechada na
+   * execução — sem "mais opções", sem série extra, aquecimento/feeder fixos);
+   * "manual" = a pessoa montou, importou ou pediu no chat, e manda em tudo. */
+  origem: "coach" | "manual";
   exercises: RoutineExercise[];
   created_at: string;
 };
