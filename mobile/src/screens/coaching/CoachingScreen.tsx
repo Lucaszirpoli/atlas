@@ -444,6 +444,7 @@ export function CoachingScreen() {
               onOpenDietModule={() => navigation.navigate("NutritionModule")}
               onOpenWeight={() => navigation.navigate("Weight")}
               onOpenSleep={() => navigation.navigate("Sleep")}
+              onOpenGuia={() => navigation.navigate("Guia")}
               onAskCoach={() => navigation.navigate("CoachChat")}
             />
           </>
@@ -593,6 +594,10 @@ function FreeHome({ navigation, user }: { navigation: any; user: ReturnType<type
     { icon: "restaurant-outline" as const, title: "Dieta", subtitle: "Refeições e água", onPress: () => navigation.navigate("NutritionModule") },
     { icon: "scale-outline" as const, title: "Peso", subtitle: "Registrar e acompanhar", onPress: () => navigation.navigate("Weight") },
     { icon: "moon-outline" as const, title: "Sono", subtitle: "Registrar suas noites", onPress: () => navigation.navigate("Sleep") },
+    // O guia também no Free — de propósito. Quem está começando é justamente
+    // quem mais precisa dele, e é lá que a pessoa vê o que o Pro faz sem
+    // precisar assinar pra descobrir.
+    { icon: "book-outline" as const, title: "Como usar", subtitle: "Guia do app, passo a passo", onPress: () => navigation.navigate("Guia") },
   ];
   return (
     <ScrollView
@@ -883,6 +888,7 @@ function CoachingHub({
   onOpenDietModule,
   onOpenWeight,
   onOpenSleep,
+  onOpenGuia,
   onAskCoach,
 }: {
   order: HomeBlockId[];
@@ -900,6 +906,7 @@ function CoachingHub({
   onOpenDietModule: () => void;
   onOpenWeight: () => void;
   onOpenSleep: () => void;
+  onOpenGuia: () => void;
   onAskCoach: () => void;
 }) {
   const { colors, type, spacing, radius } = useTheme();
@@ -1007,6 +1014,10 @@ function CoachingHub({
             },
             { icon: "scale-outline", title: "Peso", subtitle: "Registrar e evolução", onPress: onOpenWeight },
             { icon: "moon-outline", title: "Sono", subtitle: "Noites e recuperação", onPress: onOpenSleep },
+            // O guia ocupa a vaga que sobrava ao lado do Sono. Fica aqui, e não
+            // escondido em Configurações, porque quem precisa dele é quem ainda
+            // não sabe onde procurar.
+            { icon: "book-outline", title: "Como usar", subtitle: "Guia do app, passo a passo", onPress: onOpenGuia },
           ]}
         />
       </View>

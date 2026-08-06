@@ -11,6 +11,7 @@ import { ChatScreen } from "../screens/ai/ChatScreen";
 import { CoachChatScreen } from "../screens/coaching/CoachChatScreen";
 import { CoachingScreen } from "../screens/coaching/CoachingScreen";
 import { EvolutionScreen } from "../screens/evolution/EvolutionScreen";
+import { GuiaScreen } from "../screens/main/GuiaScreen";
 import { PaywallScreen } from "../screens/main/PaywallScreen";
 import { ProfileScreen } from "../screens/main/ProfileScreen";
 import { HomeLayoutScreen } from "../screens/settings/HomeLayoutScreen";
@@ -52,6 +53,7 @@ function AppStack() {
         component={HomeLayoutScreen}
         options={{ headerShown: true, title: "Layout da tela inicial" }}
       />
+      <Stack.Screen name="Guia" component={GuiaScreen} options={{ headerShown: true, title: "Como usar o Atlas" }} />
       <Stack.Screen name="Paywall" component={PaywallScreen} options={{ headerShown: true, title: "ATLAS Pro" }} />
       <Stack.Screen name="CoachChat" component={CoachChatScreen} options={{ headerShown: true, title: "Pergunte ao coach" }} />
       <Stack.Screen name="Evolution" component={EvolutionScreen} options={{ headerShown: true, title: "Evolução" }} />
