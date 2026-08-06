@@ -10,7 +10,7 @@ from app.models.exercise import Exercise
 from app.models.routine import Routine, RoutineExercise
 from app.models.user import Plan, User
 from app.schemas.routine import RoutineCreate, RoutineRead, RoutineUpdate
-from app.services import routine_service
+from app.services import routine_service, workout_service
 from app.services.routine_import import parse_csv
 
 router = APIRouter(prefix="/routines", tags=["routines"])
@@ -115,15 +115,28 @@ def _validate_exercises_exist(db: Session, payload_exercises: list) -> None:
         )
 
 
-def _load(db: Session, routine_id: int, user_id: int) -> Routine:
+def _load(db: Session, routine_id: int, user: User) -> Routine:
     routine = db.execute(
         select(Routine)
         .options(selectinload(Routine.exercises).selectinload(RoutineExercise.exercise))
         .where(Routine.id == routine_id)
     ).scalar_one_or_none()
-    if routine is None or routine.user_id != user_id:
+    if routine is None or routine.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rotina não encontrada")
-    return routine
+    return _com_semana(db, user, [routine])[0]
+
+
+def _com_semana(db: Session, user: User, rotinas: list[Routine]) -> list[Routine]:
+    """Pendura em cada rotina quantas vezes ela já foi feita NESTA semana.
+
+    Atributo comum (não coluna): o Pydantic lê por atributo, e o número é
+    calculado, não guardado — gravar isso viraria mais um dado pra manter
+    sincronizado com o histórico, que já é a fonte da verdade.
+    """
+    contagem = workout_service.completed_this_week_by_routine(db, user)
+    for r in rotinas:
+        r.feitos_na_semana = contagem.get(r.id, 0)
+    return rotinas
 
 
 def _replace_exercises(db: Session, routine: Routine, payload_exercises: list) -> None:
@@ -159,7 +172,7 @@ def list_routines(
     )
     if not include_archived:
         stmt = stmt.where(Routine.is_archived.is_(False))
-    return list(db.execute(stmt.order_by(Routine.created_at)).scalars())
+    return _com_semana(db, current_user, list(db.execute(stmt.order_by(Routine.created_at)).scalars()))
 
 
 @router.post("", response_model=RoutineRead, status_code=status.HTTP_201_CREATED)
@@ -184,7 +197,7 @@ def create_routine(
     db.flush()
     _replace_exercises(db, routine, payload.exercises)
     db.commit()
-    return _load(db, routine.id, current_user.id)
+    return _load(db, routine.id, current_user)
 
 
 class BulkExercise(BaseModel):
@@ -323,7 +336,7 @@ def get_routine(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Routine:
-    return _load(db, routine_id, current_user.id)
+    return _load(db, routine_id, current_user)
 
 
 @router.put("/{routine_id}", response_model=RoutineRead)
@@ -334,11 +347,11 @@ def update_routine(
     db: Session = Depends(get_db),
 ) -> Routine:
     _validate_exercises_exist(db, payload.exercises)
-    routine = _load(db, routine_id, current_user.id)
+    routine = _load(db, routine_id, current_user)
     routine.name = payload.name
     _replace_exercises(db, routine, payload.exercises)
     db.commit()
-    return _load(db, routine_id, current_user.id)
+    return _load(db, routine_id, current_user)
 
 
 @router.delete("/{routine_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -347,7 +360,7 @@ def delete_routine(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> None:
-    routine = _load(db, routine_id, current_user.id)
+    routine = _load(db, routine_id, current_user)
     db.delete(routine)
     db.commit()
 
@@ -358,10 +371,10 @@ def archive_routine(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Routine:
-    routine = _load(db, routine_id, current_user.id)
+    routine = _load(db, routine_id, current_user)
     routine.is_archived = True
     db.commit()
-    return _load(db, routine_id, current_user.id)
+    return _load(db, routine_id, current_user)
 
 
 @router.post("/{routine_id}/unarchive", response_model=RoutineRead)
@@ -376,10 +389,10 @@ def unarchive_routine(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Limite de {limit} rotinas ativas atingido para o plano {current_user.plan.value}.",
         )
-    routine = _load(db, routine_id, current_user.id)
+    routine = _load(db, routine_id, current_user)
     routine.is_archived = False
     db.commit()
-    return _load(db, routine_id, current_user.id)
+    return _load(db, routine_id, current_user)
 
 
 @router.post("/{routine_id}/duplicate", response_model=RoutineRead, status_code=status.HTTP_201_CREATED)
@@ -394,7 +407,7 @@ def duplicate_routine(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Limite de {limit} rotinas ativas atingido para o plano {current_user.plan.value}.",
         )
-    original = _load(db, routine_id, current_user.id)
+    original = _load(db, routine_id, current_user)
     # A cópia é SEMPRE manual, mesmo copiando uma do coach: duplicar é
     # justamente o caminho de "quero essa ficha pra mexer do meu jeito", e o
     # plano do coach continua apontando pra original, não pra cópia.
@@ -416,7 +429,7 @@ def duplicate_routine(
             )
         )
     db.commit()
-    return _load(db, copy.id, current_user.id)
+    return _load(db, copy.id, current_user)
 
 
 class SwapExerciseResult(BaseModel):
@@ -445,7 +458,7 @@ def swap_routine_exercise(
     Mexe na rotina-molde de propósito. É o que "trocar exercício" significa antes
     de treinar; overlay de sessão é outra coisa (ver coaching/apply/action).
     """
-    routine = _load(db, routine_id, current_user.id)
+    routine = _load(db, routine_id, current_user)
     alvo = next((re for re in routine.exercises if re.id == routine_exercise_id), None)
     if alvo is None:
         raise HTTPException(
@@ -470,5 +483,5 @@ def swap_routine_exercise(
         exercicio_anterior=anterior.name,
         exercicio_novo=substituto.name,
         motivo=motivo,
-        routine=RoutineRead.model_validate(_load(db, routine_id, current_user.id)),
+        routine=RoutineRead.model_validate(_load(db, routine_id, current_user)),
     )

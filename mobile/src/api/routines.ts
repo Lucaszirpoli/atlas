@@ -26,6 +26,10 @@ export type Routine = {
    * execução — sem "mais opções", sem série extra, aquecimento/feeder fixos);
    * "manual" = a pessoa montou, importou ou pediu no chat, e manda em tudo. */
   origem: "coach" | "manual";
+  /** Quantas vezes ESTA rotina já foi concluída na semana atual (semana da
+   * pessoa, começando no domingo). 0 = ainda não treinou. É o que faz o botão
+   * "Treinar agora" virar "Você já treinou essa semana". */
+  feitos_na_semana: number;
   exercises: RoutineExercise[];
   created_at: string;
 };

@@ -62,5 +62,10 @@ class RoutineRead(BaseModel):
     # "coach" | "manual" — quem montou. A tela de execução usa isto pra decidir
     # o que é editável durante o treino (ver o comentário no modelo Routine).
     origem: str = "manual"
+    # Quantas vezes ESTA rotina já foi concluída na semana-calendário atual (a
+    # semana da pessoa, começando no domingo). 0 = ainda não treinou. A aba
+    # Treino troca o botão por causa disto — repetir um treino é permitido, mas
+    # não é o plano, e a pessoa merece saber antes, não depois.
+    feitos_na_semana: int = 0
     exercises: list[RoutineExerciseRead]
     created_at: datetime

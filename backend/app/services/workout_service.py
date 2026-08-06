@@ -19,6 +19,51 @@ def _aware(dt: datetime | None) -> datetime | None:
     return dt
 
 
+def week_start_utc(user: User, now: datetime | None = None) -> datetime:
+    """Início da SEMANA-calendário (domingo 00:00) no fuso da pessoa, em UTC.
+
+    Mesma definição que o check-in semanal do Coaching usa e que o app desenha
+    (D S T Q Q S S) — semana de verdade, não janela móvel de 7 dias. Duas
+    definições diferentes de "esta semana" no mesmo produto seria pior que
+    nenhuma: o coach diria que a semana fechou e a aba Treino ainda estaria
+    contando o treino de domingo passado.
+    """
+    from datetime import timedelta
+
+    from app.core.usertime import profile_tz
+
+    tz = profile_tz(getattr(user, "profile", None))
+    local = (now or datetime.now(timezone.utc)).astimezone(tz)
+    dias_desde_domingo = (local.weekday() + 1) % 7  # seg=0..dom=6 -> domingo=0
+    inicio = (local - timedelta(days=dias_desde_domingo)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    return inicio.astimezone(timezone.utc)
+
+
+def completed_this_week_by_routine(db: Session, user: User) -> dict[int, int]:
+    """Quantas vezes cada rotina foi CONCLUÍDA nesta semana. É o que deixa a aba
+    Treino avisar "você já treinou este treino nesta semana" antes de a pessoa
+    repetir sem querer — o volume da semana é planejado por músculo, e um treino
+    a mais entra como volume acima do planejado.
+
+    Só sessão CONCLUÍDA conta: uma que foi aberta e descartada não é treino
+    feito, e contá-la faria o app afirmar algo que não aconteceu.
+    """
+    inicio = week_start_utc(user)
+    linhas = db.execute(
+        select(WorkoutSession.routine_id, func.count(WorkoutSession.id))
+        .where(
+            WorkoutSession.user_id == user.id,
+            WorkoutSession.routine_id.is_not(None),
+            WorkoutSession.completed_at.is_not(None),
+            WorkoutSession.started_at >= inicio,
+        )
+        .group_by(WorkoutSession.routine_id)
+    ).all()
+    return {int(rid): int(n) for rid, n in linhas if rid is not None}
+
+
 def _inherited_source(db: Session, user_id: int, exercise_id: int) -> int | None:
     """Exercício de onde este herda histórico, quando a pessoa trocou de
     exercício e escolheu MANTER os registros (spec §8.1). Segue a cadeia (A->B->C)

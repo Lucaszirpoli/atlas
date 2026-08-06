@@ -31,6 +31,12 @@ import { useActiveWorkout } from "../../context/ActiveWorkoutContext";
 import { useTheme } from "../../theme/ThemeProvider";
 import { fmtKg } from "../../utils/format";
 import { mensagemDeErro } from "../../utils/errorMessage";
+import {
+  AVISO_REPETIR_CONFIRMAR,
+  AVISO_REPETIR_TITULO,
+  avisoRepetirMensagem,
+  tituloJaTreinou,
+} from "./repetirTreino";
 
 const SET_TYPES_HELP_TEXT =
   "Aquecimento: a primeira série, bem leve (25% da carga de trabalho), só pra preparar a articulação e o músculo — não é série de esforço.\n\n" +
@@ -59,6 +65,18 @@ export function WorkoutPreviewScreen() {
   const [trocando, setTrocando] = useState<RoutineExercise | null>(null);
   const [emTroca, setEmTroca] = useState<number | null>(null);
   const [resultadoTroca, setResultadoTroca] = useState<{ titulo: string; texto: string } | null>(null);
+  // Aviso de "já fiz este treino nesta semana" — o mesmo da lista de rotinas.
+  const [avisoRepetir, setAvisoRepetir] = useState(false);
+
+  const jaFezNaSemana = routine?.feitos_na_semana ?? 0;
+
+  function handlePressTreinar() {
+    if (jaFezNaSemana > 0) {
+      setAvisoRepetir(true);
+      return;
+    }
+    handleStart();
+  }
 
   useEffect(() => {
     Promise.all([getRoutine(routineId), getWorkoutPreview(routineId)])
@@ -307,8 +325,29 @@ export function WorkoutPreviewScreen() {
           backgroundColor: colors.bg,
         }}
       >
-        <Button title="Treinar agora" onPress={handleStart} loading={starting} />
+        <Button
+          title={jaFezNaSemana > 0 ? tituloJaTreinou(jaFezNaSemana) : "Treinar agora"}
+          variant={jaFezNaSemana > 0 ? "secondary" : "primary"}
+          onPress={handlePressTreinar}
+          loading={starting}
+        />
       </View>
+
+      <ConfirmDialog
+        visible={avisoRepetir}
+        onClose={() => setAvisoRepetir(false)}
+        title={AVISO_REPETIR_TITULO}
+        message={
+          routine
+            ? avisoRepetirMensagem(routine.name, jaFezNaSemana, routine.origem === "coach")
+            : undefined
+        }
+        confirmLabel={AVISO_REPETIR_CONFIRMAR}
+        onConfirm={() => {
+          setAvisoRepetir(false);
+          handleStart();
+        }}
+      />
 
       <ConfirmDialog
         visible={trocando !== null}

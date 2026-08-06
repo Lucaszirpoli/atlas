@@ -19,6 +19,12 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { useActiveWorkout } from "../../context/ActiveWorkoutContext";
 import { useTheme } from "../../theme/ThemeProvider";
 import { mensagemDeErro } from "../../utils/errorMessage";
+import {
+  AVISO_REPETIR_CONFIRMAR,
+  AVISO_REPETIR_TITULO,
+  avisoRepetirMensagem,
+  tituloJaTreinou,
+} from "./repetirTreino";
 
 export function RoutineListScreen() {
   const { colors, type, spacing, radius } = useTheme();
@@ -71,6 +77,19 @@ export function RoutineListScreen() {
   // treino. `iniciando` resolve as duas coisas: mostra que está carregando e
   // trava o botão até terminar.
   const [iniciando, setIniciando] = useState<number | null>(null);
+
+  // Rotina que a pessoa tocou já tendo treinado nesta semana: o toque abre o
+  // aviso em vez de iniciar direto. Confirmar segue pro treino normalmente —
+  // isto informa, não bloqueia.
+  const [repetindo, setRepetindo] = useState<Routine | null>(null);
+
+  function handlePressTreinar(routine: Routine) {
+    if (routine.feitos_na_semana > 0) {
+      setRepetindo(routine);
+      return;
+    }
+    handleStart(routine);
+  }
 
   async function handleStart(routine: Routine) {
     if (iniciando !== null) return;
@@ -241,9 +260,13 @@ export function RoutineListScreen() {
                   <MetaInfo icon="repeat" text={`${totalSets} séries`} />
                 </View>
               </TouchableOpacity>
+              {/* Já treinou este treino nesta semana: o botão DIZ isso em vez
+                  de convidar pra repetir sem contexto. Continua clicável — a
+                  decisão é da pessoa, o app só não finge que está tudo igual. */}
               <Button
-                title="Treinar agora"
-                onPress={() => handleStart(item)}
+                title={item.feitos_na_semana > 0 ? tituloJaTreinou(item.feitos_na_semana) : "Treinar agora"}
+                variant={item.feitos_na_semana > 0 ? "secondary" : "primary"}
+                onPress={() => handlePressTreinar(item)}
                 loading={iniciando === item.id}
                 disabled={iniciando !== null && iniciando !== item.id}
               />
@@ -305,6 +328,22 @@ export function RoutineListScreen() {
         onClose={() => setOptionsRoutine(null)}
         title={optionsRoutine?.name}
         options={routineOptions}
+      />
+      <ConfirmDialog
+        visible={repetindo != null}
+        onClose={() => setRepetindo(null)}
+        title={AVISO_REPETIR_TITULO}
+        message={
+          repetindo
+            ? avisoRepetirMensagem(repetindo.name, repetindo.feitos_na_semana, repetindo.origem === "coach")
+            : undefined
+        }
+        confirmLabel={AVISO_REPETIR_CONFIRMAR}
+        onConfirm={() => {
+          const alvo = repetindo;
+          setRepetindo(null);
+          if (alvo) handleStart(alvo);
+        }}
       />
       <ConfirmDialog
         visible={deleteTarget != null}
