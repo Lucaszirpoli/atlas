@@ -783,7 +783,9 @@ export function ObjectiveScreen({
               }}
             >
               <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
-                <Text style={[type.h1, { color: colors.textPrimary, fontSize: 21 }]}>Alterar meu objetivo</Text>
+                <Text style={[type.h1, { color: colors.textPrimary, fontSize: 21, flexShrink: 1 }]}>
+                  Alterar meu objetivo
+                </Text>
                 {campoPorChave("goal")?.help ? (
                   <HelpDot title="Os objetivos" text={campoPorChave("goal")!.help!} />
                 ) : null}

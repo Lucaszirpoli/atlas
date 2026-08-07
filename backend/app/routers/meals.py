@@ -243,6 +243,20 @@ def update_meal_item(
     return item
 
 
+@router.delete("/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_meal_item(
+    item_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """Apaga UM alimento do diário, deixando os outros da mesma refeição
+    intactos. Rota separada de `delete_meal_log`: essa apaga a refeição
+    inteira, esta apaga só um item dela."""
+    ok = meal_service.delete_meal_item(db, current_user.id, item_id)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item não encontrado")
+
+
 @router.delete("/{meal_log_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_meal_log(
     meal_log_id: int,

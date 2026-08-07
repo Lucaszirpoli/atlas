@@ -84,7 +84,7 @@ export function CoachingProgress({
             naJanela(
               logs
                 .map((l) => ({
-                  x: tsDoDia(l.sleep_at),
+                  x: tsDoDia(l.wake_at),
                   y: (new Date(l.wake_at).getTime() - new Date(l.sleep_at).getTime()) / 3600000,
                 }))
                 .filter((p) => p.y > 0 && p.y < 24)

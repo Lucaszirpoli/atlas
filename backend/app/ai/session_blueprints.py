@@ -397,6 +397,16 @@ def blueprint_for(focus: str) -> list[SlotSpec]:
     return BLUEPRINTS.get(focus, FULL_BODY_A)
 
 
+def _e_bonus(vaga: SlotSpec) -> bool:
+    """Abdômen é BÔNUS: entra além da contagem de exercícios por dia (e, por
+    consequência, de séries semanais), nunca ocupando a vaga que seria de outro
+    músculo nem sendo cortado pra abrir espaço. É o mesmo motivo mecânico do
+    piso de frequência (`_PISO_PROPRIO`) — o core já trabalha isometricamente em
+    todo composto em pé/com carga axial —, levado ao extremo: já que ele quase
+    não compete por tempo de sessão, ele não devia competir por VAGA nenhuma."""
+    return vaga.muscle is MuscleGroup.ABS
+
+
 def fit_to_target(
     blueprint: list[SlotSpec], target: int | None, *, protegidas: frozenset[int] = frozenset()
 ) -> list[SlotSpec]:
@@ -419,20 +429,26 @@ def fit_to_target(
     terminar o treino. Nesse caso o que sobra é o começo do treino, que é a
     escolha certa.
 
-    Alvo maior que o blueprint não acrescenta vaga aqui: quem faz o treino
-    crescer é o volume semanal (workout_builder.add_accessory_slot), que sabe
-    QUAL músculo está devendo série.
+    ABDÔMEN NÃO CONTA NO ALVO (ver `_e_bonus`): a vaga de abdômen nunca é
+    cortada e nunca ocupa espaço do alvo — ela é somada por cima, como um
+    extra. Alvo maior que o blueprint (descontado o abdômen) não acrescenta
+    vaga aqui: quem faz o treino crescer é o volume semanal
+    (workout_builder.add_accessory_slot), que sabe QUAL músculo está devendo
+    série.
     """
-    if target is None or target >= len(blueprint):
+    contadas = [s for s in blueprint if not _e_bonus(s)]
+    if target is None or target >= len(contadas):
         return list(blueprint)
     alvo = max(1, target)
     cortadas: set[int] = set()
+    restantes_contadas = len(contadas)
     for i in _fila_de_corte(blueprint):
-        if len(blueprint) - len(cortadas) <= alvo:
+        if restantes_contadas <= alvo:
             break
-        if i == 0 or i in protegidas:
-            continue  # o composto prioritário e todo ponto fraco nunca saem
+        if i == 0 or i in protegidas or _e_bonus(blueprint[i]):
+            continue  # o composto prioritário, todo ponto fraco e o abdômen nunca saem
         cortadas.add(i)
+        restantes_contadas -= 1
     return [s for i, s in enumerate(blueprint) if i not in cortadas]
 
 
@@ -508,6 +524,10 @@ def fit_week_to_target(
     músculo que aparece 1× na divisão escolhida tem piso 1, não 2, porque o corte
     não pode ser cobrado por uma vaga que nunca existiu.
 
+    ABDÔMEN NÃO ENTRA NA CONTA (ver `_e_bonus`): o alvo por sessão é medido só
+    nas vagas que não são bônus, e a vaga de abdômen nunca é candidata a corte —
+    ela é somada por cima do que o tempo da sessão comporta.
+
     Quando o alvo não cabe respeitando o piso, ele CEDE em degraus, e nunca o
     alvo: tempo é restrição física, e entregar 8 exercícios pra quem tem tempo de
     5 só faz a pessoa não terminar o treino. Os degraus, do mais pro menos
@@ -574,7 +594,8 @@ def fit_week_to_target(
 
     filas = [_fila_de_corte(b) for b in blueprints]
     cortadas: list[set[int]] = [set() for _ in blueprints]
-    faltam = [max(0, len(b) - alvo) for b in blueprints]
+    # O alvo é medido só nas vagas que NÃO são bônus (abdômen) — ver `_e_bonus`.
+    faltam = [max(0, sum(1 for s in b if not _e_bonus(s)) - alvo) for b in blueprints]
 
     def pode_cortar(vaga: SlotSpec, degrau: int) -> bool:
         if degrau <= 1 and contagem[vaga.muscle] - 1 < piso[vaga.muscle]:
@@ -599,9 +620,10 @@ def fit_week_to_target(
                 if not faltam[d]:
                     continue
                 for i in filas[d]:
-                    # A vaga que ABRE o dia e todo ponto fraco marcado seguem
-                    # intocáveis, como em `fit_to_target`.
-                    if i == 0 or i in protegidas[d] or i in cortadas[d]:
+                    # A vaga que ABRE o dia, todo ponto fraco marcado e o
+                    # abdômen (bônus, ver `_e_bonus`) seguem intocáveis, como em
+                    # `fit_to_target`.
+                    if i == 0 or i in protegidas[d] or i in cortadas[d] or _e_bonus(blueprint[i]):
                         continue
                     vaga = blueprint[i]
                     if not pode_cortar(vaga, degrau):

@@ -15,7 +15,7 @@ import {
 import { getCurrentGoal, type CalorieGoal } from "../../api/goals";
 import {
   createSavedMeal,
-  deleteMealLog,
+  deleteMealItem,
   listMealCategories,
   listMealsForDay,
   listNutritionDays,
@@ -78,12 +78,7 @@ export function DiaryScreen() {
   const [editing, setEditing] = useState<MealLogItem | null>(null);
   const [editQty, setEditQty] = useState<QuantityValue>({ quantity_g: 100, unit_label: null, unit_amount: null });
   const [savingEdit, setSavingEdit] = useState(false);
-  // itemCount = quantos alimentos aquele registro tem. O backend só apaga a
-  // REFEIÇÃO inteira (não item a item), então a confirmação precisa dizer isso
-  // quando o registro tem mais de um alimento.
-  const [deleteTarget, setDeleteTarget] = useState<
-    { mealLogId: number; foodName: string; itemCount: number } | null
-  >(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ itemId: number; foodName: string } | null>(null);
   // "Salvar o dia inteiro como dieta": junta tudo que foi comido hoje num
   // modelo reutilizável (um SavedMeal), que reaparece em "Suas receitas".
   const [savingDay, setSavingDay] = useState(false);
@@ -191,7 +186,7 @@ export function DiaryScreen() {
 
   async function confirmDeleteFood() {
     if (!deleteTarget) return;
-    await deleteMealLog(deleteTarget.mealLogId);
+    await deleteMealItem(deleteTarget.itemId);
     setDeleteTarget(null);
     loadAll();
   }
@@ -531,7 +526,7 @@ export function DiaryScreen() {
 
                 {isOpen ? (
                   <View style={{ paddingHorizontal: spacing.md, paddingBottom: spacing.sm }}>
-                    {categoryItems.map(({ item, mealLogId }) => (
+                    {categoryItems.map(({ item }) => (
                       <View
                         key={item.id}
                         style={{
@@ -559,13 +554,7 @@ export function DiaryScreen() {
                           <Ionicons name="create-outline" size={16} color={colors.textSecondary} />
                         </TouchableOpacity>
                         <TouchableOpacity
-                          onPress={() =>
-                            setDeleteTarget({
-                              mealLogId,
-                              foodName: item.food.name,
-                              itemCount: meals.find((m) => m.id === mealLogId)?.items.length ?? 1,
-                            })
-                          }
+                          onPress={() => setDeleteTarget({ itemId: item.id, foodName: item.food.name })}
                           hitSlop={8}
                           style={{ marginLeft: spacing.md }}
                         >
@@ -619,14 +608,8 @@ export function DiaryScreen() {
       <ConfirmDialog
         visible={deleteTarget !== null}
         onClose={() => setDeleteTarget(null)}
-        title={deleteTarget && deleteTarget.itemCount > 1 ? "Remover esta refeição" : "Remover alimento"}
-        message={
-          deleteTarget
-            ? deleteTarget.itemCount > 1
-              ? `Este registro tem ${deleteTarget.itemCount} alimentos (incluindo "${deleteTarget.foodName}") e será removido inteiro do seu diário.`
-              : `Remover "${deleteTarget.foodName}" do seu diário?`
-            : undefined
-        }
+        title="Remover alimento"
+        message={deleteTarget ? `Remover "${deleteTarget.foodName}" do seu diário?` : undefined}
         confirmLabel="Remover"
         destructive
         onConfirm={confirmDeleteFood}

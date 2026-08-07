@@ -8,6 +8,7 @@ class WeightLogCreate(BaseModel):
     # distorceriam o gráfico de evolução. Alinhado ao onboarding.
     weight_kg: float = Field(ge=25, le=400)
     recorded_at: datetime | None = None
+    idempotency_key: str | None = None
 
 
 class WeightLogRead(BaseModel):

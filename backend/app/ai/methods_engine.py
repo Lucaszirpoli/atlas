@@ -702,21 +702,28 @@ def add_accessory_slot(
         # prioridade e recebe zero exercício dele, que é o oposto de priorizar.
         return permitir_musculo_novo or any(sl.muscle_group == muscle.value for sl in s.slots)
 
+    # ABDÔMEN É BÔNUS (ver session_blueprints._e_bonus): a vaga dele não conta
+    # no teto de exercícios da sessão nem ocupa o lugar de outro músculo no
+    # teto — nem quando é abdômen quem está entrando, nem quando é outro
+    # músculo entrando numa sessão que já tem abdômen.
+    def _vagas_contadas(s: PlannedSession) -> int:
+        return sum(1 for sl in s.slots if sl.muscle_group != MuscleGroup.ABS.value)
+
     if session is not None:
         # Quem chama já sabe QUAL dia precisa da vaga (o reforço de sessão curta,
         # que está consertando um dia específico, não procurando onde caberia
         # mais volume). O dia continua tendo que treinar o músculo: acessório em
         # dia que não é dele não é volume, é exercício solto.
-        if len(session.slots) >= max_per_session or not ja_treina(session):
+        if _vagas_contadas(session) >= max_per_session or not ja_treina(session):
             return None
         sessao = session
     else:
         candidatas = [
-            s for s in plan.sessions if len(s.slots) < max_per_session and ja_treina(s)
+            s for s in plan.sessions if _vagas_contadas(s) < max_per_session and ja_treina(s)
         ]
         if not candidatas:
             return None
-        sessao = min(candidatas, key=lambda s: len(s.slots))
+        sessao = min(candidatas, key=lambda s: _vagas_contadas(s))
 
     from collections import Counter
 
@@ -877,7 +884,12 @@ def drop_surplus_slot(
 
     candidatas: list[tuple[tuple, PlannedSession, int]] = []
     for sessao in plan.sessions:
-        if len(sessao.slots) <= min_por_sessao:
+        # Abdômen é BÔNUS (ver session_blueprints._e_bonus) e não conta pro piso
+        # de "treino inteiro" — sem isto, uma sessão com 4 vagas reais + 1
+        # abdômen (5 no total) ficava protegida como se já tivesse 5 vagas de
+        # verdade, e o excesso de outro músculo não podia mais ser tirado dela.
+        vagas_reais = sum(1 for sl in sessao.slots if sl.muscle_group != MuscleGroup.ABS.value)
+        if vagas_reais <= min_por_sessao:
             continue
         for i, sl in enumerate(sessao.slots):
             if sl.muscle_group != muscle.value or i == 0:

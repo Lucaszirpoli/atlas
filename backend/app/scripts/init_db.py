@@ -203,6 +203,51 @@ def _ensure_meal_log_columns() -> None:
             ))
 
 
+def _ensure_weight_log_columns() -> None:
+    """ALTER idempotente pra `weight_logs.idempotency_key` — mesmo motivo de
+    `_ensure_meal_log_columns`: sem a coluna num banco antigo, select(WeightLog)
+    quebra o boot; sem a chave, o retry de rede duplicava o registro de peso."""
+    from sqlalchemy import inspect, text
+
+    existentes = {c["name"] for c in inspect(engine).get_columns("weight_logs")}
+    if "idempotency_key" in existentes:
+        return
+    pg = engine.dialect.name == "postgresql"
+    with engine.begin() as conn:
+        if pg:
+            conn.execute(text("ALTER TABLE weight_logs ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(64)"))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_weight_logs_idempotency_key ON weight_logs (idempotency_key)"
+            ))
+        else:
+            conn.execute(text("ALTER TABLE weight_logs ADD COLUMN idempotency_key VARCHAR(64)"))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_weight_logs_idempotency_key ON weight_logs (idempotency_key)"
+            ))
+
+
+def _ensure_sleep_log_columns() -> None:
+    """ALTER idempotente pra `sleep_logs.idempotency_key` — mesma regra de
+    `_ensure_weight_log_columns`, pro registro de sono."""
+    from sqlalchemy import inspect, text
+
+    existentes = {c["name"] for c in inspect(engine).get_columns("sleep_logs")}
+    if "idempotency_key" in existentes:
+        return
+    pg = engine.dialect.name == "postgresql"
+    with engine.begin() as conn:
+        if pg:
+            conn.execute(text("ALTER TABLE sleep_logs ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(64)"))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_sleep_logs_idempotency_key ON sleep_logs (idempotency_key)"
+            ))
+        else:
+            conn.execute(text("ALTER TABLE sleep_logs ADD COLUMN idempotency_key VARCHAR(64)"))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_sleep_logs_idempotency_key ON sleep_logs (idempotency_key)"
+            ))
+
+
 def _ensure_set_log_columns() -> None:
     """ALTER idempotente pras colunas de BLOCO em workout_set_logs (técnicas
     avançadas: myo-reps, cluster, rest-pause, drop-set). Mesma regra das
@@ -304,6 +349,11 @@ def run() -> None:
 
     # idempotency_key em meal_logs (anti-duplicata do registro de refeição).
     _ensure_meal_log_columns()
+
+    # idempotency_key em weight_logs/sleep_logs (mesma anti-duplicata, agora
+    # também pro registro de peso e de sono).
+    _ensure_weight_log_columns()
+    _ensure_sleep_log_columns()
 
     # Blocos das técnicas avançadas em workout_set_logs — mesma regra.
     _ensure_set_log_columns()

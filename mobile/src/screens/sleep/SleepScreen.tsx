@@ -38,6 +38,14 @@ function parseTimes(sleepHHMM: string, wakeHHMM: string): { sleepAt: Date; wakeA
   return { sleepAt, wakeAt };
 }
 
+/** "YYYY-MM-DD" -> "sex., 7" etc. Monta a Date com os componentes locais
+ * (não `new Date(string)`, que interpreta "YYYY-MM-DD" como meia-noite UTC e
+ * podia voltar um dia pro fuso do Brasil). */
+function formatLogDate(logDate: string): string {
+  const [y, m, d] = logDate.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("pt-BR", { weekday: "short", day: "numeric" });
+}
+
 export function SleepScreen() {
   const { colors, type, spacing, radius } = useTheme();
   const insets = useSafeAreaInsets();
@@ -197,7 +205,7 @@ export function SleepScreen() {
               <View key={log.id} style={{ marginTop: i === 0 ? 0 : spacing.md }}>
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
                   <Text style={[type.bodySmall, { color: colors.textPrimary, fontWeight: "600" }]}>
-                    {new Date(log.sleep_at).toLocaleDateString("pt-BR", { weekday: "short", day: "numeric" })}
+                    {formatLogDate(log.log_date)}
                   </Text>
                   <View style={{ flexDirection: "row", alignItems: "center" }}>
                     <Text style={[type.bodySmall, { color: colors.textSecondary, marginRight: spacing.sm }]}>

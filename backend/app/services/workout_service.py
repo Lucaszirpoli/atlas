@@ -9,7 +9,7 @@ from app.models.coaching_action import CoachingAction
 from app.models.exercise import Exercise
 from app.models.routine import Routine
 from app.models.user import User
-from app.models.workout_session import WorkoutSession, WorkoutSetLog
+from app.models.workout_session import SetType, WorkoutSession, WorkoutSetLog
 
 
 def _aware(dt: datetime | None) -> datetime | None:
@@ -108,6 +108,14 @@ def _last_performance_raw(db: Session, user_id: int, exercise_id: int) -> dict |
                 # Mini-set de técnica avançada não serve de referência de carga
                 # pra próxima vez — um bloco de 2 reps não é a série de trabalho.
                 (WorkoutSetLog.block_index.is_(None)) | (WorkoutSetLog.block_index == 0),
+                # Aquecimento/feeder NÃO entram aqui: essa lista é consumida por
+                # posição (pf.sets[i] = série de trabalho i, nas telas de
+                # execução/prévia). Como aquecimento e feeder são logados com
+                # set_number menor que o das séries de trabalho, deixá-los aqui
+                # empurrava tudo um lugar pra frente — a série de trabalho 1
+                # mostrava o peso do AQUECIMENTO, a 2 mostrava o do FEEDER, e a
+                # verdadeira carga de trabalho/falha sumia da tela.
+                WorkoutSetLog.set_type.notin_([SetType.WARMUP, SetType.FEEDER]),
             )
             .order_by(WorkoutSetLog.set_number)
         ).scalars()

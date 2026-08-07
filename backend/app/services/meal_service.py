@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.food import Food
@@ -108,3 +108,31 @@ def update_meal_item(
     db.commit()
     db.refresh(item)
     return item
+
+
+def delete_meal_item(db: Session, user_id: int, item_id: int) -> bool:
+    """Remove UM alimento da refeição, sem mexer nos outros. Antes disso não
+    existia — o único delete era o da refeição inteira (`MealLog`), e o "x" ao
+    lado de um alimento no diário acabava apagando os outros alimentos
+    registrados junto dele, que foi o bug relatado ("excluí um alimento da
+    janta e excluiu todos os outros"). Se era o último item, a refeição
+    (agora vazia) some junto — não faz sentido um registro sem nenhum
+    alimento dentro."""
+    item = db.get(MealLogItem, item_id)
+    if item is None:
+        return False
+    meal_log = db.get(MealLog, item.meal_log_id)
+    if meal_log is None or meal_log.user_id != user_id:
+        return False
+
+    db.delete(item)
+    db.flush()
+
+    restantes = db.execute(
+        select(func.count()).select_from(MealLogItem).where(MealLogItem.meal_log_id == meal_log.id)
+    ).scalar_one()
+    if restantes == 0:
+        db.delete(meal_log)
+
+    db.commit()
+    return True

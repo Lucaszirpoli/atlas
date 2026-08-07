@@ -126,6 +126,12 @@ export async function deleteMealLog(id: number): Promise<void> {
   await api.delete(`/meals/${id}`);
 }
 
+/** Apaga UM alimento do diário, sem mexer nos outros da mesma refeição.
+ * Diferente de `deleteMealLog`, que apaga o registro inteiro. */
+export async function deleteMealItem(itemId: number): Promise<void> {
+  await api.delete(`/meals/items/${itemId}`);
+}
+
 /** Veredito do sistema sobre um dia alimentar: dá pra usar nas médias ou o
  * registro ficou pela metade? (spec §10.2/§10.3) */
 export type NutritionDay = {

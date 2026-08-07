@@ -506,10 +506,14 @@ def build_and_save(db: Session, user: User) -> dict:
     # protege da fadiga inútil, continua valendo.
     for sessao in plan.sessions:
         for _ in range(training_brain.MIN_EXERCISES_PER_SESSION):
-            if len(sessao.slots) >= training_brain.MIN_EXERCISES_PER_SESSION:
+            # Abdômen é BÔNUS (ver session_blueprints._e_bonus): não conta pro
+            # piso de "treino inteiro" nem é candidato aqui — acrescentar mais
+            # abdômen não torna a sessão menos pela metade, só infla o bônus.
+            vagas_reais = sum(1 for sl in sessao.slots if sl.muscle_group != MuscleGroup.ABS.value)
+            if vagas_reais >= training_brain.MIN_EXERCISES_PER_SESSION:
                 break
             do_dia = {sl.muscle_group for sl in sessao.slots}
-            candidatos = [m for m in musculos if m.value in do_dia]
+            candidatos = [m for m in musculos if m.value in do_dia and m is not MuscleGroup.ABS]
             if not candidatos:
                 break
 

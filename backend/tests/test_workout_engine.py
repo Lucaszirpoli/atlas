@@ -218,7 +218,11 @@ def test_plano_entregue_e_coerente(db, dias, alvo):
 
 
 def test_recorte_corta_o_acessorio_antes_do_essencial():
-    """Com o alvo real mais apertado (5 = sessão curta), o que sai é acessório."""
+    """Com o alvo real mais apertado (5 = sessão curta), o que sai é acessório.
+
+    Abdômen é BÔNUS (session_blueprints._e_bonus): a vaga dele nunca é cortada e
+    nunca conta no alvo — por isso o recorte pode sair com 1 exercício A MAIS
+    que o alvo quando o blueprint tem abdômen."""
     for foco, blueprint in bp.BLUEPRINTS.items():
         recortado = bp.fit_to_target(blueprint, 5)
         essenciais_antes = sum(1 for s in blueprint if s.priority == 1)
@@ -226,7 +230,19 @@ def test_recorte_corta_o_acessorio_antes_do_essencial():
         # só perde essencial se o blueprint tiver mais essenciais que o alvo
         perda_aceitavel = max(0, essenciais_antes - 5)
         assert essenciais_antes - essenciais_depois <= perda_aceitavel, foco
-        assert len(recortado) == min(5, len(blueprint)), foco
+        contadas = [s for s in blueprint if s.muscle is not M.ABS]
+        bonus = len(blueprint) - len(contadas)
+        assert len(recortado) == min(5, len(contadas)) + bonus, foco
+
+
+def test_recorte_nunca_corta_abdomen():
+    """Abdômen é bônus: sobrevive a qualquer recorte, mesmo o mais apertado."""
+    for foco, blueprint in bp.BLUEPRINTS.items():
+        tem_abdomen = any(s.muscle is M.ABS for s in blueprint)
+        if not tem_abdomen:
+            continue
+        recortado = bp.fit_to_target(blueprint, 1)
+        assert any(s.muscle is M.ABS for s in recortado), foco
 
 
 def test_recorte_agressivo_preserva_a_abertura_do_treino():
@@ -235,11 +251,16 @@ def test_recorte_agressivo_preserva_a_abertura_do_treino():
     Quem abre é o composto prioritário na maioria dos dias e a vaga de prioridade
     no dia de membros (onde o braço — o motivo da divisão Torso/Limbs existir —
     abre o treino descansado). As duas são aberturas legítimas; o que o recorte
-    não pode fazer é entregar um dia que começa por um acessório."""
+    não pode fazer é entregar um dia que começa por um acessório.
+
+    O abdômen (bônus) some da comparação de igualdade porque ele sobrevive ao
+    recorte por definição (ver `test_recorte_nunca_corta_abdomen`) — aqui o que
+    importa é que, TIRANDO o bônus, só a vaga de abertura fica."""
     for foco, blueprint in bp.BLUEPRINTS.items():
         recortado = bp.fit_to_target(blueprint, 1)
-        assert recortado == [blueprint[0]], foco
-        assert recortado[0].role in (bp.ROLE_PRIMARY, bp.ROLE_PRIORITY_OPEN), foco
+        sem_bonus = [s for s in recortado if s.muscle is not M.ABS]
+        assert sem_bonus == [blueprint[0]], foco
+        assert sem_bonus[0].role in (bp.ROLE_PRIMARY, bp.ROLE_PRIORITY_OPEN), foco
 
 
 def test_recorte_preserva_a_ordem_original():

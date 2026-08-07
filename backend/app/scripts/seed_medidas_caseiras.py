@@ -66,10 +66,44 @@ def _casa(nome_norm: str, regra: dict) -> bool:
     return not any(termo in nome_norm for termo in regra.get("excluir", []))
 
 
+# Sinônimo regional/de marca -> termo já usado nas regras do JSON. "Bolacha
+# Maisena Marilan" não batia em NENHUMA regra de biscoito porque as regras só
+# conhecem "biscoito" — "bolacha" é o mesmo alimento, mas uma palavra
+# diferente. Trocado só aqui (depois de _norm, antes de casar contra
+# "regras"), nunca na normalização usada pra achar alimento DUPLICADO
+# (_suprimir_duplicados usa _norm sozinha) — trocar sinônimo ali juntaria
+# alimentos diferentes que só compartilham uma palavra.
+_SINONIMOS = {
+    "bolacha": "biscoito",
+    "cookie": "biscoito",
+    "cookies": "biscoito",
+    "cracker": "biscoito",
+    "toast": "torrada",
+    "toasts": "torrada",
+    "tostada": "torrada",
+    "bar": "barrinha",
+    "espaguete": "macarrao",
+    "talharim": "macarrao",
+    "fusilli": "macarrao",
+    "parafuso": "macarrao",
+    "penne": "macarrao",
+    "spaghetti": "macarrao",
+}
+
+
+def _aplicar_sinonimos(texto_norm: str) -> str:
+    """Troca cada sinônimo pela PALAVRA INTEIRA (\\b) — nunca substring de
+    outra palavra ("cookie" não pode virar parte de "biscookie" que não
+    existe, mas o \\b evita esse tipo de acidente em geral)."""
+    for termo, canonico in _SINONIMOS.items():
+        texto_norm = re.sub(rf"\b{termo}\b", canonico, texto_norm)
+    return texto_norm
+
+
 def _medidas_para(nome: str, categoria: str | None, regras: list[dict], padroes: dict) -> list[tuple[str, float]]:
     """A PRIMEIRA regra que casar vence — as específicas vêm antes das genéricas
     no JSON. Sem regra nenhuma, cai no padrão da categoria da TACO."""
-    n = _norm(nome)
+    n = _aplicar_sinonimos(_norm(nome))
     for regra in regras:
         if _casa(n, regra):
             return [(label, float(g)) for label, g in regra["medidas"]]

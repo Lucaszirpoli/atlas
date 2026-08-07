@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Text, func
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -27,6 +27,8 @@ class SleepLog(Base):
     quality: Mapped[int] = mapped_column(Integer)  # 1-5
     wake_feeling: Mapped[WakeFeeling] = mapped_column(Enum(WakeFeeling, name="wake_feeling"))
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Mesma chave anti-duplicata de meal_logs/weight_logs — ver o comentário lá.
+    idempotency_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

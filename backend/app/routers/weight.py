@@ -31,10 +31,23 @@ def log_weight(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> WeightLog:
+    # MESMA CHAVE = MESMO REGISTRO (ver meal_service.log_meal). Sem isto, o
+    # retry automático do app numa rede ruim gravava o mesmo peso 2-3 vezes.
+    if payload.idempotency_key:
+        ja = db.execute(
+            select(WeightLog).where(
+                WeightLog.user_id == current_user.id,
+                WeightLog.idempotency_key == payload.idempotency_key,
+            ).limit(1)
+        ).scalar_one_or_none()
+        if ja is not None:
+            return ja
+
     log = WeightLog(
         user_id=current_user.id,
         weight_kg=payload.weight_kg,
         recorded_at=payload.recorded_at or datetime.now(timezone.utc),
+        idempotency_key=payload.idempotency_key,
     )
     db.add(log)
     db.commit()

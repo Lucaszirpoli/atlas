@@ -40,3 +40,16 @@ Fase 0 (fundação: auth, perfil, onboarding) → Fase 1 (nutrição manual) →
 - Antes de implementar cada fase, resumir o plano e confirmar comigo antes de começar a escrever código.
 - Design system (cores em hex, fontes, tom de voz) está na Parte 7 da especificação — seguir à risca, não inventar paleta nova.
 - Qualquer dúvida de regra de negócio que não estiver clara na especificação: perguntar antes de assumir.
+
+## Aviso obrigatório de status da alteração
+
+Toda vez que eu pedir uma alteração (correção de bug, feature, etc.), termine a resposta com um aviso em MAIÚSCULO dizendo exatamente o estado da entrega. Isso existe porque backend (Railway) e app mobile são publicados separadamente do código-fonte, e "arrumei" no código não quer dizer "já está valendo pra mim no celular" — foi exatamente essa confusão que gerou o bug do sono continuar aparecendo depois de "corrigido" (2026-08-07).
+
+O aviso precisa deixar claro qual desses estados se aplica:
+
+- **SÓ NO CÓDIGO, NADA COMMITADO** — a alteração existe só nos arquivos locais, ninguém rodando o app vê ela ainda.
+- **COMMITADO MAS NÃO ENVIADO** — está no git local, mas não foi feito push pro GitHub.
+- **NO AR NO BACKEND (RAILWAY)** — o push foi feito e o Railway já deve ter reimplantado (backend em Python/FastAPI; a maioria das correções de bug de dado/regra de negócio é só isso, e já resolve pra quem já tem o app instalado).
+- **PRECISA DE NOVO BUILD DO APP (.aab/.ipa)** — a alteração mexeu em código do app mobile (`mobile/`) que só chega no celular com uma nova versão gerada e publicada nas lojas (Google Play/App Store) — enviar o backend sozinho NÃO resolve esse tipo de mudança pra quem já tem o app instalado.
+
+Quando for uma mudança de mobile, avisar também se é algo que dá pra esperar ir num lote de atualização futuro ou se é urgente o suficiente pra justificar gerar o build agora.

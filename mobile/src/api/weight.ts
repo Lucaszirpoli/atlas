@@ -11,8 +11,19 @@ export async function listWeightLogs(): Promise<WeightLog[]> {
   return data;
 }
 
+/** Chave de UMA tentativa de registro — mesmo mecanismo de `logMeal` (ver
+ * api/meals.ts). Sem ela, o retry automático do axios numa rede ruim (resposta
+ * perdida depois de o servidor já ter gravado) reenviava o POST e o peso
+ * entrava duplicado no histórico. */
+function chaveDeRegistro(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export async function logWeight(weightKg: number): Promise<WeightLog> {
-  const { data } = await api.post<WeightLog>("/weight", { weight_kg: weightKg });
+  const { data } = await api.post<WeightLog>("/weight", {
+    weight_kg: weightKg,
+    idempotency_key: chaveDeRegistro(),
+  });
   return data;
 }
 

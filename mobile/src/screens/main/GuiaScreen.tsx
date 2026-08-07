@@ -1,7 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { Button } from "../../components/Button";
@@ -20,19 +19,14 @@ import { useTheme } from "../../theme/ThemeProvider";
  * nome dos botões de verdade, e tem um atalho que leva pra tela onde aquilo
  * acontece. Ler e fazer no mesmo lugar.
  *
- * Duas decisões que valem registrar:
+ * Decisão que vale registrar:
  *
- * 1. **Free vê o que o Pro faz.** Cada capítulo mostra os dois lados: o que dá
- *    pra fazer no plano gratuito (que é completo de propósito, regra 1 do
- *    projeto) e o que o coach faz por você no Pro. Não é pegadinha nem muro:
- *    é a diferença explicada em cima de uma tarefa concreta que a pessoa
- *    acabou de aprender a fazer.
- * 2. **O progresso fica no APARELHO.** Quais capítulos foram lidos é
- *    preferência de leitura, não dado de saúde — não precisa de tabela nem de
- *    sincronizar (mesma decisão do layout da home).
+ * **Free vê o que o Pro faz.** Cada capítulo mostra os dois lados: o que dá
+ * pra fazer no plano gratuito (que é completo de propósito, regra 1 do
+ * projeto) e o que o coach faz por você no Pro. Não é pegadinha nem muro:
+ * é a diferença explicada em cima de uma tarefa concreta que a pessoa
+ * acabou de aprender a fazer.
  */
-
-const CHAVE_LIDOS = "@appfit/guia_capitulos_lidos";
 
 /** O atalho do capítulo. Recebe `isPro` porque o mesmo assunto mora em lugares
  * diferentes nos dois planos — mandar quem é Free pra uma tela que só existe no
@@ -239,26 +233,6 @@ export function GuiaScreen() {
   const isPro = user?.plan === "pro";
 
   const [aberto, setAberto] = useState<string | null>(CAPITULOS[0].id);
-  const [lidos, setLidos] = useState<string[]>([]);
-
-  useEffect(() => {
-    AsyncStorage.getItem(CHAVE_LIDOS)
-      .then((cru) => {
-        if (!cru) return;
-        const salvo = JSON.parse(cru);
-        if (Array.isArray(salvo)) setLidos(salvo.filter((x) => typeof x === "string"));
-      })
-      .catch(() => {});
-  }, []);
-
-  const salvar = useCallback((proximos: string[]) => {
-    setLidos(proximos);
-    AsyncStorage.setItem(CHAVE_LIDOS, JSON.stringify(proximos)).catch(() => {});
-  }, []);
-
-  function alternarLido(id: string) {
-    salvar(lidos.includes(id) ? lidos.filter((x) => x !== id) : [...lidos, id]);
-  }
 
   /** Abre a tela do módulo a partir do guia. `voltarPara` e não `navigate`: no
    * React Navigation 7 o navigate EMPILHA, e sair do guia pra Dieta e voltar
@@ -279,9 +253,6 @@ export function GuiaScreen() {
       : c === "secondary"
       ? colors.secondary
       : colors.primary;
-
-  const total = CAPITULOS.length;
-  const feitos = CAPITULOS.filter((c) => lidos.includes(c.id)).length;
 
   return (
     <ScrollView
@@ -306,33 +277,11 @@ export function GuiaScreen() {
           Um app só pra treino, dieta, sono, peso e a turma que treina com você. Aqui embaixo, cada
           parte explicada com o passo a passo de verdade — e um atalho pra fazer agora.
         </Text>
-
-        {/* Progresso da leitura: o guia também tem uma sensação de avanço. */}
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md }}>
-          <View style={{ flex: 1, height: 7, borderRadius: 4, backgroundColor: colors.surfaceAlt, overflow: "hidden" }}>
-            <View
-              style={{
-                width: `${(feitos / total) * 100}%`,
-                height: "100%",
-                backgroundColor: colors.secondary,
-              }}
-            />
-          </View>
-          <Text style={[type.caption, { color: colors.textSecondary, fontWeight: "700" }]}>
-            {feitos}/{total}
-          </Text>
-        </View>
-        {feitos === total ? (
-          <Text style={[type.caption, { color: colors.success, fontWeight: "700", marginTop: 6 }]}>
-            Guia completo — agora é registrar.
-          </Text>
-        ) : null}
       </Card>
 
       {CAPITULOS.map((c, i) => {
         const cor = corDe(c.cor);
         const abertoAgora = aberto === c.id;
-        const lido = lidos.includes(c.id);
         return (
           <Card key={c.id} style={{ marginBottom: spacing.sm }} padded={false}>
             <TouchableOpacity
@@ -364,9 +313,6 @@ export function GuiaScreen() {
                   </Text>
                 ) : null}
               </View>
-              {lido ? (
-                <Ionicons name="checkmark-circle" size={19} color={colors.success} />
-              ) : null}
               <Ionicons
                 name={abertoAgora ? "chevron-up" : "chevron-down"}
                 size={18}
@@ -414,26 +360,16 @@ export function GuiaScreen() {
                   />
                 </View>
 
-                <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.md }}>
-                  {c.acao ? (
-                    <View style={{ flex: 1 }}>
-                      <Button
-                        title={typeof c.acao.rotulo === "function" ? c.acao.rotulo(isPro) : c.acao.rotulo}
-                        variant="secondary"
-                        compact
-                        onPress={() => c.acao!.ir(navegar, isPro)}
-                      />
-                    </View>
-                  ) : null}
-                  <View style={{ flex: 1 }}>
+                {c.acao ? (
+                  <View style={{ marginTop: spacing.md }}>
                     <Button
-                      title={lido ? "Lido ✓" : "Marcar como lido"}
-                      variant="ghost"
+                      title={typeof c.acao.rotulo === "function" ? c.acao.rotulo(isPro) : c.acao.rotulo}
+                      variant="secondary"
                       compact
-                      onPress={() => alternarLido(c.id)}
+                      onPress={() => c.acao!.ir(navegar, isPro)}
                     />
                   </View>
-                </View>
+                ) : null}
               </View>
             ) : null}
           </Card>
@@ -480,7 +416,6 @@ export function GuiaScreen() {
           { color: colors.textSecondary, textAlign: "center", marginTop: spacing.lg, lineHeight: 17 },
         ]}
       >
-        Este guia fica sempre aqui: Início › Explorar › Como usar.{"\n"}
         O Atlas não substitui acompanhamento médico ou nutricional.
       </Text>
     </ScrollView>
