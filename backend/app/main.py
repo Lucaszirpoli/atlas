@@ -182,7 +182,10 @@ _DELETE_ACCOUNT_HTML = """<!doctype html>
 <h1>Como excluir sua conta do Atlas</h1>
 <p class="muted">Atlas - aplicativo de fitness e nutricao (desenvolvedor: Lucas Zirpoli)</p>
 
-<h2>Passo a passo</h2>
+<h2>Direto pelo app (imediato)</h2>
+<p>Abra o Atlas, va em <strong>Perfil &gt; Excluir minha conta</strong> e confirme. A exclusao acontece na hora, sem precisar esperar nem entrar em contato com ninguem.</p>
+
+<h2>Sem acesso ao app? Pelo e-mail</h2>
 <ol>
 <li>Envie um e-mail para <a href="mailto:lucaszirpoli@gmail.com?subject=Excluir%20minha%20conta%20Atlas">lucaszirpoli@gmail.com</a> a partir do endereco de e-mail cadastrado no app, com o assunto "Excluir minha conta".</li>
 <li>Confirmaremos a identidade pelo e-mail cadastrado e processaremos o pedido em ate 15 dias.</li>

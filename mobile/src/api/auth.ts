@@ -71,6 +71,10 @@ export async function fetchCurrentUser(): Promise<UserRead> {
   return data;
 }
 
+export async function deleteAccount(): Promise<void> {
+  await api.delete("/users/me");
+}
+
 export async function checkHandleAvailability(
   handle: string
 ): Promise<{ handle: string; available: boolean }> {

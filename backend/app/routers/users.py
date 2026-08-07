@@ -118,6 +118,22 @@ def set_timezone(
         db.commit()
 
 
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+def delete_account(
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> None:
+    """Exclui a conta e TUDO que depende dela — via cascade do banco (toda
+    tabela com user_id tem ondelete="CASCADE"; as únicas exceções são as
+    referências de "quem cadastrou" em foods/exercises, que usam SET NULL
+    porque são catálogo compartilhado, não histórico pessoal).
+
+    Existe porque a App Store (Guideline 5.1.1(v)) exige que quem cria conta
+    pelo app consiga excluí-la pelo app — a página /legal/exclusao-de-conta
+    por e-mail continua valendo como alternativa pra quem perdeu acesso."""
+    db.delete(current_user)
+    db.commit()
+
+
 @router.post("/reset-data", response_model=ResetDataResponse)
 def reset_data(
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db)

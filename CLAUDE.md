@@ -34,6 +34,11 @@ Seguir as fases na ordem, mas o objetivo final é o app 100% completo — as fas
 
 Fase 0 (fundação: auth, perfil, onboarding) → Fase 1 (nutrição manual) → Fase 2 (treino manual) → Fase 3 (IA nutrição) → Fase 4 (IA treino) → Fase 5 (social) → Fase 6 (sono + cruzamento de dados) → Fase 7 (refinamento: deload automático, detecção de platô, wearables).
 
+## Status da publicação nas lojas
+
+- **Play Store (Android):** já publicado, backend e app em produção.
+- **App Store (iOS):** em processo de habilitação desde 2026-08-07 (conta Apple Developer Individual paga, aguardando aprovação da Apple). A partir de agora, **toda mudança em `mobile/` mira os dois sistemas** — um código só (Expo/React Native), mas builds e submissões são feitos separadamente por plataforma (`eas build --platform android` / `--platform ios`). Não existe mais "só Android": ao gerar um novo build de release, considerar as duas lojas.
+
 ## Como trabalhar neste projeto
 
 - Rodar `git init` já está feito antes de qualquer alteração de código — sempre commitar em pontos estáveis.

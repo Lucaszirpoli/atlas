@@ -35,6 +35,14 @@ type AuthContextValue = {
     extra?: { handle?: string; displayName?: string },
     keepSignedIn?: boolean
   ) => Promise<void>;
+  /** Entrar com a Apple. Mesmo padrão do Google: handle/displayName só são
+   * exigidos no PRIMEIRO acesso com essa conta (a Apple não devolve um
+   * display_name depois do primeiro login, então a tela precisa guardá-lo). */
+  signInWithApple: (
+    idToken: string,
+    extra?: { handle?: string; displayName?: string },
+    keepSignedIn?: boolean
+  ) => Promise<void>;
   /** Usa um access_token que a pessoa já tem em mãos (ex.: o reset de senha
    * devolve um, pra ela entrar direto sem digitar a senha nova de novo). */
   signInWithToken: (accessToken: string, keepSignedIn?: boolean) => Promise<void>;
@@ -153,6 +161,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await persistTokenAndLoadUser(access_token, keepSignedIn);
   }
 
+  async function signInWithApple(
+    idToken: string,
+    extra?: { handle?: string; displayName?: string },
+    keepSignedIn = true
+  ) {
+    const { access_token } = await authApi.loginWithApple({
+      id_token: idToken,
+      handle: extra?.handle,
+      display_name: extra?.displayName,
+    });
+    await persistTokenAndLoadUser(access_token, keepSignedIn);
+  }
+
   async function signInWithToken(accessToken: string, keepSignedIn = true) {
     await persistTokenAndLoadUser(accessToken, keepSignedIn);
   }
@@ -170,7 +191,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ isLoading, user, signIn, signUp, signInWithGoogle, signInWithToken, signOut, refreshUser }}
+      value={{
+        isLoading,
+        user,
+        signIn,
+        signUp,
+        signInWithGoogle,
+        signInWithApple,
+        signInWithToken,
+        signOut,
+        refreshUser,
+      }}
     >
       {children}
     </AuthContext.Provider>

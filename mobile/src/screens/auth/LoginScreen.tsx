@@ -1,5 +1,6 @@
 import { GoogleSignin, statusCodes } from "@react-native-google-signin/google-signin";
 import { useNavigation } from "@react-navigation/native";
+import * as AppleAuthentication from "expo-apple-authentication";
 import React, { useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
@@ -24,8 +25,8 @@ GoogleSignin.configure({
 });
 
 export function LoginScreen() {
-  const { colors, type, spacing, shadow } = useTheme();
-  const { signIn, signInWithGoogle } = useAuth();
+  const { colors, type, spacing, shadow, isDark } = useTheme();
+  const { signIn, signInWithGoogle, signInWithApple } = useAuth();
   const navigation = useNavigation<any>();
 
   const [email, setEmail] = useState("");
@@ -41,6 +42,9 @@ export function LoginScreen() {
   // PRIMEIRO login com essa conta Google) e a confirmação do modal — sem
   // guardar, a pessoa teria que passar pela tela do Google de novo.
   const [googlePendente, setGooglePendente] = useState<{ idToken: string; nome: string } | null>(null);
+
+  const [appleLoading, setAppleLoading] = useState(false);
+  const [applePendente, setApplePendente] = useState<{ idToken: string; nome: string } | null>(null);
 
   async function handleSubmit() {
     const login = email.trim().toLowerCase();
@@ -102,6 +106,56 @@ export function LoginScreen() {
       setErro(mensagemDeErro(err, "Não foi possível concluir seu cadastro com o Google."));
     } finally {
       setGoogleLoading(false);
+    }
+  }
+
+  async function handleAppleSignIn() {
+    if (appleLoading) return;
+    setAppleLoading(true);
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      const idToken = credential.identityToken;
+      if (!idToken) {
+        setErro("A Apple não devolveu um token válido. Tente novamente.");
+        return;
+      }
+      // A Apple só devolve o nome no PRIMEIRO login desta conta com o app —
+      // se vier vazio, a pessoa digita o nome ela mesma no modal.
+      const nome = [credential.fullName?.givenName, credential.fullName?.familyName]
+        .filter(Boolean)
+        .join(" ");
+      try {
+        await signInWithApple(idToken, undefined, manterConectado);
+      } catch (err: any) {
+        if (err?.response?.status === 422) {
+          setApplePendente({ idToken, nome });
+          return;
+        }
+        throw err;
+      }
+    } catch (err: any) {
+      if (err?.code === "ERR_REQUEST_CANCELED") return; // pessoa cancelou
+      setErro(mensagemDeErro(err, "Não foi possível entrar com a Apple. Tente novamente."));
+    } finally {
+      setAppleLoading(false);
+    }
+  }
+
+  async function confirmarHandleApple(handle: string, displayName: string) {
+    if (!applePendente) return;
+    setAppleLoading(true);
+    try {
+      await signInWithApple(applePendente.idToken, { handle, displayName }, manterConectado);
+      setApplePendente(null);
+    } catch (err: any) {
+      setErro(mensagemDeErro(err, "Não foi possível concluir seu cadastro com a Apple."));
+    } finally {
+      setAppleLoading(false);
     }
   }
 
@@ -195,6 +249,24 @@ export function LoginScreen() {
             loading={googleLoading}
             disabled={isSubmitting}
           />
+
+          {Platform.OS === "ios" ? (
+            <AppleAuthentication.AppleAuthenticationButton
+              buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+              buttonStyle={
+                isDark
+                  ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
+                  : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
+              }
+              cornerRadius={12}
+              style={{
+                height: 48,
+                marginTop: spacing.sm,
+                opacity: isSubmitting || googleLoading || appleLoading ? 0.6 : 1,
+              }}
+              onPress={handleAppleSignIn}
+            />
+          ) : null}
         </View>
 
         <View style={{ flexDirection: "row", justifyContent: "center", marginTop: spacing.lg }}>
@@ -221,6 +293,15 @@ export function LoginScreen() {
         submitting={googleLoading}
         onCancel={() => setGooglePendente(null)}
         onConfirm={confirmarHandleGoogle}
+      />
+
+      <GoogleHandleModal
+        visible={applePendente !== null}
+        defaultName={applePendente?.nome ?? ""}
+        submitting={appleLoading}
+        subtitle="Escolha um @handle único pra sua conta — o resto a Apple já preencheu."
+        onCancel={() => setApplePendente(null)}
+        onConfirm={confirmarHandleApple}
       />
     </KeyboardAvoidingView>
   );

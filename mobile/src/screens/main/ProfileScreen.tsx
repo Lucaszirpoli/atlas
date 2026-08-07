@@ -4,6 +4,7 @@ import * as ImagePicker from "expo-image-picker";
 import React, { useCallback, useState } from "react";
 import { Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
+import { deleteAccount } from "../../api/auth";
 import { syncPlan } from "../../api/billing";
 import { resetAppData } from "../../api/profile";
 import { configurePurchases, getEntitlementActive, isNativePurchasesAvailable } from "../../api/purchases";
@@ -26,6 +27,11 @@ export function ProfileScreen() {
   const [confirmarReset, setConfirmarReset] = useState(false);
   const [resetando, setResetando] = useState(false);
   const [resultadoReset, setResultadoReset] = useState<string | null>(null);
+  // Excluir conta: exigido pela App Store (quem cria conta pelo app tem que
+  // conseguir apagar pelo app) — ver DELETE /users/me, que apaga em cascata.
+  const [confirmarExclusao, setConfirmarExclusao] = useState(false);
+  const [excluindo, setExcluindo] = useState(false);
+  const [erroExclusao, setErroExclusao] = useState<string | null>(null);
 
   async function executarReset() {
     setConfirmarReset(false);
@@ -45,6 +51,19 @@ export function ProfileScreen() {
       setResultadoReset("Não consegui apagar agora. Seus dados continuam como estavam — tente de novo.");
     } finally {
       setResetando(false);
+    }
+  }
+
+  async function executarExclusao() {
+    setConfirmarExclusao(false);
+    setExcluindo(true);
+    try {
+      await deleteAccount();
+      await signOut();
+    } catch {
+      setErroExclusao("Não consegui excluir sua conta agora. Tente de novo em instantes.");
+    } finally {
+      setExcluindo(false);
     }
   }
 
@@ -280,6 +299,35 @@ export function ProfileScreen() {
         <Ionicons name="log-out-outline" size={18} color={colors.danger} />
         <Text style={[type.body, { color: colors.danger, fontWeight: "600" }]}>Sair da conta</Text>
       </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={excluindo ? undefined : () => setConfirmarExclusao(true)}
+        activeOpacity={0.7}
+        style={{ alignItems: "center", paddingVertical: spacing.sm }}
+      >
+        <Text style={[type.caption, { color: colors.textSecondary }]}>
+          {excluindo ? "Excluindo conta..." : "Excluir minha conta"}
+        </Text>
+      </TouchableOpacity>
+
+      <ConfirmDialog
+        visible={confirmarExclusao}
+        title="Excluir sua conta?"
+        message={
+          "Isso apaga sua conta, seu login e TODO o seu histórico (refeições, treinos, peso, sono, " +
+          "medidas, posts e conexões) para sempre. Não tem como desfazer."
+        }
+        confirmLabel="Excluir conta"
+        destructive
+        onClose={() => setConfirmarExclusao(false)}
+        onConfirm={executarExclusao}
+      />
+      <InfoDialog
+        visible={erroExclusao !== null}
+        title="Não foi possível excluir"
+        message={erroExclusao ?? undefined}
+        onClose={() => setErroExclusao(null)}
+      />
 
       {/* Recomeçar do zero sem perder a conta. Quem testou o app por semanas
           antes de começar pra valer ficava com gráficos que descrevem os testes,

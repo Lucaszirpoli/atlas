@@ -9,20 +9,22 @@ import { useTheme } from "../theme/ThemeProvider";
 
 const HANDLE_PATTERN = /^[a-z0-9_]{3,30}$/;
 
-/** Só aparece no PRIMEIRO login com uma conta Google — o backend cria a conta
- * na hora, mas precisa de um @handle único (o Google não dá um). O nome de
- * exibição já vem preenchido do perfil do Google; a pessoa só escolhe o
- * @handle e confirma. */
+/** Só aparece no PRIMEIRO login com uma conta Google/Apple — o backend cria a
+ * conta na hora, mas precisa de um @handle único (nenhum dos dois provedores
+ * dá um). O nome de exibição já vem preenchido do perfil; a pessoa só escolhe
+ * o @handle e confirma. */
 export function GoogleHandleModal({
   visible,
   defaultName,
   submitting,
+  subtitle = "Escolha um @handle único pra sua conta — o resto a gente já preencheu.",
   onCancel,
   onConfirm,
 }: {
   visible: boolean;
   defaultName: string;
   submitting: boolean;
+  subtitle?: string;
   onCancel: () => void;
   onConfirm: (handle: string, displayName: string) => void;
 }) {
@@ -69,7 +71,7 @@ export function GoogleHandleModal({
         <View style={{ backgroundColor: colors.surface, borderRadius: radius.card, padding: spacing.lg }}>
           <Text style={[type.h2, { color: colors.textPrimary, marginBottom: 4 }]}>Só mais um passo</Text>
           <Text style={[type.body, { color: colors.textSecondary, marginBottom: spacing.md, lineHeight: 21 }]}>
-            Escolha um @handle único pra sua conta — o resto o Google já preencheu.
+            {subtitle}
           </Text>
 
           <TextField

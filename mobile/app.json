@@ -7,7 +7,13 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.lucaszirpoli.atlas",
+      "infoPlist": {
+        "NSCameraUsageDescription": "O Atlas usa a câmera para escanear o código de barras de alimentos e para tirar fotos de refeições e de progresso.",
+        "NSPhotoLibraryUsageDescription": "O Atlas acessa suas fotos para você escolher uma foto de refeição, de progresso ou de perfil.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.lucaszirpoli.atlas",
@@ -49,7 +55,8 @@
       ],
       "./plugins/withCleartextTraffic",
       "./plugins/withOptionalHardwareFeatures",
-      "@react-native-google-signin/google-signin"
+      "@react-native-google-signin/google-signin",
+      "expo-apple-authentication"
     ],
     "extra": {
       "eas": {
