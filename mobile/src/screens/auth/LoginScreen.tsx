@@ -3,6 +3,7 @@ import { useNavigation } from "@react-navigation/native";
 import * as AppleAuthentication from "expo-apple-authentication";
 import React, { useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ATLAS_SLOGAN, AtlasLogo } from "../../components/AtlasLogo";
 import { Button } from "../../components/Button";
@@ -31,6 +32,7 @@ export function LoginScreen() {
   const { colors, type, spacing, shadow, isDark } = useTheme();
   const { signIn, signInWithGoogle, signInWithApple } = useAuth();
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -167,7 +169,14 @@ export function LoginScreen() {
       style={{ flex: 1, backgroundColor: colors.bg }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: spacing.lg }}>
+      <ScrollView
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: "center",
+          padding: spacing.lg,
+          paddingBottom: spacing.lg + insets.bottom,
+        }}
+      >
         {/* Marca */}
         <View style={{ alignItems: "center", marginBottom: spacing.xl }}>
           <AtlasLogo size={78} color={colors.primary} seam={colors.bg} />

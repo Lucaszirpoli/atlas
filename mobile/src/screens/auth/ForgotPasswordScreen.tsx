@@ -1,6 +1,7 @@
 import { useNavigation } from "@react-navigation/native";
 import React, { useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { forgotPassword, resetPassword } from "../../api/auth";
 import { ATLAS_SLOGAN, AtlasLogo } from "../../components/AtlasLogo";
@@ -18,6 +19,7 @@ export function ForgotPasswordScreen() {
   const { colors, type, spacing, shadow } = useTheme();
   const { signInWithToken } = useAuth();
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
 
   const [step, setStep] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
@@ -78,7 +80,14 @@ export function ForgotPasswordScreen() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: spacing.lg }}>
+      <ScrollView
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: "center",
+          padding: spacing.lg,
+          paddingBottom: spacing.lg + insets.bottom,
+        }}
+      >
         <View style={{ alignItems: "center", marginBottom: spacing.lg }}>
           <AtlasLogo size={52} color={colors.primary} seam={colors.bg} />
           <Text style={[type.h1, { color: colors.textPrimary, marginTop: spacing.sm }]}>

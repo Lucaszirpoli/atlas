@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { checkHandleAvailability } from "../../api/auth";
 import { ATLAS_SLOGAN, AtlasLogo } from "../../components/AtlasLogo";
@@ -19,6 +20,7 @@ export function RegisterScreen() {
   const { colors, type, spacing, shadow } = useTheme();
   const { signUp } = useAuth();
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
 
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
@@ -99,7 +101,14 @@ export function RegisterScreen() {
       style={{ flex: 1, backgroundColor: colors.bg }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: spacing.lg }}>
+      <ScrollView
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: "center",
+          padding: spacing.lg,
+          paddingBottom: spacing.lg + insets.bottom,
+        }}
+      >
         <View style={{ alignItems: "center", marginBottom: spacing.lg }}>
           {/* A logo, e não um ícone genérico de halter: esta é a primeira tela
               de quem nunca viu o app, e é onde a marca se apresenta. */}
