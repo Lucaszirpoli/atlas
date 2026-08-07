@@ -26,7 +26,11 @@ class Settings(BaseSettings):
     jwt_access_token_expire_minutes: int = 10080  # 7 dias
 
     google_oauth_client_id: str = ""
-    apple_oauth_client_id: str = ""
+    # Audience esperada no id_token da Apple. Pro fluxo NATIVO (o único que o
+    # app usa, via expo-apple-authentication/AuthenticationServices), a Apple
+    # coloca o Bundle ID como "aud" — não precisa de um Services ID separado
+    # (esse só existiria pra um fluxo web/OAuth, que este app não tem).
+    apple_oauth_client_id: str = "com.lucaszirpoli.atlas"
 
     # E-mail transacional (Brevo) — hoje só usado pra "esqueci minha senha".
     # Sem a chave, o app não quebra: forgot-password sempre responde 200 (pra
@@ -47,7 +51,7 @@ class Settings(BaseSettings):
     # fluxo ponta a ponta. Preço mensal do Pro em reais.
     revenuecat_api_key: str = ""
     revenuecat_webhook_secret: str = ""
-    pro_price_brl: float = 20.0
+    pro_price_brl: float = 24.90
     billing_dev_mode: bool = True
 
     # E-mails com Pro liberado de cortesia (testador, amigo, imprensa),

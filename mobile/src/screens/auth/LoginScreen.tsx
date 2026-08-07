@@ -16,11 +16,14 @@ import { mensagemDeErro } from "../../utils/errorMessage";
 
 GoogleSignin.configure({
   webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-  // Web + Android usam o MESMO cliente OAuth ("Web") como audiência do
+  // Web + Android + iOS usam o MESMO cliente "Web" como audiência do
   // idToken — é o `GOOGLE_OAUTH_CLIENT_ID` que o backend valida em
-  // social_auth.verify_google_id_token. O que autoriza ESTE app a pedir esse
-  // token é o cliente Android (pacote + SHA-1) cadastrado no Google Cloud,
-  // não algo que se configure aqui.
+  // social_auth.verify_google_id_token. O que autoriza CADA plataforma a
+  // pedir esse token é o cliente próprio dela cadastrado no Google Cloud:
+  // Android (pacote + SHA-1) não precisa de nada aqui; iOS precisa do
+  // iosClientId abaixo (senão o SDK não sabe qual client usar no fluxo
+  // nativo, mesmo com o iosUrlScheme já configurado no app.json).
+  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
   offlineAccess: false,
 });
 

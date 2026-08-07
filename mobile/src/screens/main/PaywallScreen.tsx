@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "react-native";
-import type { PurchasesPackage } from "react-native-purchases";
+import type { PurchasesOffering, PurchasesPackage } from "react-native-purchases";
 
 import { getOffering, restorePro, subscribePro, type Offering } from "../../api/billing";
 import { configurePurchases, getCurrentOffering, isNativePurchasesAvailable } from "../../api/purchases";
@@ -19,7 +19,8 @@ export function PaywallScreen() {
   const { user, refreshUser } = useAuth();
 
   const [offering, setOffering] = useState<Offering | null>(null);
-  const [nativePackage, setNativePackage] = useState<PurchasesPackage | null>(null);
+  const [nativeOffering, setNativeOffering] = useState<PurchasesOffering | null>(null);
+  const [selectedPackage, setSelectedPackage] = useState<PurchasesPackage | null>(null);
   const [loading, setLoading] = useState(true);
   const [subscribing, setSubscribing] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -37,7 +38,12 @@ export function PaywallScreen() {
       try {
         configurePurchases(String(user.id));
         getCurrentOffering()
-          .then((o) => setNativePackage(o?.monthly ?? o?.availablePackages[0] ?? null))
+          .then((o) => {
+            setNativeOffering(o);
+            // Anual vem selecionado por padrão — é o plano que a gente quer
+            // incentivar (maior valor, menor churn). Mensal continua a um toque.
+            setSelectedPackage(o?.annual ?? o?.monthly ?? o?.availablePackages[0] ?? null);
+          })
           .catch(() => {});
       } catch {
         // RevenueCat indisponível/mal configurado neste aparelho — a tela
@@ -54,7 +60,7 @@ export function PaywallScreen() {
       // FORA deste try de propósito: uma falha de rede ao reconsultar não pode
       // fazer o app dizer "não deu pra concluir" pra quem acabou de pagar —
       // o dinheiro saiu, e a pessoa tentaria comprar de novo.
-      await subscribePro(nativePackage ?? undefined);
+      await subscribePro(selectedPackage ?? undefined);
     } catch (err: any) {
       setDone(mensagemDeErro(err, "Não deu pra concluir agora. Tente de novo."));
       setSubscribing(false);
@@ -153,20 +159,47 @@ export function PaywallScreen() {
           ))}
         </View>
 
-        <View style={{ alignItems: "center", marginBottom: spacing.lg }}>
-          {nativePackage ? (
-            <Text style={[type.display, { color: colors.textPrimary, fontSize: 40, lineHeight: 44 }]}>
-              {nativePackage.product.priceString}
-              <Text style={[type.body, { color: colors.textSecondary }]}> / mês</Text>
-            </Text>
-          ) : (
-            <Text style={[type.display, { color: colors.textPrimary, fontSize: 40, lineHeight: 44 }]}>
-              R$ {offering?.price_brl.toFixed(2).replace(".", ",")}
-              <Text style={[type.body, { color: colors.textSecondary }]}> / {offering?.period}</Text>
-            </Text>
-          )}
-          <Text style={[type.caption, { color: colors.textSecondary, marginTop: 2 }]}>Cancele quando quiser.</Text>
-        </View>
+        {nativeOffering?.annual && nativeOffering?.monthly ? (
+          <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.sm }}>
+            <PlanOption
+              title="Anual"
+              priceString={nativeOffering.annual.product.priceString}
+              subtitle={`equivale a R$ ${(nativeOffering.annual.product.price / 12).toFixed(2).replace(".", ",")}/mês`}
+              badge={(() => {
+                const pct = Math.round(
+                  (1 - nativeOffering.annual!.product.price / 12 / nativeOffering.monthly!.product.price) * 100
+                );
+                return pct > 0 ? `-${pct}%` : undefined;
+              })()}
+              selected={selectedPackage?.identifier === nativeOffering.annual.identifier}
+              onPress={() => setSelectedPackage(nativeOffering.annual!)}
+            />
+            <PlanOption
+              title="Mensal"
+              priceString={nativeOffering.monthly.product.priceString}
+              subtitle="/ mês"
+              selected={selectedPackage?.identifier === nativeOffering.monthly.identifier}
+              onPress={() => setSelectedPackage(nativeOffering.monthly!)}
+            />
+          </View>
+        ) : (
+          <View style={{ alignItems: "center", marginBottom: spacing.sm }}>
+            {selectedPackage ? (
+              <Text style={[type.display, { color: colors.textPrimary, fontSize: 40, lineHeight: 44 }]}>
+                {selectedPackage.product.priceString}
+                <Text style={[type.body, { color: colors.textSecondary }]}> / mês</Text>
+              </Text>
+            ) : (
+              <Text style={[type.display, { color: colors.textPrimary, fontSize: 40, lineHeight: 44 }]}>
+                R$ {offering?.price_brl.toFixed(2).replace(".", ",")}
+                <Text style={[type.body, { color: colors.textSecondary }]}> / {offering?.period}</Text>
+              </Text>
+            )}
+          </View>
+        )}
+        <Text style={[type.caption, { color: colors.textSecondary, textAlign: "center", marginBottom: spacing.lg }]}>
+          Cancele quando quiser.
+        </Text>
 
         <Button
           title={testMode ? "Ativar Pro (modo teste)" : "Assinar Pro"}
@@ -204,5 +237,56 @@ export function PaywallScreen() {
         message={done ?? undefined}
       />
     </View>
+  );
+}
+
+function PlanOption({
+  title,
+  priceString,
+  subtitle,
+  badge,
+  selected,
+  onPress,
+}: {
+  title: string;
+  priceString: string;
+  subtitle: string;
+  badge?: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const { colors, type, spacing, radius } = useTheme();
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.8}
+      style={{
+        flex: 1,
+        borderRadius: radius.card,
+        borderWidth: 2,
+        borderColor: selected ? colors.primary : colors.border,
+        backgroundColor: selected ? colors.primarySoft : colors.surface,
+        padding: spacing.md,
+      }}
+    >
+      {badge ? (
+        <View
+          style={{
+            position: "absolute",
+            top: -10,
+            right: spacing.sm,
+            backgroundColor: colors.secondary,
+            borderRadius: 999,
+            paddingHorizontal: 8,
+            paddingVertical: 3,
+          }}
+        >
+          <Text style={[type.caption, { color: colors.textOnPrimary, fontWeight: "800", fontSize: 11 }]}>{badge}</Text>
+        </View>
+      ) : null}
+      <Text style={[type.body, { color: colors.textPrimary, fontWeight: "700" }]}>{title}</Text>
+      <Text style={[type.h2, { color: colors.textPrimary, marginTop: 2 }]}>{priceString}</Text>
+      <Text style={[type.caption, { color: colors.textSecondary, marginTop: 2 }]}>{subtitle}</Text>
+    </TouchableOpacity>
   );
 }

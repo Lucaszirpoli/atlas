@@ -55,7 +55,12 @@
       ],
       "./plugins/withCleartextTraffic",
       "./plugins/withOptionalHardwareFeatures",
-      "@react-native-google-signin/google-signin",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.608725750172-1r6d7vra618jdbpft54s4mosf2bngd56"
+        }
+      ],
       "expo-apple-authentication"
     ],
     "extra": {
