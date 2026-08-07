@@ -14,7 +14,7 @@
         "NSPhotoLibraryUsageDescription": "O Atlas acessa suas fotos para você escolher uma foto de refeição, de progresso ou de perfil.",
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "2"
+      "buildNumber": "3"
     },
     "android": {
       "package": "com.lucaszirpoli.atlas",
