@@ -70,7 +70,7 @@ const SET_TYPE_ORDER = Object.keys(SET_TYPE_LABELS) as SetType[];
 const SET_LETTER_HELP_TEXT =
   "A = Aquecimento: a primeira série, bem leve (25% da carga de trabalho), só pra preparar a articulação e o músculo — não é série de esforço.\n\n" +
   "P = Feeder: a segunda série, um pouco mais pesada (50% da carga de trabalho), pra chegar afiado na primeira série de trabalho — também não conta como esforço.\n\n" +
-  "O peso e as reps do A e do P vêm calculados, mas são SUGESTÃO: se você aqueceu com outro peso, é só editar — o registro tem que ser o que você levantou de verdade.\n\n" +
+  "O peso do A e do P vem calculado, mas é SUGESTÃO: se você aqueceu com outro peso, é só editar — o registro tem que ser o que você levantou de verdade.\n\n" +
   "T = Série de trabalho: as séries que valem, com o peso e reps que você realmente treina.\n\n" +
   "F = Até a falha: série levada até não dar mais pra fazer outra rep com boa forma. Marcar RIR 0 já transforma a série em F.";
 
@@ -326,18 +326,6 @@ export function WorkoutExecutionScreen() {
 
   const totalSets = setsByExercise.reduce((sum, rows) => sum + rows.length, 0);
   const totalCompleted = setsByExercise.reduce((sum, rows) => sum + rows.filter((s) => s.completed).length, 0);
-
-  // "Registrada" parecia FECHADA — quem digitava 100 no lugar de 10 achava que
-  // tinha perdido a série. Dá pra corrigir, sempre deu que dizer; a dica
-  // aparece UMA vez, na primeira série registrada do treino, e some depois
-  // (repetir isso em toda linha verde viraria ruído).
-  const primeiraRegistrada = (() => {
-    for (let i = 0; i < setsByExercise.length; i++) {
-      const j = (setsByExercise[i] ?? []).findIndex((r) => r.completed);
-      if (j >= 0) return `${i}:${j}`;
-    }
-    return null;
-  })();
 
   function updateSet(exerciseIndex: number, setIdx: number, patch: Partial<SetRow>) {
     setSetsByExercise((prev) =>
@@ -850,12 +838,21 @@ export function WorkoutExecutionScreen() {
                             onBlur={() => salvarCorrecao(exerciseIndex, idx)}
                           />
                           <Text style={[type.body, { color: colors.textSecondary, marginHorizontal: 4 }]}>×</Text>
-                          <SetInput
-                            compact
-                            value={row.reps}
-                            onChangeText={(v) => updateSet(exerciseIndex, idx, { reps: v })}
-                            onBlur={() => salvarCorrecao(exerciseIndex, idx)}
-                          />
+                          {/* REPS do aquecimento/feeder do coach continuam FIXAS
+                              (12-15 e 8-10 são parte da prescrição, como a
+                              quantidade de séries). Só o KG abriu — era ele que
+                              estava travado no valor calculado e impedia
+                              registrar o aquecimento real. */}
+                          {prepDoCoach ? (
+                            <LockedValue text={row.reps} />
+                          ) : (
+                            <SetInput
+                              compact
+                              value={row.reps}
+                              onChangeText={(v) => updateSet(exerciseIndex, idx, { reps: v })}
+                              onBlur={() => salvarCorrecao(exerciseIndex, idx)}
+                            />
+                          )}
                           <ConfirmCheck
                             completed={row.completed}
                             saving={salvando.has(chave)}
@@ -874,15 +871,6 @@ export function WorkoutExecutionScreen() {
                             </TouchableOpacity>
                           ) : null}
                         </View>
-
-                        {primeiraRegistrada === chave ? (
-                          <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: spacing.xs, marginLeft: 38 }}>
-                            <Ionicons name="create-outline" size={12} color={colors.textSecondary} />
-                            <Text style={[type.caption, { color: colors.textSecondary, flex: 1 }]}>
-                              Registrada — se digitou errado, é só corrigir o número aqui mesmo.
-                            </Text>
-                          </View>
-                        ) : null}
 
                         {/* RIR — sempre visível, quick-select. Não se aplica a
                             aquecimento/feeder (séries submáximas de preparação). */}
@@ -1472,6 +1460,27 @@ function Meta({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: stri
     <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
       <Ionicons name={icon} size={14} color={colors.textSecondary} />
       <Text style={[type.caption, { color: colors.textSecondary }]}>{text}</Text>
+    </View>
+  );
+}
+
+/** Campo FIXO: mesmo formato de um SetInput compacto, mas só leitura — o valor
+ * é parte da prescrição (reps do aquecimento/feeder, reps do método numa
+ * técnica avançada), não palpite pra corrigir no meio do treino. */
+function LockedValue({ text }: { text: string }) {
+  const { colors, type, radius } = useTheme();
+  return (
+    <View
+      style={{
+        width: 56,
+        height: 44,
+        borderRadius: radius.button,
+        backgroundColor: colors.primary + "18",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Text style={[type.body, { color: colors.primary, fontWeight: "800" }]}>{text || "—"}</Text>
     </View>
   );
 }
