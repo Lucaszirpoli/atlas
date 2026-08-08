@@ -59,6 +59,30 @@ class WorkoutSessionStartResponse(BaseModel):
     prefill: list[ExercisePrefill]
 
 
+class ActiveSessionResponse(BaseModel):
+    """Treino ABERTO (iniciado e nunca concluído/descartado) — o que permite
+    voltar pra ele depois de o app fechar sozinho.
+
+    Existe porque "treino em andamento" só morava na memória do app: se o
+    processo morresse (crash, Android matando o app em segundo plano, celular
+    reiniciando), a sessão continuava aberta no servidor com as séries já
+    registradas, mas o app não tinha mais como saber disso — o treino sumia
+    da vista pra sempre, sem nem aparecer no histórico (que só lista
+    concluídos). Este endpoint é o caminho de volta.
+
+    Traz junto o nome da rotina e o prefill porque a tela de execução precisa
+    dos dois pra remontar — sem eles, "voltar pro treino" não reconstrói nada.
+    """
+
+    session: WorkoutSessionRead
+    routine_id: int
+    routine_name: str
+    prefill: list[ExercisePrefill]
+    # Quantas séries já foram registradas nesta sessão — é o que deixa a tela
+    # dizer "você já tinha feito 7 séries" em vez de um convite vago.
+    logged_sets: int
+
+
 class WorkoutSetLogCreate(BaseModel):
     exercise_id: int
     exercise_sort_order: int = 0

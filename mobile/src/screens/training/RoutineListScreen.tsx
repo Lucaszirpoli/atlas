@@ -84,6 +84,29 @@ export function RoutineListScreen() {
   const [repetindo, setRepetindo] = useState<Routine | null>(null);
 
   function handlePressTreinar(routine: Routine) {
+    // JÁ TEM UM TREINO ABERTO. Iniciar outro por cima abandonava o primeiro
+    // pra sempre: a sessão ficava no servidor sem ser concluída, invisível no
+    // histórico (que só lista concluídos) e sem indicador nenhum apontando pra
+    // ela. Em vez de deixar acontecer, oferece o caminho de volta.
+    if (active) {
+      Alert.alert(
+        "Você já tem um treino em andamento",
+        `"${active.routineName}" está aberto. Volte nele pra concluir ou descartar antes de começar outro — assim nada do que você já registrou se perde.`,
+        [
+          { text: "Agora não", style: "cancel" },
+          {
+            text: "Voltar pro treino",
+            onPress: () =>
+              navigation.navigate("WorkoutExecution", {
+                sessionId: active.sessionId,
+                routineId: active.routineId,
+                prefill: active.prefill,
+              }),
+          },
+        ]
+      );
+      return;
+    }
     if (routine.feitos_na_semana > 0) {
       setRepetindo(routine);
       return;

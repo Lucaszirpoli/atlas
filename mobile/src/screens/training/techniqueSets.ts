@@ -57,6 +57,14 @@ export type SetRow = {
   /** Série ADICIONADA pela pessoa ("+ série extra"), não prescrita pela
    * rotina — só estas podem ser removidas (e só antes de confirmadas). */
   manuallyAdded?: boolean;
+  /** id do registro no servidor, devolvido ao confirmar a série. É o que
+   * permite CORRIGIR peso/reps depois do ✓ (digitou errado e só percebeu na
+   * série seguinte): sem ele, editar o campo mudava só o número na tela e o
+   * histórico ficava com o valor errado, calado. */
+  logId?: number;
+  /** "pesoXreps" que o servidor tem guardado desta série. Serve pra não mandar
+   * uma correção quando a pessoa só passou pelo campo sem mudar nada. */
+  correcaoSalva?: string;
 };
 
 export type TechniquePrescription = {

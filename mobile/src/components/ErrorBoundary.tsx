@@ -29,8 +29,12 @@ export class ErrorBoundary extends React.Component<Props, State> {
     // Um crash NATIVO/async da sessão anterior (que o boundary não pega em
     // tempo real) foi gravado pelo crashLog. Mostra agora, na abertura seguinte
     // — é o que revela a causa da tela branca sem precisar plugar o aparelho.
+    // Só um crash FATAL merece esta tela. Rejeição de promise (rede que falhou
+    // sem catch) também fica gravada pra diagnóstico, mas não fechou app
+    // nenhum — anunciar isso como "o app fechou sozinho" era alarme falso.
     lerUltimoCrash().then((c) => {
-      if (c) this.setState({ crashAnterior: `${c.mensagem}\n\n(em ${c.quando})` });
+      if (c?.fatal) this.setState({ crashAnterior: `${c.mensagem}\n\n(em ${c.quando})` });
+      else if (c) limparUltimoCrash();
     });
   }
 

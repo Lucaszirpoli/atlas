@@ -15,7 +15,16 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const CHAVE = "@appfit/ultimo_crash";
 
-type CrashSalvo = { mensagem: string; quando: string };
+type CrashSalvo = {
+  mensagem: string;
+  quando: string;
+  /** true só quando o app REALMENTE morreu. Uma promise não tratada (a
+   * chamada de rede que falhou sem catch) também é gravada aqui pra
+   * diagnóstico, mas não fecha o app — e anunciar "o app fechou sozinho da
+   * última vez" por causa dela é alarme falso: assusta a pessoa e faz ela
+   * mandar pro suporte um erro que não aconteceu. */
+  fatal: boolean;
+};
 
 /** Registra o handler global. Chamar UMA vez, no topo do App. */
 export function instalarCrashLogger(): void {
@@ -35,25 +44,40 @@ export function instalarCrashLogger(): void {
         fatal ? " [fatal]" : ""
       }\n\n${(erro?.stack ?? "").split("\n").slice(0, 6).join("\n")}`,
       quando: new Date().toISOString(),
+      fatal: fatal !== false,
     };
     AsyncStorage.setItem(CHAVE, JSON.stringify(payload)).catch(() => {});
     anterior?.(erro, fatal);
   });
 
-  // Rejeição de promise não capturada também vira branco em alguns casos —
-  // captura pelo hook do RN se existir.
+  // Rejeição de promise não capturada: gravada pra diagnóstico, mas com
+  // fatal=false. O app CONTINUA vivo depois de uma dessas (é quase sempre uma
+  // chamada de rede sem catch), e tratá-la como crash fazia a abertura
+  // seguinte anunciar "o app fechou sozinho da última vez" sem nada ter
+  // fechado — um susto por um erro que a pessoa nem viu acontecer.
+  //
+  // Também não pode SOBRESCREVER um crash fatal ainda não visto: o fatal é o
+  // que interessa, e apagá-lo com um erro de rede posterior apagaria a única
+  // pista do que derrubou o app.
   const tracking = g.HermesInternal?.enablePromiseRejectionTracker;
   if (typeof tracking === "function") {
     tracking({
       allRejections: true,
-      onUnhandled: (_id: number, erro: any) => {
-        AsyncStorage.setItem(
-          CHAVE,
-          JSON.stringify({
-            mensagem: `Promise não tratada: ${erro?.message ?? String(erro)}`,
-            quando: new Date().toISOString(),
-          } satisfies CrashSalvo)
-        ).catch(() => {});
+      onUnhandled: async (_id: number, erro: any) => {
+        try {
+          const anteriorCru = await AsyncStorage.getItem(CHAVE);
+          if (anteriorCru && (JSON.parse(anteriorCru) as CrashSalvo)?.fatal) return;
+          await AsyncStorage.setItem(
+            CHAVE,
+            JSON.stringify({
+              mensagem: `Promise não tratada: ${erro?.message ?? String(erro)}`,
+              quando: new Date().toISOString(),
+              fatal: false,
+            } satisfies CrashSalvo)
+          );
+        } catch {
+          // diagnóstico é melhor-esforço: nunca pode atrapalhar o app
+        }
       },
     });
   }

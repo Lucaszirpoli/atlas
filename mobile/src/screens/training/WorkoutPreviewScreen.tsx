@@ -51,7 +51,7 @@ export function WorkoutPreviewScreen() {
   const { colors, type, spacing, radius } = useTheme();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { startWorkout } = useActiveWorkout();
+  const { active, startWorkout } = useActiveWorkout();
   const { routineId } = route.params as { routineId: number };
 
   const [routine, setRoutine] = useState<Routine | null>(null);
@@ -71,6 +71,28 @@ export function WorkoutPreviewScreen() {
   const jaFezNaSemana = routine?.feitos_na_semana ?? 0;
 
   function handlePressTreinar() {
+    // Mesma guarda da lista de rotinas: um treino aberto por vez. Começar outro
+    // por cima abandonava o primeiro em silêncio — a sessão ficava no servidor
+    // sem ser concluída e sumia da vista (o histórico só lista concluídos).
+    if (active) {
+      Alert.alert(
+        "Você já tem um treino em andamento",
+        `"${active.routineName}" está aberto. Volte nele pra concluir ou descartar antes de começar outro — assim nada do que você já registrou se perde.`,
+        [
+          { text: "Agora não", style: "cancel" },
+          {
+            text: "Voltar pro treino",
+            onPress: () =>
+              navigation.replace("WorkoutExecution", {
+                sessionId: active.sessionId,
+                routineId: active.routineId,
+                prefill: active.prefill,
+              }),
+          },
+        ]
+      );
+      return;
+    }
     if (jaFezNaSemana > 0) {
       setAvisoRepetir(true);
       return;

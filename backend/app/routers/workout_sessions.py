@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.db import get_db
@@ -11,6 +11,7 @@ from app.models.routine import Routine, RoutineExercise
 from app.models.user import User
 from app.models.workout_session import WorkoutSession, WorkoutSetLog
 from app.schemas.workout_session import (
+    ActiveSessionResponse,
     ExercisePrefill,
     WorkoutSessionDetail,
     WorkoutSessionStart,
@@ -79,6 +80,59 @@ def preview_session(
     if routine is None or routine.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rotina não encontrada")
     return workout_service.build_prefill(db, current_user, routine)
+
+
+# Janela em que um treino aberto ainda conta como "em andamento". Passou disso,
+# foi abandonado: ninguém retoma o treino de anteontem, e ressuscitar sessão
+# velha no indicador flutuante seria pior que não ter indicador nenhum.
+_SESSAO_ABERTA_MAX_HORAS = 18
+
+
+@router.get("/active", response_model=ActiveSessionResponse | None)
+def active_session(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict | None:
+    """O treino que ficou aberto, se houver — o caminho de volta depois de o
+    app fechar sozinho.
+
+    IMPORTANTE: precisa ficar declarado ANTES de `GET /{session_id}`; o FastAPI
+    resolve as rotas na ordem de declaração e "active" cairia no conversor de
+    int do outro caminho.
+    """
+    limite = datetime.now(timezone.utc) - timedelta(hours=_SESSAO_ABERTA_MAX_HORAS)
+    session = db.execute(
+        select(WorkoutSession)
+        .where(
+            WorkoutSession.user_id == current_user.id,
+            WorkoutSession.completed_at.is_(None),
+            WorkoutSession.started_at >= limite,
+        )
+        .order_by(WorkoutSession.started_at.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    if session is None or session.routine_id is None:
+        return None
+
+    routine = db.execute(
+        select(Routine)
+        .options(selectinload(Routine.exercises).selectinload(RoutineExercise.exercise))
+        .where(Routine.id == session.routine_id)
+    ).scalar_one_or_none()
+    # Rotina apagada no meio do caminho: não há o que remontar na tela.
+    if routine is None or routine.user_id != current_user.id:
+        return None
+
+    logged = db.execute(
+        select(func.count(WorkoutSetLog.id)).where(WorkoutSetLog.session_id == session.id)
+    ).scalar_one()
+    return {
+        "session": session,
+        "routine_id": routine.id,
+        "routine_name": routine.name,
+        "prefill": workout_service.build_prefill(db, current_user, routine),
+        "logged_sets": logged,
+    }
 
 
 @router.post("/{session_id}/sets", response_model=WorkoutSetLogRead, status_code=status.HTTP_201_CREATED)

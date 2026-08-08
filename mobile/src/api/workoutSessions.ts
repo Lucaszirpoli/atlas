@@ -105,6 +105,25 @@ export async function getWorkoutPreview(routineId: number): Promise<ExercisePref
   return data;
 }
 
+export type ActiveWorkoutSession = {
+  session: WorkoutSession;
+  routine_id: number;
+  routine_name: string;
+  prefill: ExercisePrefill[];
+  /** Quantas séries já foram registradas nesta sessão. */
+  logged_sets: number;
+};
+
+/** O treino que ficou ABERTO no servidor (iniciado e nunca concluído), se
+ * houver e se for recente. É o caminho de volta quando o app fecha sozinho:
+ * as séries já registradas continuam lá, mas sem isto o app não tinha mais
+ * como saber que aquele treino existia — ele sumia até do histórico, que só
+ * lista treinos concluídos. */
+export async function getActiveWorkoutSession(): Promise<ActiveWorkoutSession | null> {
+  const { data } = await api.get<ActiveWorkoutSession | null>("/workout-sessions/active");
+  return data ?? null;
+}
+
 export async function logSet(
   sessionId: number,
   payload: {

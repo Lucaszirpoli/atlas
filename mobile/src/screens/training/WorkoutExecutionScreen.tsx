@@ -17,10 +17,13 @@ import {
   discardWorkoutSession,
   getAvgWorkoutDuration,
   getWorkoutPreview,
+  getWorkoutSession,
   logSet,
+  updateWorkoutSet,
   type BlockStatus,
   type ExercisePrefill,
   type SetType,
+  type WorkoutSetLog,
 } from "../../api/workoutSessions";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
@@ -67,6 +70,7 @@ const SET_TYPE_ORDER = Object.keys(SET_TYPE_LABELS) as SetType[];
 const SET_LETTER_HELP_TEXT =
   "A = Aquecimento: a primeira série, bem leve (25% da carga de trabalho), só pra preparar a articulação e o músculo — não é série de esforço.\n\n" +
   "P = Feeder: a segunda série, um pouco mais pesada (50% da carga de trabalho), pra chegar afiado na primeira série de trabalho — também não conta como esforço.\n\n" +
+  "O peso e as reps do A e do P vêm calculados, mas são SUGESTÃO: se você aqueceu com outro peso, é só editar — o registro tem que ser o que você levantou de verdade.\n\n" +
   "T = Série de trabalho: as séries que valem, com o peso e reps que você realmente treina.\n\n" +
   "F = Até a falha: série levada até não dar mais pra fazer outra rep com boa forma. Marcar RIR 0 já transforma a série em F.";
 
@@ -108,7 +112,7 @@ function linhasDoExercicio(
   overlays: WorkoutOverlay[],
   exerciseId: number
 ): SetRow[] {
-  const prepRows: SetRow[] = (pre?.warmup_feeder ?? []).map((w) => ({
+  const prepRows: SetRow[] = (Array.isArray(pre?.warmup_feeder) ? pre!.warmup_feeder : []).map((w) => ({
     weight: w.weight_kg != null ? String(w.weight_kg) : "",
     reps: String(w.reps_max),
     completed: false,
@@ -119,7 +123,7 @@ function linhasDoExercicio(
     role: "prep" as const,
   }));
   const workRows: SetRow[] = Array.from({ length: routineExercise.target_sets }, (_, i) => {
-    const previous = pre?.sets[i];
+    const previous = pre?.sets?.[i];
     // Intenção que o coach definiu ao montar a rotina (até a falha) já vem
     // pré-marcada no badge, com o RIR sugerido pro momento do ciclo — a pessoa
     // não precisa lembrar de marcar na hora. Rotina sem intenção (manual) cai
@@ -150,6 +154,40 @@ function linhasDoExercicio(
     ? expandTechnique(workRows, tech, workRows[workRows.length - 1]?.weight ?? "")
     : workRows;
   return [...prepRows, ...finais];
+}
+
+/** Marca nas linhas da tela as séries que o SERVIDOR já tem registradas.
+ *
+ * Existe por causa da recuperação de treino: quando o app fecha sozinho e a
+ * pessoa volta pro mesmo treino, as séries que ela já tinha confirmado estão
+ * salvas no servidor mas não necessariamente na tela. Sem esta reconciliação
+ * elas apareceriam em branco e seriam registradas DUAS vezes — o histórico é
+ * append-only (regra 4), então não haveria como desfazer isso depois.
+ *
+ * O casamento é exato: ao confirmar, cada série é gravada com
+ * `exercise_sort_order` = índice do exercício e `set_number` = índice da linha
+ * + 1. É a mesma chave dos dois lados. O valor do servidor VENCE o da tela:
+ * ele é o que está registrado de verdade.
+ */
+function comSeriesJaRegistradas(rows: SetRow[][], registradas: WorkoutSetLog[]): SetRow[][] {
+  if (registradas.length === 0) return rows;
+  const porPosicao = new Map<string, WorkoutSetLog>();
+  for (const s of registradas) porPosicao.set(`${s.exercise_sort_order}:${s.set_number - 1}`, s);
+  return rows.map((linhas, i) =>
+    linhas.map((row, j) => {
+      const reg = porPosicao.get(`${i}:${j}`);
+      if (!reg) return row;
+      const peso = Math.round(reg.weight_kg * 10) / 10; // sem ruído de float
+      return {
+        ...row,
+        completed: true,
+        logId: reg.id,
+        weight: String(peso),
+        reps: String(reg.reps),
+        correcaoSalva: `${peso}x${reg.reps}`,
+      };
+    })
+  );
 }
 
 const RIR_OPTIONS = [4, 3, 2, 1, 0];
@@ -226,32 +264,37 @@ export function WorkoutExecutionScreen() {
   useEffect(() => {
     let cancelado = false;
     (async () => {
-      const [r, ovs, draft] = await Promise.all([
+      const [r, ovs, draft, sessao] = await Promise.all([
         getRoutine(routineId),
         listWorkoutOverlays().catch(() => [] as WorkoutOverlay[]),
         loadDraft(sessionId),
+        // O servidor é quem sabe o que JÁ foi registrado. Sem consultar isto,
+        // um treino retomado depois de o app fechar remontava tudo em branco e
+        // a pessoa registrava as mesmas séries DE NOVO — o histórico ficaria
+        // com o dobro do volume, calado. Falha de rede aqui não impede o
+        // treino: cai no caminho antigo (rascunho local).
+        getWorkoutSession(sessionId).catch(() => null),
       ]);
       if (cancelado) return;
       setRoutine(r);
       setOverlays(ovs);
 
-      if (draft && draft.setsByExercise.length === r.exercises.length) {
-        setSetsByExercise(draft.setsByExercise);
-        setRestaurado(true);
-        setPronto(true);
-        return;
-      }
-
-      setSetsByExercise(
-        r.exercises.map((re) =>
-          linhasDoExercicio(
-            re,
-            prefill.find((p) => p.exercise_id === re.exercise_id),
-            ovs,
-            re.exercise_id
-          )
-        )
-      );
+      const registradas = sessao?.sets ?? [];
+      const base =
+        draft && draft.setsByExercise.length === r.exercises.length
+          ? draft.setsByExercise
+          : r.exercises.map((re) =>
+              linhasDoExercicio(
+                re,
+                prefill.find((p) => p.exercise_id === re.exercise_id),
+                ovs,
+                re.exercise_id
+              )
+            );
+      setSetsByExercise(comSeriesJaRegistradas(base, registradas));
+      // "Continuei de onde você parou" vale tanto pro rascunho quanto pra uma
+      // sessão que voltou do servidor com séries dentro.
+      setRestaurado(Boolean(draft) || registradas.length > 0);
       setPronto(true);
     })();
     return () => {
@@ -283,6 +326,18 @@ export function WorkoutExecutionScreen() {
 
   const totalSets = setsByExercise.reduce((sum, rows) => sum + rows.length, 0);
   const totalCompleted = setsByExercise.reduce((sum, rows) => sum + rows.filter((s) => s.completed).length, 0);
+
+  // "Registrada" parecia FECHADA — quem digitava 100 no lugar de 10 achava que
+  // tinha perdido a série. Dá pra corrigir, sempre deu que dizer; a dica
+  // aparece UMA vez, na primeira série registrada do treino, e some depois
+  // (repetir isso em toda linha verde viraria ruído).
+  const primeiraRegistrada = (() => {
+    for (let i = 0; i < setsByExercise.length; i++) {
+      const j = (setsByExercise[i] ?? []).findIndex((r) => r.completed);
+      if (j >= 0) return `${i}:${j}`;
+    }
+    return null;
+  })();
 
   function updateSet(exerciseIndex: number, setIdx: number, patch: Partial<SetRow>) {
     setSetsByExercise((prev) =>
@@ -350,13 +405,19 @@ export function WorkoutExecutionScreen() {
 
   async function handleConfirmSet(exerciseIndex: number, setIdx: number) {
     const chave = `${exerciseIndex}:${setIdx}`;
-    const row = setsByExercise[exerciseIndex][setIdx];
+    // Índice fora da lista = estado momentaneamente desencontrado (troca de
+    // exercício em andamento, série removida no toque anterior). Ler direto
+    // `[i][j]` aqui quebrava o app INTEIRO com um erro em inglês e derrubava
+    // o treino junto; sair calado é o comportamento certo — no toque seguinte
+    // já está tudo no lugar.
+    const row = setsByExercise[exerciseIndex]?.[setIdx];
+    const routineExercise = routine?.exercises[exerciseIndex];
+    if (!row || !routineExercise) return;
     // UM toque = UMA ação (spec §8.3). Sem esta guarda, dois toques rápidos
     // disparavam duas chamadas antes da primeira responder e a série entrava
     // DUPLICADA no histórico. Já confirmada também não repete.
     if (row.completed || salvando.has(chave)) return;
 
-    const routineExercise = routine!.exercises[exerciseIndex];
     const weightNum = Number(row.weight);
     const repsNum = Number(row.reps);
     if (!row.weight || !row.reps || Number.isNaN(weightNum) || Number.isNaN(repsNum)) {
@@ -372,7 +433,7 @@ export function WorkoutExecutionScreen() {
 
     setSalvando((s) => new Set(s).add(chave));
     try {
-      await logSet(sessionId, {
+      const registrada = await logSet(sessionId, {
         exercise_id: routineExercise.exercise_id,
         exercise_sort_order: exerciseIndex,
         set_number: setIdx + 1,
@@ -385,7 +446,13 @@ export function WorkoutExecutionScreen() {
         block_index: row.blockIndex ?? null,
         block_status: row.blockStatus ?? null,
       });
-      updateSet(exerciseIndex, setIdx, { completed: true });
+      // Guarda o id: é o que permite CORRIGIR esta série depois (ver
+      // salvarCorrecao). Sem ele, mudar o campo depois do ✓ só enganava a tela.
+      updateSet(exerciseIndex, setIdx, {
+        completed: true,
+        logId: registrada.id,
+        correcaoSalva: `${weightNum}x${repsNum}`,
+      });
       // Dentro de uma técnica o descanso é o CURTO do método (15-40s), não o
       // descanso normal entre séries — é isso que faz a técnica ser a técnica.
       setRestSeconds(row.restAfterS ?? routineExercise.rest_seconds);
@@ -397,6 +464,32 @@ export function WorkoutExecutionScreen() {
         n.delete(chave);
         return n;
       });
+    }
+  }
+
+  /** CORRIGIR uma série JÁ CONFIRMADA, com o treino ainda em andamento.
+   *
+   * Digitar errado acontece o tempo todo — 100 no lugar de 10, o peso da barra
+   * esquecido no aquecimento — e quase sempre a pessoa só percebe uma série
+   * depois. Antes, o campo até aceitava o novo número, mas ele morria na tela:
+   * o servidor guardava o valor antigo e o histórico ficava errado sem ninguém
+   * ver. Agora sair do campo salva a correção de verdade (PATCH na própria
+   * linha do log — não cria série nova, então a regra 4 continua de pé).
+   *
+   * Roda ao SAIR do campo, não a cada tecla: enquanto "1" ainda não virou "12",
+   * salvar seria salvar um número que a pessoa nem terminou de escrever. */
+  async function salvarCorrecao(exerciseIndex: number, setIdx: number) {
+    const row = setsByExercise[exerciseIndex]?.[setIdx];
+    if (!row?.completed || row.logId == null) return; // ainda não registrada: nada a corrigir
+    const weightNum = Number(row.weight);
+    const repsNum = Number(row.reps);
+    if (!row.weight || !row.reps || Number.isNaN(weightNum) || Number.isNaN(repsNum)) return;
+    if (row.correcaoSalva === `${weightNum}x${repsNum}`) return; // nada mudou
+    try {
+      await updateWorkoutSet(row.logId, { weight_kg: weightNum, reps: repsNum });
+      updateSet(exerciseIndex, setIdx, { correcaoSalva: `${weightNum}x${repsNum}` });
+    } catch (err: any) {
+      Alert.alert("Não deu pra salvar a correção", mensagemDeErro(err, "Tente de novo daqui a pouco."));
     }
   }
 
@@ -467,6 +560,16 @@ export function WorkoutExecutionScreen() {
       endWorkout(); // não está mais "em andamento" — some o indicador flutuante
       setDurationCheck(null);
       navigation.replace("WorkoutSummary", { summary });
+    } catch (err: any) {
+      // Faltava o catch: se a internet caísse na hora de concluir, a rejeição
+      // não tratada subia como erro global (em inglês) e o treino ficava sem
+      // resposta nenhuma na tela. Aqui a pessoa é avisada e — importante — o
+      // rascunho e o treino em andamento CONTINUAM de pé pra tentar de novo.
+      setDurationCheck(null);
+      Alert.alert(
+        "Não deu pra concluir agora",
+        mensagemDeErro(err, "Suas séries já registradas estão salvas. Tente concluir de novo em instantes.")
+      );
     } finally {
       setIsCompleting(false);
     }
@@ -545,7 +648,13 @@ export function WorkoutExecutionScreen() {
         {deload ? <DeloadBanner overlay={deload} /> : null}
 
         {routine.exercises.map((routineExercise, exerciseIndex) => {
-          const sets = setsByExercise[exerciseIndex];
+          // `?? []` NÃO é paranoia: entre trocar um exercício e o novo prefill
+          // chegar, a rotina já mudou e as séries ainda não — nesse respiro,
+          // `sets.filter` num undefined quebrava o RENDER, e erro de render
+          // desmonta a árvore inteira do React (a "tela branca"/app fechando).
+          // Uma linha sem séries desenha vazia por um instante e volta ao
+          // normal sozinha; um crash custa o treino inteiro.
+          const sets = setsByExercise[exerciseIndex] ?? [];
           const completedCount = sets.filter((s) => s.completed).length;
           return (
             <View key={routineExercise.id} style={{ marginBottom: spacing.xl }}>
@@ -669,13 +778,19 @@ export function WorkoutExecutionScreen() {
                       ? colors.warning
                       : undefined;
                   const chave = `${exerciseIndex}:${idx}`;
-                  // Aquecimento e feeder do coach são conta feita (25% e 50% da
-                  // carga de trabalho, reps definidas) — vêm fixos: nem o tipo
-                  // nem as reps mudam. O kg só abre quando o coach não teve como
-                  // calcular (primeira vez no exercício, sem carga de base) —
-                  // senão a pessoa ficaria sem onde registrar o que levantou.
+                  // Aquecimento e feeder do coach são SUGESTÃO calculada (25% e
+                  // 50% da carga de trabalho), não prescrição fechada.
+                  //
+                  // ALTERADO (bug relatado 2026-08-07): peso e reps vinham como
+                  // campo travado, só leitura. Quem aquecia com mais peso que a
+                  // conta ficava sem onde registrar — "não consigo colocar mais
+                  // que 10 no kg" era literalmente isso, o campo não aceitava
+                  // toque. E o histórico gravava um número que a pessoa não
+                  // levantou, o que quebra a regra 4 (histórico é o que
+                  // aconteceu de verdade, não o que foi planejado). O que
+                  // continua fixo é o TIPO da série (A/P), porque aí sim é
+                  // estrutura do treino que o motor calculou.
                   const prepDoCoach = doCoach && row.role === "prep";
-                  const pesoTravado = prepDoCoach && row.weight !== "";
                   return (
                     <Card
                       key={idx}
@@ -715,22 +830,32 @@ export function WorkoutExecutionScreen() {
                               <Text style={[type.caption, { color: colors.textSecondary }]} numberOfLines={1}>
                                 {fmtKg(row.previous.weight_kg)}kg × {row.previous.reps}
                               </Text>
+                            ) : row.role === "prep" ? (
+                              // Linha de preparação não tem "anterior" (o
+                              // histórico de aquecimento não é referência de
+                              // carga) — dizer "primeira vez" aqui era falso
+                              // pra quem já fez o exercício dezenas de vezes.
+                              <Text style={[type.caption, { color: colors.textSecondary }]} numberOfLines={1}>
+                                {row.setType === "feeder" ? "preparatória · sugestão" : "aquecimento · sugestão"}
+                              </Text>
                             ) : (
                               <Text style={[type.caption, { color: colors.textSecondary }]}>primeira vez</Text>
                             )}
                           </View>
 
-                          {pesoTravado ? (
-                            <LockedValue text={row.weight} />
-                          ) : (
-                            <SetInput compact value={row.weight} onChangeText={(v) => updateSet(exerciseIndex, idx, { weight: v })} />
-                          )}
+                          <SetInput
+                            compact
+                            value={row.weight}
+                            onChangeText={(v) => updateSet(exerciseIndex, idx, { weight: v })}
+                            onBlur={() => salvarCorrecao(exerciseIndex, idx)}
+                          />
                           <Text style={[type.body, { color: colors.textSecondary, marginHorizontal: 4 }]}>×</Text>
-                          {prepDoCoach ? (
-                            <LockedValue text={row.reps} />
-                          ) : (
-                            <SetInput compact value={row.reps} onChangeText={(v) => updateSet(exerciseIndex, idx, { reps: v })} />
-                          )}
+                          <SetInput
+                            compact
+                            value={row.reps}
+                            onChangeText={(v) => updateSet(exerciseIndex, idx, { reps: v })}
+                            onBlur={() => salvarCorrecao(exerciseIndex, idx)}
+                          />
                           <ConfirmCheck
                             completed={row.completed}
                             saving={salvando.has(chave)}
@@ -749,6 +874,15 @@ export function WorkoutExecutionScreen() {
                             </TouchableOpacity>
                           ) : null}
                         </View>
+
+                        {primeiraRegistrada === chave ? (
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: spacing.xs, marginLeft: 38 }}>
+                            <Ionicons name="create-outline" size={12} color={colors.textSecondary} />
+                            <Text style={[type.caption, { color: colors.textSecondary, flex: 1 }]}>
+                              Registrada — se digitou errado, é só corrigir o número aqui mesmo.
+                            </Text>
+                          </View>
+                        ) : null}
 
                         {/* RIR — sempre visível, quick-select. Não se aplica a
                             aquecimento/feeder (séries submáximas de preparação). */}
@@ -869,6 +1003,10 @@ export function WorkoutExecutionScreen() {
                               compact
                               value={activation.weight}
                               onChangeText={(v) => updateWeightAcrossGroup(exerciseIndex, indicesDoGrupo, v)}
+                              // Um campo de carga só pra fileira inteira: a
+                              // correção também vale pra fileira inteira (só
+                              // as repetições já registradas reagem).
+                              onBlur={() => indicesDoGrupo.forEach((j) => salvarCorrecao(exerciseIndex, j))}
                             />
                           </View>
 
@@ -918,6 +1056,7 @@ export function WorkoutExecutionScreen() {
                             compact
                             value={activation.weight}
                             onChangeText={(v) => updateSet(exerciseIndex, activationIdx, { weight: v })}
+                            onBlur={() => salvarCorrecao(exerciseIndex, activationIdx)}
                           />
                           <Text style={[type.body, { color: colors.textSecondary, marginHorizontal: 4 }]}>×</Text>
                           {activation.repsLocked ? (
@@ -935,6 +1074,7 @@ export function WorkoutExecutionScreen() {
                               compact
                               value={activation.reps}
                               onChangeText={(v) => updateSet(exerciseIndex, activationIdx, { reps: v })}
+                              onBlur={() => salvarCorrecao(exerciseIndex, activationIdx)}
                             />
                           )}
                           <ConfirmCheck
@@ -981,12 +1121,14 @@ export function WorkoutExecutionScreen() {
                                 compact
                                 value={aberto.row.weight}
                                 onChangeText={(v) => updateSet(exerciseIndex, aberto.idx, { weight: v })}
+                                onBlur={() => salvarCorrecao(exerciseIndex, aberto.idx)}
                               />
                               <Text style={[type.body, { color: colors.textSecondary, marginHorizontal: 4 }]}>×</Text>
                               <SetInput
                                 compact
                                 value={aberto.row.reps}
                                 onChangeText={(v) => updateSet(exerciseIndex, aberto.idx, { reps: v })}
+                                onBlur={() => salvarCorrecao(exerciseIndex, aberto.idx)}
                               />
                               <ConfirmCheck
                                 completed={aberto.row.completed}
@@ -1334,37 +1476,19 @@ function Meta({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: stri
   );
 }
 
-/** Campo FIXO: mesmo formato de um SetInput compacto, mas só leitura — o valor
- * foi calculado pelo coach (peso e reps do aquecimento/feeder) e não é palpite
- * pra pessoa corrigir no meio do treino. Usa o mesmo desenho do campo travado
- * das técnicas avançadas (reps do método), pra "travado" ter uma cara só. */
-function LockedValue({ text }: { text: string }) {
-  const { colors, type, radius } = useTheme();
-  return (
-    <View
-      style={{
-        width: 56,
-        height: 44,
-        borderRadius: radius.button,
-        backgroundColor: colors.primary + "18",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <Text style={[type.body, { color: colors.primary, fontWeight: "800" }]}>{text || "—"}</Text>
-    </View>
-  );
-}
-
 function SetInput({
   label,
   value,
   onChangeText,
+  onBlur,
   compact = false,
 }: {
   label?: string;
   value: string;
   onChangeText: (v: string) => void;
+  /** Chamado ao SAIR do campo — é onde a correção de uma série já registrada
+   * vai pro servidor (salvar a cada tecla salvaria número pela metade). */
+  onBlur?: () => void;
   compact?: boolean;
 }) {
   const { colors, type, spacing, radius } = useTheme();
@@ -1376,6 +1500,7 @@ function SetInput({
       <TextInput
         value={value}
         onChangeText={(v) => onChangeText(v.replace(/,/g, ".").replace(/[^0-9.]/g, ""))}
+        onBlur={onBlur}
         keyboardType="decimal-pad"
         style={[
           compact ? type.body : type.h2,
